@@ -238,9 +238,37 @@ async function handleBotMessage(message) {
 }
 
 async function getUserBalance(userId) {
-  const { data, error } = await sb.from('users').select('balance').eq('id', userId).single();
+  const numericUserId = Number(userId);
+  if (!Number.isFinite(numericUserId)) return 0;
+
+  const { data, error } = await sb
+    .from('users')
+    .select('balance')
+    .eq('id', numericUserId)
+    .limit(1)
+    .maybeSingle();
+
   if (error) throw new Error(error.message || 'Balance read failed');
-  return Number(data?.balance || 0);
+
+  if (data) {
+    return Number(data.balance || 0);
+  }
+
+  const created = await sb
+    .from('users')
+    .upsert({
+      id: numericUserId,
+      first_name: 'User',
+      balance: 0,
+      total_deposited: 0,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'id' })
+    .select('balance')
+    .limit(1)
+    .maybeSingle();
+
+  if (created.error) throw new Error(created.error.message || 'Balance create failed');
+  return Number(created.data?.balance || 0);
 }
 
 async function spendBalance(userId, amount) {
@@ -962,7 +990,12 @@ app.post('/api/init', async (req, res) => {
   }
 
   const referrerId = extractReferralId(context.startParam);
-  if (referrerId && referrerId !== Number(user.id)) {
+  const currentUserId = Number(user.id);
+
+  // Safety: never count a user as their own referral, even if they open their own startapp link.
+  if (referrerId && referrerId === currentUserId) {
+    console.log(`↩️ self-referral ignored for user ${currentUserId}`);
+  } else if (referrerId) {
     const linkResult = await sb.rpc('apply_referral_link', {
       p_user_id: user.id,
       p_referrer_id: referrerId,
@@ -1519,7 +1552,7 @@ app.post('/api/crash/cashout', async (req, res) => {
     : serverPayout;
 
   try {
-    const newBalance = await getUserBalance(user.id);
+    let newBalance = await getUserBalance(user.id);
     bet.cashedOut = true;
     bet.payout = payout;
     bet.cashedOutAt = now;
@@ -1530,6 +1563,9 @@ app.post('/api/crash/cashout', async (req, res) => {
     if (pendingPrize) {
       pendingPrize = await upsertPendingPrize(user.id, pendingPrize);
       bet.awardedGift = pendingPrize;
+    } else if (payout > 0) {
+      // Если выигрыш меньше минимальной цены NFT-подарка, начисляем звезды сразу на баланс.
+      newBalance = await addWinBalance(user.id, payout);
     }
 
     return res.json({
