@@ -9,7 +9,7 @@
 <script src="https://unpkg.com/@tonconnect/ui@latest/dist/tonconnect-ui.min.js"></script>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-  html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','Segoe UI',Roboto,sans-serif;background:#000 url('assets/background_pepe.png') center/cover no-repeat}
+  html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','Segoe UI',Roboto,sans-serif;background:#000 url('assets/background_pepe.png') center top/cover no-repeat;background-attachment:fixed}
   .app{position:relative;width:100%;height:100%}
   .app.boot-hidden{opacity:0;pointer-events:none}
   .boot-screen{
@@ -17,7 +17,7 @@
     display:flex;align-items:center;justify-content:center;
     overflow:hidden;
     transition:opacity .28s ease,visibility .28s ease;
-    background:url('assets/background_pepe.png') center/cover no-repeat;
+    background:url('assets/background_pepe.png') center top/cover no-repeat;
   }
   .boot-screen.hidden{opacity:0;visibility:hidden;pointer-events:none}
   .boot-screen__backdrop{
@@ -223,7 +223,7 @@
     padding:136px 12px 104px;z-index:8;overflow-y:auto;-webkit-overflow-scrolling:touch;
     opacity:0;visibility:hidden;pointer-events:none;
     transform:translateZ(0);-webkit-transform:translateZ(0);
-    background:#000 url('assets/background_pepe.png') center/cover no-repeat;
+    background:#000 url('assets/background_pepe.png') center top/cover no-repeat;
   }
   .referral-page::-webkit-scrollbar{display:none}
   .referral-page.visible{opacity:1;visibility:visible;pointer-events:auto;animation:fadeIn .28s ease both}
@@ -325,7 +325,7 @@
   .sheet{
     position:fixed;left:0;right:0;bottom:0;
     height:55%;border-radius:36px 36px 0 0;
-    background:#000 url('assets/background_pepe.png') center/cover no-repeat;
+    background:#000 url('assets/background_pepe.png') center top/cover no-repeat;
     z-index:51;overflow:hidden;
     transform:translateY(100%);transition:transform .35s cubic-bezier(.4,0,.2,1);
     display:flex;flex-direction:column;
@@ -408,7 +408,7 @@
   .topup-sheet{
     position:fixed;left:0;right:0;bottom:0;
     border-radius:36px 36px 0 0;
-    background:#000 url('assets/background_pepe.png') center/cover no-repeat;
+    background:#000 url('assets/background_pepe.png') center top/cover no-repeat;
     z-index:51;padding-bottom:env(safe-area-inset-bottom,0);
     transform:translateY(100%);transition:transform .35s cubic-bezier(.4,0,.2,1);
     display:flex;flex-direction:column;
@@ -853,7 +853,7 @@
   .gift-modal-overlay.open{opacity:1;pointer-events:auto}
   .gift-modal{
     width:min(100%,340px);border-radius:26px;padding:18px 16px 16px;
-    background:#121214 url('assets/background_pepe.png') center/cover no-repeat;
+    background:#121214 url('assets/background_pepe.png') center top/cover no-repeat;
     border:1px solid rgba(255,255,255,.08);
     box-shadow:0 18px 50px rgba(0,0,0,.38);
     transform:translateY(10px) scale(.96);transition:transform .25s ease;
@@ -881,7 +881,7 @@
   .bet-sheet{
     position:fixed;left:0;right:0;bottom:0;
     border-radius:36px 36px 0 0;
-    background:#000 url('assets/background_pepe.png') center/cover no-repeat;
+    background:#000 url('assets/background_pepe.png') center top/cover no-repeat;
     z-index:51;min-height:0;
     transform:translateY(100%);transition:transform .35s cubic-bezier(.4,0,.2,1);
     display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom,0);
@@ -1944,10 +1944,10 @@
   const referralEarnedValue=document.getElementById('referralEarnedValue');
   const promoInput=document.querySelector('.promo-input');
   const promoBtn=document.querySelector('.promo-btn');
-  const REFERRAL_BOT_USERNAME='GiftPepeRobot';
+  const REFERRAL_BOT_USERNAME='MoneyMonkeyRobot';
   const TON_TO_STARS=90;
-  const TON_DESTINATION_WALLET='UQAMmKXWnv0DFUCU7KPEDb9c9pnl4gV7B2zadjBNZSyU7074';
-  const TON_MANIFEST_URL=(window.location?.origin||'https://gift-pepe.web.app')+'/tonconnect-manifest.json';
+  const TON_DESTINATION_WALLET='UQBiS3JdXD9HT848RMhef1fWLKSePFmgyLfj2BmJV5vFfkyN';
+  const TON_MANIFEST_URL=(window.location?.origin||'https://moneymonkey.live')+'/tonconnect-manifest.json';
   const TOP_REWARD_GIFT_NAMES=['Khabib’s Papakha','Crystal Ball','Berry Box'];
   const TOP_REWARD_GIFTS=TOP_REWARD_GIFT_NAMES.map(name=>GIFT_CATALOG.find(gift=>String(gift?.name||'')===name)||null);
   let tonConnectUI=null;
@@ -2159,6 +2159,7 @@
   let crashRealtimeState=null;
   let crashServerOffsetMs=0;
   let crashRoundLocked=false;
+  let crashLocalBetRoundId=0;
   let crashBetSettled=false;
   let crashSettledPayout=0;
   let crashDisplayPhase='countdown';
@@ -2623,6 +2624,7 @@
     crashBetSettled=true;
     crashSettledPayout=Number(payout||0);
     crashRoundLocked=true;
+    crashLocalBetRoundId=Number(crashRealtimeState?.roundId||crashLocalBetRoundId||0);
     crashBetAmount=Number(betAmount||crashBetAmount||0);
     if(crashBetAmount>0){
       renderCrashPlayerCard(crashBetAmount);
@@ -2683,6 +2685,7 @@
     crashBetSyncPending=false;
     crashCashoutBusy=false;
     crashRoundLocked=false;
+    crashLocalBetRoundId=0;
     crashCashoutBusy=false;
     crashBetSettled=false;
     crashSettledPayout=0;
@@ -2728,6 +2731,12 @@
   function syncCrashViewerBet(state){
     const pendingPrize=state?.pendingPrize||null;
     const viewerBet=state?.viewerBet||null;
+    const stateRoundId=Number(state?.roundId||0);
+    if(viewerBet?.roundId) crashLocalBetRoundId=Number(viewerBet.roundId||stateRoundId||0);
+    if(!viewerBet&&!pendingPrize&&crashLocalBetRoundId&&stateRoundId&&stateRoundId!==crashLocalBetRoundId&&!crashCashoutBusy&&!crashPrizeResolveBusy){
+      resetCrashPlayer();
+      return;
+    }
 
     if(crashPrizeResolveBusy){
       if(crashBetAmount>0&&crashBetSettled){
@@ -3005,10 +3014,12 @@
     const prevBetSettled=crashBetSettled;
     const prevSettledPayout=crashSettledPayout;
     const prevRoundLocked=crashRoundLocked;
+    const prevLocalBetRoundId=crashLocalBetRoundId;
     const betBtn=document.getElementById('crashBetBtn');
 
     updateBalance(balance-amount);
     crashRoundLocked=true;
+    crashLocalBetRoundId=Number(crashRealtimeState?.roundId||0);
     crashBetSyncPending=true;
     crashCashoutBusy=false;
     crashBetSettled=false;
@@ -3059,6 +3070,7 @@
       crashBetSettled=prevBetSettled;
       crashSettledPayout=prevSettledPayout;
       crashRoundLocked=prevRoundLocked;
+      crashLocalBetRoundId=prevLocalBetRoundId;
       crashBetSyncPending=false;
       crashCashoutBusy=false;
       if(prevPrizePending&&prevPrizeGift) showCrashPrize(prevPrizeGift);
@@ -3222,6 +3234,7 @@
     crashCashoutBusy=true;
     crashBetActive=false;
     crashRoundLocked=true;
+    crashLocalBetRoundId=Number(crashRealtimeState?.roundId||crashLocalBetRoundId||0);
     crashBetSettled=true;
     crashSettledPayout=livePayout;
     crashPrizeGift=optimisticGift;
@@ -3258,7 +3271,8 @@
       }
 
       const win=Number(data.payout||0);
-      updateBalance(prevBalance);
+      if(Number.isFinite(Number(data.newBalance))) updateBalance(Number(data.newBalance));
+      else updateBalance(prevBalance);
 
       crashCashoutBusy=false;
       crashBetActive=false;
@@ -3780,6 +3794,9 @@
       tg.openInvoice(invoiceLink,async(status)=>{
         if(status==='paid'){
           applyOptimisticDeposit(starsValue);
+          topupAmount.value='';
+          syncTopupModeUI();
+          closeTopup();
           topupSubmit.innerHTML=t('checkingPayment');
           const applied=await waitForPaymentApply(invoiceId,balanceBefore,starsValue,3200);
           if(applied){
