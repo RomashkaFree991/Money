@@ -227,10 +227,10 @@ async function handleBotMessage(message) {
 
   return tgApi('sendMessage', {
     chat_id: Number(message.chat.id),
-    text: 'Gift Pepe открыт. Нажми кнопку ниже.',
+    text: 'MoneyMonkey — топ казино для NFT подарков Telegram 🎁\n\nНажми на кнопку ниже, чтобы играть.',
     reply_markup: {
       inline_keyboard: [[{
-        text: 'Открыть Mini App',
+        text: 'Играть',
         web_app: { url: appUrl },
       }]],
     },
@@ -1361,9 +1361,11 @@ app.post('/api/upgrade/spin', async (req, res) => {
     const blueDeg = Math.max(12, Math.min(348, (chance / 100) * 360));
     const isWin = Math.random() * 100 < chance;
     const safeBlueDeg = Math.max(12, Math.min(348, blueDeg));
+    const winMargin = Math.min(8, Math.max(1, safeBlueDeg / 4));
+    const lossMargin = Math.min(8, Math.max(1, (360 - safeBlueDeg) / 4));
     const landingAngle = isWin
-      ? Math.max(6, Math.min(safeBlueDeg - 6, 8 + Math.random() * Math.max(8, safeBlueDeg - 16)))
-      : ((safeBlueDeg + 10) + Math.random() * Math.max(20, 360 - safeBlueDeg - 20)) % 360;
+      ? winMargin + Math.random() * Math.max(0.001, safeBlueDeg - winMargin * 2)
+      : safeBlueDeg + lossMargin + Math.random() * Math.max(0.001, 360 - safeBlueDeg - lossMargin * 2);
     const consumedGift = await consumeInventoryGift(user.id, sourceGiftId);
 
     let wonGift = null;
