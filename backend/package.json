@@ -1,13 +1,19 @@
 {
   "name": "giftpepe-backend",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "main": "server.js",
-  "scripts": { "start": "node server.js", "dev": "nodemon server.js" },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "relayer": "node relayer.js",
+    "relayer:login": "node login.js"
+  },
   "engines": { "node": ">=18.0.0" },
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^4.19.2",
-    "@supabase/supabase-js": "^2.45.0"
+    "@supabase/supabase-js": "^2.45.0",
+    "telegram": "^2.26.22"
   },
   "devDependencies": { "nodemon": "^3.1.4" }
 }

@@ -9,14 +9,17 @@ const crypto = require('crypto');
 const cors = require('cors');
 
 const CONFIG = {
-  BOT_TOKEN: '8838459279:AAGagwOSSBK0VPc4HXq7QrKHUofnQNs8Lg0', // test bot token
-  SUPABASE_URL: 'https://fqpuvmvylevrnunsescf.supabase.co',
-  SUPABASE_KEY: 'sb_publishable_er2vwdrEh-XRKLZqxf1FhQ_sR0MncqZ',
+  BOT_TOKEN: process.env.BOT_TOKEN || '8838459279:AAGagwOSSBK0VPc4HXq7QrKHUofnQNs8Lg0', // test bot token
+  SUPABASE_URL: process.env.SUPABASE_URL || 'https://fqpuvmvylevrnunsescf.supabase.co',
+  SUPABASE_KEY: process.env.SUPABASE_KEY || 'sb_publishable_er2vwdrEh-XRKLZqxf1FhQ_sR0MncqZ',
   ADMIN_KEY: process.env.ADMIN_KEY || 'GiftPepe_2026',
   PORT: process.env.PORT || 3000,
   MINI_APP_URL: process.env.MINI_APP_URL || 'https://moneymonkey.live',
   WEBHOOK_URL: process.env.WEBHOOK_URL || 'https://api.moneymonkey.live/webhook',
   PUBLIC_BASE_URL: process.env.PUBLIC_BASE_URL || process.env.BACKEND_PUBLIC_URL || 'https://api.moneymonkey.live',
+  // Gift relayer config (used by relayer.js)
+  RELAYER_INTERNAL_KEY: process.env.RELAYER_INTERNAL_KEY || 'relayer_dev_secret_change_me',
+  GIFT_RECEIVER_USERNAME: (process.env.GIFT_RECEIVER_USERNAME || 'MoneyMonkeyGift').replace(/^@/, ''),
 };
 
 const app = express();
@@ -1656,6 +1659,246 @@ app.get('/api/webhook-info', async (req, res) => {
     return res.status(403).json({ error: 'Forbidden' });
   }
   res.json(await tgApi('getWebhookInfo'));
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// GIFT RELAYER — пополнение инвентаря через NFT-подарок на @MoneyMonkeyGift
+// ══════════════════════════════════════════════════════════════════════════════
+
+function normalizeUsername(value) {
+  return String(value || '').trim().replace(/^@/, '').toLowerCase();
+}
+
+// Кэш в памяти: username -> userId (fallback если таблицы tg_username_links нет в БД)
+const usernameLinkMemory = new Map();
+// Дедуп обработанных сервисных сообщений с подарками (по msg_id)
+const processedGiftMessages = new Set();
+
+async function getUserIdByUsername(username) {
+  const uname = normalizeUsername(username);
+  if (!uname) return null;
+  const cached = usernameLinkMemory.get(uname);
+  if (cached) return cached;
+
+  const { data, error } = await sb
+    .from('tg_username_links')
+    .select('user_id')
+    .eq('username', uname)
+    .maybeSingle();
+
+  if (error) {
+    if (isMissingTableError(error, 'tg_username_links')) return null;
+    return null;
+  }
+  if (data?.user_id) {
+    usernameLinkMemory.set(uname, Number(data.user_id));
+    return Number(data.user_id);
+  }
+  return null;
+}
+
+async function linkUsernameToUser(userId, username) {
+  const uname = normalizeUsername(username);
+  if (!uname || !userId) throw new Error('username и userId обязательны');
+
+  usernameLinkMemory.set(uname, Number(userId));
+
+  // Если у этого юзера уже была другая привязка — очищаем
+  for (const [key, val] of usernameLinkMemory.entries()) {
+    if (val === Number(userId) && key !== uname) {
+      usernameLinkMemory.delete(key);
+    }
+  }
+
+  const { error } = await sb
+    .from('tg_username_links')
+    .upsert(
+      { username: uname, user_id: Number(userId), updated_at: new Date().toISOString() },
+      { onConflict: 'username' },
+    );
+
+  if (error && !isMissingTableError(error, 'tg_username_links')) {
+    throw new Error(error.message || 'Username link failed');
+  }
+  return { username: uname, userId: Number(userId) };
+}
+
+// Юзер мини-аппы привязывает свой Telegram-username, чтобы подарки от него засчитывались
+app.post('/api/me/link-tg', async (req, res) => {
+  const context = requireUserContext(req, res);
+  if (!context) return;
+  const user = context.user;
+
+  // Если в body передан username — используем его, иначе берём из initData
+  const provided = String(req.body?.username || '').trim();
+  const username = normalizeUsername(provided || user.username || '');
+  if (!username) {
+    return res.status(400).json({
+      error: 'У тебя не установлен username в Telegram. Зайди в Настройки → Username и задай его.',
+    });
+  }
+
+  try {
+    const result = await linkUsernameToUser(user.id, username);
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    res.status(400).json({ error: error.message || 'Link failed' });
+  }
+});
+
+app.get('/api/me/link-tg', async (req, res) => {
+  const context = requireUserContext(req, res);
+  if (!context) return;
+  const user = context.user;
+
+  // Возвращаем текущую привязку и инструкции
+  let linkedUsername = null;
+  for (const [uname, uid] of usernameLinkMemory.entries()) {
+    if (uid === Number(user.id)) { linkedUsername = uname; break; }
+  }
+  if (!linkedUsername) {
+    const { data } = await sb
+      .from('tg_username_links')
+      .select('username')
+      .eq('user_id', user.id)
+      .maybeSingle();
+    if (data?.username) linkedUsername = data.username;
+  }
+
+  res.json({
+    linkedUsername,
+    suggestedUsername: normalizeUsername(user.username || '') || null,
+    receiver: `@${CONFIG.GIFT_RECEIVER_USERNAME}`,
+  });
+});
+
+// Информация для UI о том, как пополнить подарком
+app.get('/api/deposit/gift/info', (req, res) => {
+  res.json({
+    receiverUsername: `@${CONFIG.GIFT_RECEIVER_USERNAME}`,
+    instructions: [
+      'Привяжи свой Telegram username в мини-аппе.',
+      `Отправь NFT-подарок на аккаунт @${CONFIG.GIFT_RECEIVER_USERNAME}.`,
+      'Подарок появится в инвентаре в течение минуты.',
+    ],
+  });
+});
+
+// Внутренний эндпойнт, вызывается релеером после получения подарка
+app.post('/api/relayer/credit-gift', async (req, res) => {
+  if (req.headers['x-relayer-key'] !== CONFIG.RELAYER_INTERNAL_KEY) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  const {
+    senderUsername,
+    senderTgId,
+    giftId,
+    msgId,
+    fallbackName,
+    fallbackImage,
+    fallbackPrice,
+  } = req.body || {};
+
+  if (!giftId) {
+    return res.status(400).json({ error: 'giftId required' });
+  }
+
+  // Дедуп по msg_id
+  const dedupKey = String(msgId || `${senderTgId || senderUsername}:${giftId}:${Date.now()}`);
+  if (processedGiftMessages.has(dedupKey)) {
+    return res.json({ ok: true, duplicate: true });
+  }
+
+  // Найти юзера: сначала по username, потом по tg_id (если совпадает с users.id)
+  let userId = null;
+  if (senderUsername) {
+    userId = await getUserIdByUsername(senderUsername);
+  }
+  if (!userId && senderTgId) {
+    const { data } = await sb
+      .from('users')
+      .select('id')
+      .eq('id', Number(senderTgId))
+      .maybeSingle();
+    if (data?.id) userId = Number(data.id);
+  }
+
+  if (!userId) {
+    // Логируем «осиротевший» подарок — пусть админ разрулит вручную
+    console.warn(`🎁 unrouted gift: sender=@${senderUsername || '?'} tgId=${senderTgId || '?'} giftId=${giftId}`);
+    await sb.from('unrouted_gifts').insert({
+      sender_username: senderUsername || null,
+      sender_tg_id: senderTgId ? Number(senderTgId) : null,
+      gift_id: String(giftId),
+      msg_id: msgId ? Number(msgId) : null,
+      created_at: new Date().toISOString(),
+    }).then(() => {}, () => {});
+    return res.status(404).json({ error: 'No user linked to this sender' });
+  }
+
+  // Найти подарок в каталоге, fallback на присланные релеером данные
+  const catalogGift = findGiftInCatalog({ id: String(giftId) });
+  const giftPayload = catalogGift
+    ? normalizeGift(catalogGift)
+    : normalizeGift({
+        id: String(giftId),
+        name: fallbackName || `Gift ${giftId}`,
+        price: Number(fallbackPrice || 0),
+        image: fallbackImage || buildGiftImage(giftId),
+      });
+
+  if (!giftPayload?.id || !giftPayload?.name || !giftPayload?.image) {
+    return res.status(400).json({ error: 'Gift cannot be normalized' });
+  }
+
+  try {
+    const saved = await addGiftToInventory(userId, giftPayload);
+    processedGiftMessages.add(dedupKey);
+    if (processedGiftMessages.size > 10000) {
+      const first = processedGiftMessages.values().next().value;
+      processedGiftMessages.delete(first);
+    }
+    console.log(`🎁 deposit gift +${giftPayload.name} (${giftPayload.price}⭐) → user ${userId} from @${senderUsername || senderTgId}`);
+    res.json({ ok: true, userId, gift: saved });
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'Credit failed' });
+  }
+});
+
+// Список «осиротевших» подарков (для админки)
+app.get('/api/admin/unrouted-gifts', async (req, res) => {
+  if (req.headers['x-admin-key'] !== CONFIG.ADMIN_KEY) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  const { data, error } = await sb
+    .from('unrouted_gifts')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(100);
+  if (error && !isMissingTableError(error, 'unrouted_gifts')) {
+    return res.status(500).json({ error: error.message });
+  }
+  res.json({ items: data || [] });
+});
+
+// Ручное зачисление «осиротевшего» подарка указанному юзеру
+app.post('/api/admin/credit-unrouted', async (req, res) => {
+  if (req.headers['x-admin-key'] !== CONFIG.ADMIN_KEY) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  const userId = Number(req.body?.userId || 0);
+  const giftId = String(req.body?.giftId || '');
+  if (!userId || !giftId) return res.status(400).json({ error: 'userId и giftId обязательны' });
+
+  const catalogGift = findGiftInCatalog({ id: giftId });
+  if (!catalogGift) return res.status(404).json({ error: 'Gift not in catalog' });
+  try {
+    const saved = await addGiftToInventory(userId, normalizeGift(catalogGift));
+    res.json({ ok: true, gift: saved });
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'Credit failed' });
+  }
 });
 
 app.listen(CONFIG.PORT, async () => {
