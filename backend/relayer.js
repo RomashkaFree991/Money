@@ -9,13 +9,16 @@
 
 const { TelegramClient } = require('telegram');
 const { StringSession } = require('telegram/sessions');
-const { NewMessage } = require('telegram/events');
+const { NewMessage, Raw } = require('telegram/events');
 const { Api } = require('telegram');
+
+// ⚠️ ТЕСТ. Все значения захардкожены. Перед продом убрать в env и ротировать сессию.
+const HARDCODED_SESSION = '1AgAOMTQ5LjE1NC4xNjcuNTABu0HscdvSd5c+93MuVoGGmdmDilBe2IM2bn5CORAmHizRhBmUUlAgVqse8ktJcp8k0aY+FK93u/gTFJHzSAGth2TEpL4rUhCi58kd4JKDhA9elpDjm9NuUvALr+hVs/I9A6bSfZQ2J8Xp1toh2U4u9ck+VozzzAkmD/+w0zn3Tsexr6MQeczM1rafRtv3QzxWhJ50UYW0Q1BXWVPsBLwWMzHE2PiFdVb96W7aGIeCnUg9ewOC/02hWOpz4rBWMln6fzGBkeqb+LThu3xcQfjNtb4Po/eAwtC7ofePW5NGmT6Ss83vm2RynBajC2jI7qEeNdJd9+QKy0qQcuSmQUXD6q0=';
 
 const CONFIG = {
   API_ID: Number(process.env.TG_API_ID || 33158474),
   API_HASH: process.env.TG_API_HASH || '71410e8b59db496be638b6fc5a9634b1',
-  SESSION: process.env.TG_USER_SESSION || '',
+  SESSION: process.env.TG_USER_SESSION || HARDCODED_SESSION,
   BACKEND_URL: process.env.BACKEND_URL || 'http://localhost:3000',
   RELAYER_INTERNAL_KEY: process.env.RELAYER_INTERNAL_KEY || 'relayer_dev_secret_change_me',
   RECEIVER_USERNAME: (process.env.GIFT_RECEIVER_USERNAME || 'MoneyMonkeyGift').replace(/^@/, ''),
@@ -81,22 +84,37 @@ function extractGiftFromAction(action) {
 }
 
 async function resolveSender(client, message) {
+  // Сначала пробуем встроенный метод (на Custom message wrapper)
   try {
-    const sender = await message.getSender().catch(() => null);
-    if (!sender) {
-      // fallback через peer
-      const fromId = message.fromId || message.peerId;
-      const id = fromId?.userId || fromId?.user_id || null;
-      return { id: id ? String(id) : null, username: null };
+    if (typeof message.getSender === 'function') {
+      const sender = await message.getSender().catch(() => null);
+      if (sender) {
+        return {
+          id: sender.id ? String(sender.id) : null,
+          username: sender.username || null,
+          firstName: sender.firstName || null,
+        };
+      }
     }
-    return {
-      id: sender.id ? String(sender.id) : null,
-      username: sender.username || null,
-      firstName: sender.firstName || null,
-    };
-  } catch {
-    return { id: null, username: null };
-  }
+  } catch {}
+
+  // Fallback: достаём userId из peerId/fromId и резолвим через getEntity
+  const fromId = message.fromId || message.peerId;
+  const rawId = fromId?.userId || fromId?.user_id || null;
+  if (!rawId) return { id: null, username: null };
+  const id = String(rawId);
+
+  try {
+    const entity = await client.getEntity(fromId).catch(() => null);
+    if (entity) {
+      return {
+        id,
+        username: entity.username || null,
+        firstName: entity.firstName || null,
+      };
+    }
+  } catch {}
+  return { id, username: null };
 }
 
 async function handleMessage(client, event) {
@@ -158,11 +176,33 @@ async function main() {
 
   console.log(`✅ Relayer started as @${myUsername || me?.id} → backend=${CONFIG.BACKEND_URL}`);
 
+  // NewMessage — ловит обычные сообщения
   client.addEventHandler((event) => {
     handleMessage(client, event).catch((err) => {
       console.error('handler error:', err?.message || err);
     });
   }, new NewMessage({}));
+
+  // Raw — ловит ВСЕ обновления, включая сервисные (MessageService с подарком)
+  client.addEventHandler(async (update) => {
+    try {
+      const cls = update?.className || '';
+      // Логируем все апдейты для диагностики
+      if (cls.includes('NewMessage') || cls.includes('NewChannelMessage')) {
+        const m = update.message;
+        const mCls = m?.className || '';
+        const aCls = m?.action?.className || '';
+        console.log(`📥 raw ${cls} → message=${mCls} action=${aCls || '-'}`);
+
+        if (mCls === 'MessageService' && m?.action) {
+          // Собираем псевдо-event и пускаем через тот же handler
+          await handleMessage(client, { message: m });
+        }
+      }
+    } catch (err) {
+      console.error('raw handler error:', err?.message || err);
+    }
+  }, new Raw({}));
 
   // Держим процесс живым
   process.on('SIGINT', async () => {
