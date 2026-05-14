@@ -280,9 +280,11 @@
     box-shadow:0 10px 22px rgba(0,0,0,.18), inset 0 0 0 1px rgba(255,255,255,.04);
   }
   .circle-arrow{
-    position:absolute;top:-58px;left:50%;transform:translateX(-50%);
+    position:absolute;top:-58px;left:50%;transform:translateX(-50%) rotate(0deg);
+    transform-origin:50% 152px;
     width:22px;height:40px;object-fit:contain;z-index:6;pointer-events:none;
     filter:brightness(0) invert(1) saturate(0%) brightness(2.2) drop-shadow(0 6px 10px rgba(255,255,255,.12));
+    will-change:transform;
   }
   .upgrade-wheel-window{position:relative;width:188px;height:188px;border-radius:50%;display:flex;align-items:center;justify-content:center;}
   .upgrade-wheel-disc{display:none}
@@ -456,6 +458,21 @@
   }
   .topup-amount::placeholder{color:rgba(255,255,255,.2)}
   .topup-input-row img{width:34px;height:34px;object-fit:contain;filter:drop-shadow(0 0 4px rgba(255,200,0,.4))}
+  .topup-wallet-row{
+    display:none;align-items:center;justify-content:space-between;gap:10px;margin-top:-6px;
+  }
+  .topup-wallet-row.visible{display:flex}
+  .topup-wallet-pill{
+    min-width:0;max-width:58%;height:34px;padding:0 12px;border-radius:999px;
+    display:inline-flex;align-items:center;justify-content:center;
+    background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.08);
+    color:#fff;font-size:12px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .topup-wallet-disconnect{
+    height:34px;padding:0 12px;border-radius:999px;border:1px solid rgba(255,59,48,.22);
+    background:rgba(255,59,48,.12);color:#FF3B30;font-size:12px;font-weight:800;
+    font-family:inherit;cursor:pointer;white-space:nowrap;
+  }
   .topup-submit{
     width:100%;height:52px;border-radius:999px;border:none;cursor:pointer;
     background:#007AFF;color:#fff;font-size:15px;font-weight:700;
@@ -1319,7 +1336,11 @@
         <input class="topup-amount" id="topupAmount" type="number" inputmode="decimal" step="1" min="0" placeholder="0" value="">
         <img id="topupUnitIcon" src="assets/star.png" alt="star">
       </div>
-      <button class="topup-submit" id="topupSubmit">Пополнить</button>
+      <div class="topup-wallet-row" id="topupWalletRow">
+        <div class="topup-wallet-pill" id="topupWalletPill"></div>
+        <button class="topup-wallet-disconnect" id="topupWalletDisconnect" type="button">Disconnect wallet</button>
+      </div>
+      <button class="topup-submit" id="topupSubmit">Top up</button>
     </div>
   </div>
 
@@ -1438,7 +1459,7 @@
       myGifts:'Мои подарки', giftsForUpgrade:'Подарки для апгрейда', makeUpgrade:'Сделать апгрейд', yourGifts:'Ваши подарки', empty:'Пусто', giftCost:'Стоимость подарков',
       makeContract:'Сделать контракт', addGifts:'Добавить подарки', waiting:'Ожидание', waitingBets:'Ожидание ставок', placeBet:'Сделать ставку', cashOut:'Забрать',
       giftUnlocked:'Ваш подарок', claim:'Забрать', sell:'Продать', support:'Поддержка', language:'Язык', saveAndExit:'Сохранить и выйти', topup:'Пополнение', stars:'Звезды', ton:'TON',
-      topupBtn:'Пополнить', bet:'Ставка', top:'Топ', craft:'Крафт', crash:'Краш', upgrade:'Апгрейд', profileNav:'Профиль', giftReady:'Подарок', giftOpened:'Подарок открыт',
+      topupBtn:'Пополнить', connectWallet:'Подключить кошелек', disconnectWallet:'Отключить кошелек', bet:'Ставка', top:'Топ', craft:'Крафт', crash:'Краш', upgrade:'Апгрейд', profileNav:'Профиль', giftReady:'Подарок', giftOpened:'Подарок открыт',
       sellAll:'Продать все', withdraw:'Вывести', withdrawSoon:'Подарок отправляется в Telegram…', giftWord1:'подарок', giftWord2:'подарка', giftWord5:'подарков', referralBack:'Назад', invited:'Приглашено', earned:'Заработано', invite:'Пригласить', referralLink:'Реферальная ссылка', copied:'Скопировано', addGift:'Добавить подарок', inCraft:'В крафте', crafting:'Создаём контракт...', chance:'Шанс', chanceEmpty:'Шанс —', tonLoading:'Подключаем кошелёк...', tonNeedWallet:'Подключи TON кошелёк...', tonNotConnected:'TON кошелёк не подключён', tonOpening:'Открываем TON оплату...', tonConfirm:'Подтверждаем TON пополнение...', loading:'Загрузка...', loadingWait:'Подождите немного', promoUnavailable:'Промокод недоступен', upgradeFailed:'Апгрейд не удался', openTelegramPay:'Открой в Telegram для оплаты', creatingInvoice:'Создаём инвойс...', openingPayment:'Открываем оплату...', checkingPayment:'Проверяем оплату...', paymentDelayed:'Оплата принята, но подтверждение задержалось. Баланс обновится чуть позже.', paymentFailed:'Оплата не прошла. Попробуй снова.', paymentCancelled:'Оплата отменена.', errorPrefix:'Ошибка: ', topPlaceAt:'Вы в топе на <b>{rank}</b> месте', topNotYet:'Вы ещё не в топе', now:'Сейчас', soonPrefix:'Оч'
     },
     en:{
@@ -1448,11 +1469,11 @@
       myGifts:'My gifts', giftsForUpgrade:'Gifts for upgrade', makeUpgrade:'Make upgrade', yourGifts:'Your gifts', empty:'Empty', giftCost:'Gift value',
       makeContract:'Make contract', addGifts:'Add gifts', waiting:'Waiting', waitingBets:'Waiting for bets', placeBet:'Place bet', cashOut:'Cash out',
       giftUnlocked:'Your gift', claim:'Claim', sell:'Sell', support:'Support', language:'Language', saveAndExit:'Save and exit', topup:'Top up', stars:'Stars', ton:'TON',
-      topupBtn:'Top up', bet:'Bet', top:'Top', craft:'Craft', crash:'Crash', upgrade:'Upgrade', profileNav:'Profile', giftReady:'Gift', giftOpened:'Gift opened',
+      topupBtn:'Top up', connectWallet:'Connect wallet', disconnectWallet:'Disconnect wallet', bet:'Bet', top:'Top', craft:'Craft', crash:'Crash', upgrade:'Upgrade', profileNav:'Profile', giftReady:'Gift', giftOpened:'Gift opened',
       sellAll:'Sell all', withdraw:'Withdraw', withdrawSoon:'Gift is being sent to Telegram…', giftWord1:'gift', giftWord2:'gifts', giftWord5:'gifts', referralBack:'Back', invited:'Invited', earned:'Earned', invite:'Invite', referralLink:'Referral link', copied:'Copied', addGift:'Add gift', inCraft:'In craft', crafting:'Crafting...', chance:'Chance', chanceEmpty:'Chance —', tonLoading:'Connecting wallet...', tonNeedWallet:'Connect TON wallet...', tonNotConnected:'TON wallet is not connected', tonOpening:'Opening TON payment...', tonConfirm:'Confirming TON top up...', loading:'Loading...', loadingWait:'Please wait a bit', promoUnavailable:'Promo code unavailable', upgradeFailed:'Upgrade failed', openTelegramPay:'Open in Telegram to pay', creatingInvoice:'Creating invoice...', openingPayment:'Opening payment...', checkingPayment:'Checking payment...', paymentDelayed:'Payment is accepted, but confirmation is delayed. Balance will update a bit later.', paymentFailed:'Payment failed. Try again.', paymentCancelled:'Payment cancelled.', errorPrefix:'Error: ', topPlaceAt:'You are in the top at <b>{rank}</b> place', topNotYet:'You are not in the top yet', now:'Now', soonPrefix:'In'
     }
   };
-  let currentLang=(localStorage.getItem('miniapp_lang')==='en')?'en':'ru';
+  let currentLang=(localStorage.getItem('miniapp_lang')==='ru')?'ru':'en';
   let pendingLang=currentLang;
   function t(key){return I18N[currentLang][key]||I18N.ru[key]||key}
   function setLangIndicator(lang){
@@ -1710,6 +1731,20 @@
   let upgradeDisplayedBlueDeg=0;
   let upgradeBlueDegAnim=0;
 
+  const UPGRADE_BLUE_START_DEG=180;
+  function setUpgradeArrowRotation(rotation=upgradeWheelRotation){
+    upgradeWheelRotation=((Number(rotation||0)%360)+360)%360;
+    const arrow=upgradeWheelEl?.querySelector('.circle-arrow');
+    if(arrow) arrow.style.transform='translateX(-50%) rotate('+upgradeWheelRotation+'deg)';
+  }
+  function setUpgradeRingBlue(deg){
+    const value=Math.max(0,Math.min(360,Number(deg||0)));
+    upgradeDisplayedBlueDeg=value;
+    if(upgradeRingEl){
+      upgradeRingEl.style.transform='rotate(0deg)';
+      upgradeRingEl.style.background='conic-gradient(from '+UPGRADE_BLUE_START_DEG+'deg, #0A84FF 0deg '+value+'deg, rgba(255,255,255,.12) '+value+'deg 360deg)';
+    }
+  }
   function animateUpgradeFill(targetDeg,duration=420){
     targetDeg=Math.max(0,Math.min(360,Number(targetDeg||0)));
     upgradeBlueDegAnim+=1;
@@ -1720,10 +1755,7 @@
       if(token!==upgradeBlueDegAnim) return;
       const p=Math.min(1,(now-start)/duration);
       const eased=1-Math.pow(1-p,3);
-      upgradeDisplayedBlueDeg=startDeg+(targetDeg-startDeg)*eased;
-      if(upgradeRingEl){
-        upgradeRingEl.style.background='conic-gradient(from 0deg, #0A84FF 0deg '+upgradeDisplayedBlueDeg+'deg, rgba(255,255,255,.12) '+upgradeDisplayedBlueDeg+'deg 360deg)';
-      }
+      setUpgradeRingBlue(startDeg+(targetDeg-startDeg)*eased);
       if(p<1) requestAnimationFrame(step);
     }
     requestAnimationFrame(step);
@@ -1745,42 +1777,38 @@
     const chance=getUpgradeChance();
     const blueDeg=Math.max(0,Math.min(360,(chance/100)*360));
     if(upgradeRingEl){
-      if(options.instant){
-        upgradeDisplayedBlueDeg=blueDeg;
-        upgradeRingEl.style.background='conic-gradient(from 0deg, #0A84FF 0deg '+blueDeg+'deg, rgba(255,255,255,.12) '+blueDeg+'deg 360deg)';
-      }else{
-        animateUpgradeFill(blueDeg, options.fillDuration||420);
-      }
-      upgradeRingEl.style.transform='rotate('+rotation+'deg)';
+      if(options.instant) setUpgradeRingBlue(blueDeg);
+      else animateUpgradeFill(blueDeg, options.fillDuration||420);
     }
     if(upgradeWheelDisc){
       upgradeWheelDisc.style.background='transparent';
       upgradeWheelDisc.style.transform='rotate(0deg)';
     }
+    setUpgradeArrowRotation(rotation);
   }
   function easeUpgradeSpin(t){
     return t<0.5 ? 4*t*t*t : 1-Math.pow(-2*t+2,3)/2;
   }
   function animateUpgradeRotation(targetRotation,duration=8200){
-    if(!upgradeRingEl){
-      upgradeWheelRotation=((targetRotation%360)+360)%360;
-      renderUpgradeWheel();
+    const arrow=upgradeWheelEl?.querySelector('.circle-arrow');
+    if(!arrow){
+      setUpgradeArrowRotation(targetRotation);
+      renderUpgradeWheel(upgradeWheelRotation,{instant:true});
       return Promise.resolve();
     }
-    upgradeRingEl.style.transition='none';
-    const startRotation=upgradeWheelRotation;
+    arrow.style.transition='none';
+    const startRotation=Number(upgradeWheelRotation||0);
     return new Promise(resolve=>{
       const started=performance.now();
       function step(now){
         const p=Math.min(1,(now-started)/duration);
         const eased=easeUpgradeSpin(p);
         const current=startRotation+(targetRotation-startRotation)*eased;
-        upgradeRingEl.style.transform='rotate('+current+'deg)';
+        arrow.style.transform='translateX(-50%) rotate('+current+'deg)';
         if(p<1){
           requestAnimationFrame(step);
         }else{
-          upgradeWheelRotation=((targetRotation%360)+360)%360;
-          upgradeRingEl.style.transform='rotate('+upgradeWheelRotation+'deg)';
+          setUpgradeArrowRotation(targetRotation);
           resolve();
         }
       }
@@ -1953,7 +1981,24 @@
   let tonConnectUI=null;
   let tonWalletAddress='';
 
-
+  function formatWalletShort(address){
+    const value=String(address||'');
+    if(value.length<=12) return value;
+    return value.slice(0,6)+'…'+value.slice(-6);
+  }
+  function isTonWalletConnected(){
+    return !!String(tonConnectUI?.account?.address||tonWalletAddress||'').trim();
+  }
+  function syncTopupWalletUI(){
+    try{ tonWalletAddress=String(tonConnectUI?.account?.address||tonWalletAddress||''); }catch(e){}
+    const row=document.getElementById('topupWalletRow');
+    const pill=document.getElementById('topupWalletPill');
+    const disconnect=document.getElementById('topupWalletDisconnect');
+    const connected=topupMode==='ton' && isTonWalletConnected();
+    if(row) row.classList.toggle('visible', connected);
+    if(pill) pill.textContent=formatWalletShort(tonWalletAddress);
+    if(disconnect) disconnect.textContent=t('disconnectWallet');
+  }
 
   async function ensureTonConnect(){
     if(tonConnectUI) return tonConnectUI;
@@ -1971,30 +2016,55 @@
     if(typeof tonConnectUI.onStatusChange==='function'){
       tonConnectUI.onStatusChange((wallet)=>{
         tonWalletAddress=String(wallet?.account?.address||'');
+        syncTopupWalletUI();
+        syncTopupSubmitLabel();
       });
     }
     return tonConnectUI;
   }
 
+  async function connectTonWallet(){
+    topupSubmit.disabled=true;
+    topupSubmit.textContent=t('tonLoading');
+    try{
+      const tonUi=await ensureTonConnect();
+      if(typeof tonUi.openModal==='function') await tonUi.openModal();
+      setTimeout(()=>{syncTopupWalletUI();syncTopupSubmitLabel();},350);
+    }catch(e){
+      console.error('TON connect error:',e);
+      tg?.showAlert?tg.showAlert('TON: '+e.message):alert('TON: '+e.message);
+    }finally{
+      topupSubmit.disabled=false;
+      syncTopupWalletUI();
+      syncTopupSubmitLabel();
+    }
+  }
+
+  async function disconnectTonWallet(){
+    try{
+      const tonUi=await ensureTonConnect();
+      if(typeof tonUi.disconnect==='function') await tonUi.disconnect();
+    }catch(e){
+      console.warn('TON disconnect failed:',e.message);
+    }
+    tonWalletAddress='';
+    syncTopupWalletUI();
+    syncTopupSubmitLabel();
+  }
+
   async function sendTonTopup(){
+    const tonUi=await ensureTonConnect();
+    if(!tonUi?.account?.address){
+      await connectTonWallet();
+      return;
+    }
+    tonWalletAddress=String(tonUi.account.address||tonWalletAddress||'');
     const rawTon=getTopupRawValue();
     const starsValue=getTopupStarsValue();
     if(rawTon<=0||starsValue<=0) return;
     topupSubmit.disabled=true;
-    topupSubmit.textContent='Подключаем кошелёк...';
+    topupSubmit.textContent=t('tonOpening');
     try{
-      const tonUi=await ensureTonConnect();
-      if(!tonUi?.account?.address){
-        topupSubmit.textContent=t('tonNeedWallet');
-        if(typeof tonUi.openModal==='function'){
-          await tonUi.openModal();
-        }
-      }
-      if(!tonUi?.account?.address){
-        throw new Error(t('tonNotConnected')); 
-      }
-      tonWalletAddress=String(tonUi.account.address||tonWalletAddress||'');
-      topupSubmit.textContent=t('tonOpening');
       const txResult=await tonUi.sendTransaction({
         validUntil: Math.floor(Date.now()/1000)+360,
         messages: [{
@@ -2025,6 +2095,7 @@
       tg?.showAlert?tg.showAlert('TON: '+e.message):alert('TON: '+e.message);
     }finally{
       topupSubmit.disabled=false;
+      syncTopupWalletUI();
       syncTopupSubmitLabel();
     }
   }
@@ -2516,10 +2587,15 @@
       topupAmount.placeholder='0';
       if(icon){icon.src='assets/star.png';icon.alt='star';}
     }
+    syncTopupWalletUI();
     syncTopupSubmitLabel();
   }
   function syncTopupSubmitLabel(){
     const starsValue=getTopupStarsValue();
+    if(topupMode==='ton' && !isTonWalletConnected()){
+      topupSubmit.textContent=t('connectWallet');
+      return;
+    }
     if(starsValue>0) topupSubmit.innerHTML=t('topupBtn')+' '+formatStars(starsValue)+' <img src="assets/star.png" alt="">';
     else topupSubmit.textContent=t('topupBtn');
   }
@@ -3635,7 +3711,7 @@
       const isWin=!!data.isWin;
       const landingAngle=((Number(data.landingAngle)||0)%360+360)%360;
       animateUpgradeFill(Math.max(12,Math.min(348,(serverChance/100)*360)),620);
-      const finalRotation=upgradeWheelRotation + (360*8 + (360-landingAngle));
+      const finalRotation=upgradeWheelRotation + 360*8 + UPGRADE_BLUE_START_DEG + landingAngle;
       await animateUpgradeRotation(finalRotation,8200);
       inventoryItems=Array.isArray(data.items)?data.items.map(item=>normalizeInventoryGift(item)).filter(Boolean):inventoryItems;
       if(isWin && data.wonGift){
@@ -3749,6 +3825,7 @@
   const topupSheet=document.getElementById('topupSheet');
   const topupAmount=document.getElementById('topupAmount');
   const topupSubmit=document.getElementById('topupSubmit');
+  const topupWalletDisconnect=document.getElementById('topupWalletDisconnect');
 
   function openTopup(){syncTopupModeUI();topupOverlay.classList.add('open');topupSheet.classList.add('open')}
   function closeTopup(){topupOverlay.classList.remove('open');topupSheet.classList.remove('open')}
@@ -3767,6 +3844,7 @@
   });
 
   topupAmount.addEventListener('input',syncTopupSubmitLabel);
+  topupWalletDisconnect?.addEventListener('click',async(e)=>{e.preventDefault();await disconnectTonWallet();});
 
   topupSubmit.addEventListener('click',async()=>{
     if(topupMode==='ton'){
