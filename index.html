@@ -1132,7 +1132,7 @@
     <div class="inventory-empty" id="inventoryEmpty">
       <div class="lottie-wrap" id="lottieContainer"></div>
       <div class="empty-title">Не нашли подарков?</div>
-      <div class="empty-desc">Отправьте подарок <a href="https://t.me/GiftPepe_Releyer" target="_blank">@GiftPepe_Releyer</a><br>или выиграйте в играх</div>
+      <div class="empty-desc">Отправьте подарок <a href="https://t.me/MoneyMonkeyGift" target="_blank">@MoneyMonkeyGift</a><br>или выиграйте в играх</div>
     </div>
   </div>
 
@@ -1303,7 +1303,7 @@
       <div class="sheet-gifts" id="sheetGifts"></div>
       <div class="sheet-lottie" id="sheetLottie"></div>
       <div class="empty-title">Не нашли подарков?</div>
-      <div class="empty-desc">Отправьте подарок <a href="https://t.me/GiftPepe_Releyer" target="_blank">@GiftPepe_Releyer</a><br>или выиграйте в играх</div>
+      <div class="empty-desc">Отправьте подарок <a href="https://t.me/MoneyMonkeyGift" target="_blank">@MoneyMonkeyGift</a><br>или выиграйте в играх</div>
     </div>
     <button class="sheet-add-btn" id="sheetAddBtn">Добавить подарок</button>
   </div>
@@ -1488,7 +1488,7 @@
     ru:{
       topPlace:'Вы в топе на <b>—</b> месте', waitingDots:'Ожидание...', profile:'Профиль', promocodes:'Промокоды', promoPlaceholder:'Введите промокод', apply:'Применить',
       referralTitle:'РЕФЕРАЛЬНАЯ СИСТЕМА', referralDesc:'Приглашайте людей, чтобы получать бонусы', inventory:'Инвентарь', noGiftsTitle:'Не нашли подарков?',
-      noGiftsDesc:'Отправьте подарок <a href="https://t.me/GiftPepe_Releyer" target="_blank">@GiftPepe_Releyer</a><br>или выиграйте в играх', chooseGift:'Выберите подарок',
+      noGiftsDesc:'Отправьте подарок <a href="https://t.me/MoneyMonkeyGift" target="_blank">@MoneyMonkeyGift</a><br>или выиграйте в играх', chooseGift:'Выберите подарок',
       myGifts:'Мои подарки', giftsForUpgrade:'Подарки для апгрейда', makeUpgrade:'Сделать апгрейд', yourGifts:'Ваши подарки', empty:'Пусто', giftCost:'Стоимость подарков',
       makeContract:'Сделать контракт', addGifts:'Добавить подарки', waiting:'Ожидание', waitingBets:'Ожидание ставок', placeBet:'Сделать ставку', cashOut:'Забрать',
       giftUnlocked:'Ваш подарок', claim:'Забрать', sell:'Продать', support:'Поддержка', language:'Язык', saveAndExit:'Сохранить и выйти', topup:'Пополнение', stars:'Звезды', ton:'TON',
@@ -1498,7 +1498,7 @@
     en:{
       topPlace:'You are in the top at <b>—</b> place', waitingDots:'Waiting...', profile:'Profile', promocodes:'Promo codes', promoPlaceholder:'Enter promo code', apply:'Apply',
       referralTitle:'REFERRAL SYSTEM', referralDesc:'Invite people to get bonuses', inventory:'Inventory', noGiftsTitle:'No gifts found?',
-      noGiftsDesc:'Send a gift to <a href="https://t.me/GiftPepe_Releyer" target="_blank">@GiftPepe_Releyer</a><br>or win one in games', chooseGift:'Choose a gift',
+      noGiftsDesc:'Send a gift to <a href="https://t.me/MoneyMonkeyGift" target="_blank">@MoneyMonkeyGift</a><br>or win one in games', chooseGift:'Choose a gift',
       myGifts:'My gifts', giftsForUpgrade:'Gifts for upgrade', makeUpgrade:'Make upgrade', yourGifts:'Your gifts', empty:'Empty', giftCost:'Gift value',
       makeContract:'Make contract', addGifts:'Add gifts', waiting:'Waiting', waitingBets:'Waiting for bets', placeBet:'Place bet', cashOut:'Cash out',
       giftUnlocked:'Your gift', claim:'Claim', sell:'Sell', support:'Support', language:'Language', saveAndExit:'Save and exit', topup:'Top up', stars:'Stars', ton:'TON',
@@ -1804,7 +1804,7 @@
     const from=Number(source?.price||0);
     const to=Number(target?.price||0);
     if(!from||!to||to<=0||from>=to) return 0;
-    return Math.max(1,Math.min(95,Math.round((from/to)*100)));
+    return Math.max(1,Math.min(75,Math.round((from/to)*75)));
   }
   function formatSlotContent(gift,label){
     if(!gift){
@@ -3799,7 +3799,10 @@
       const isWin=!!data.isWin;
       const landingAngle=((Number(data.landingAngle)||0)%360+360)%360;
       animateUpgradeFill(Math.max(12,Math.min(348,(serverChance/100)*360)),620);
-      const finalRotation=upgradeWheelRotation + 360*8 + UPGRADE_BLUE_START_DEG + landingAngle;
+      const targetAbs=((UPGRADE_BLUE_START_DEG+landingAngle)%360+360)%360;
+      const currentMod=((upgradeWheelRotation%360)+360)%360;
+      const delta=((targetAbs-currentMod)%360+360)%360;
+      const finalRotation=upgradeWheelRotation + 360*8 + delta;
       await animateUpgradeRotation(finalRotation,8200);
       inventoryItems=Array.isArray(data.items)?data.items.map(item=>normalizeInventoryGift(item)).filter(Boolean):inventoryItems;
       if(isWin && data.wonGift){
