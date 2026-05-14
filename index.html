@@ -434,17 +434,27 @@
   }
   .topup-close svg{width:16px;height:16px}
   .topup-body{padding:16px 16px 24px;display:flex;flex-direction:column;gap:18px}
-  .topup-blocks{display:flex;gap:10px}
-  .topup-block{
-    flex:1;min-height:88px;padding:16px 12px;border-radius:18px;
-    background:rgba(255,255,255,.06);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
-    border:1.5px solid rgba(255,255,255,.06);
-    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
-    cursor:pointer;transition:border-color .2s ease,transform .2s ease;
+  .topup-blocks{
+    position:relative;width:100%;height:58px;padding:6px;border-radius:999px;
+    display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0;
+    background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.08);
+    overflow:hidden;backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
   }
-  .topup-block.selected{border-color:rgba(0,122,255,.75);transform:translateY(-1px)}
-  .topup-block img{width:38px;height:38px;object-fit:contain}
-  .topup-block span{color:#fff;font-size:13px;font-weight:700}
+  .topup-mode-indicator{
+    position:absolute;top:6px;left:0;width:calc(50% - 6px);height:46px;border-radius:999px;
+    background:rgba(0,122,255,.96);box-shadow:0 10px 24px rgba(0,122,255,.24);
+    transform:translateX(6px);transition:transform .32s cubic-bezier(.22,.61,.36,1),width .32s cubic-bezier(.22,.61,.36,1);
+    z-index:1;pointer-events:none;
+  }
+  .topup-block{
+    position:relative;z-index:2;min-width:0;height:46px;border:none;border-radius:999px;
+    background:transparent;display:flex;align-items:center;justify-content:center;
+    cursor:pointer;transition:transform .2s ease,opacity .2s ease;gap:0;
+  }
+  .topup-block:active{transform:scale(.98)}
+  .topup-block img{width:30px;height:30px;object-fit:contain;transition:transform .22s ease,filter .22s ease,opacity .22s ease;opacity:.78}
+  .topup-block.selected img{opacity:1;transform:scale(1.05);filter:drop-shadow(0 8px 14px rgba(0,0,0,.22))}
+  .topup-block span{display:none}
   .topup-input-row{
     display:flex;align-items:center;justify-content:center;gap:10px;
     min-height:84px;padding:0 18px;border-radius:24px;
@@ -458,27 +468,35 @@
   }
   .topup-amount::placeholder{color:rgba(255,255,255,.2)}
   .topup-input-row img{width:34px;height:34px;object-fit:contain;filter:drop-shadow(0 0 4px rgba(255,200,0,.4))}
-  .topup-wallet-row{
-    display:none;align-items:center;justify-content:space-between;gap:10px;margin-top:-6px;
+  .topup-action-stack{
+    width:100%;display:flex;flex-direction:column;gap:8px;padding:8px;
+    border-radius:28px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.08);
+    backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
   }
-  .topup-wallet-row.visible{display:flex}
+  .topup-wallet-row{
+    display:flex;align-items:center;justify-content:space-between;gap:8px;
+    max-height:0;opacity:0;transform:translateY(8px);overflow:hidden;
+    transition:max-height .28s cubic-bezier(.22,.61,.36,1),opacity .22s ease,transform .28s cubic-bezier(.22,.61,.36,1);
+  }
+  .topup-wallet-row.visible{max-height:42px;opacity:1;transform:translateY(0)}
   .topup-wallet-pill{
-    min-width:0;max-width:58%;height:34px;padding:0 12px;border-radius:999px;
+    min-width:0;flex:1;height:34px;padding:0 12px;border-radius:999px;
     display:inline-flex;align-items:center;justify-content:center;
-    background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.08);
+    background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.08);
     color:#fff;font-size:12px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   }
   .topup-wallet-disconnect{
     height:34px;padding:0 12px;border-radius:999px;border:1px solid rgba(255,59,48,.22);
     background:rgba(255,59,48,.12);color:#FF3B30;font-size:12px;font-weight:800;
-    font-family:inherit;cursor:pointer;white-space:nowrap;
+    font-family:inherit;cursor:pointer;white-space:nowrap;flex-shrink:0;
   }
   .topup-submit{
     width:100%;height:52px;border-radius:999px;border:none;cursor:pointer;
     background:#007AFF;color:#fff;font-size:15px;font-weight:700;
     display:flex;align-items:center;justify-content:center;gap:6px;
-    margin-top:2px;
+    margin-top:0;transition:transform .18s ease,opacity .18s ease,background .22s ease;
   }
+  .topup-submit:active{transform:scale(.99)}
   .topup-submit img{width:18px;height:18px;object-fit:contain;filter:drop-shadow(0 0 3px rgba(255,200,0,.4))}
 
   /* === SETTINGS MODAL === */
@@ -1316,18 +1334,19 @@
   <div class="topup-overlay" id="topupOverlay"></div>
   <div class="topup-sheet" id="topupSheet">
     <div class="topup-header">
-      <div class="topup-pill">Пополнение</div>
+      <div class="topup-pill">Top up</div>
       <div class="topup-close" id="topupClose">
         <svg viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
       </div>
     </div>
     <div class="topup-body">
-      <div class="topup-blocks">
-        <div class="topup-block selected" data-type="stars">
+      <div class="topup-blocks" id="topupModeTabs">
+        <div class="topup-mode-indicator" id="topupModeIndicator"></div>
+        <div class="topup-block selected" data-type="stars" aria-label="Stars">
           <img src="assets/star.png" alt="star">
-          <span>Звезды</span>
+          <span>Stars</span>
         </div>
-        <div class="topup-block" data-type="ton">
+        <div class="topup-block" data-type="ton" aria-label="TON">
           <img src="assets/ton.webp" alt="ton">
           <span>TON</span>
         </div>
@@ -1336,11 +1355,13 @@
         <input class="topup-amount" id="topupAmount" type="number" inputmode="decimal" step="1" min="0" placeholder="0" value="">
         <img id="topupUnitIcon" src="assets/star.png" alt="star">
       </div>
-      <div class="topup-wallet-row" id="topupWalletRow">
-        <div class="topup-wallet-pill" id="topupWalletPill"></div>
-        <button class="topup-wallet-disconnect" id="topupWalletDisconnect" type="button">Disconnect wallet</button>
+      <div class="topup-action-stack">
+        <div class="topup-wallet-row" id="topupWalletRow">
+          <div class="topup-wallet-pill" id="topupWalletPill"></div>
+          <button class="topup-wallet-disconnect" id="topupWalletDisconnect" type="button">Disconnect wallet</button>
+        </div>
+        <button class="topup-submit" id="topupSubmit">Top up</button>
       </div>
-      <button class="topup-submit" id="topupSubmit">Top up</button>
     </div>
   </div>
 
@@ -1443,8 +1464,20 @@
     }catch(e){console.warn('Backend init failed:',e.message)}
   }
 
+  function makeTapToPlayLottie(container,path){
+    if(!container||!window.lottie) return null;
+    const anim=lottie.loadAnimation({container,renderer:'svg',loop:false,autoplay:false,path});
+    const reset=()=>{try{anim.goToAndStop(0,true)}catch(e){}};
+    try{anim.addEventListener('DOMLoaded',reset);anim.addEventListener('complete',reset);}catch(e){}
+    container.style.cursor='pointer';
+    container.addEventListener('click',()=>{
+      try{anim.stop();anim.goToAndPlay(0,true);}catch(e){}
+    });
+    return anim;
+  }
+
   // Lottie — profile
-  let profileLottieAnim=lottie.loadAnimation({container:document.getElementById('lottieContainer'),renderer:'svg',loop:true,autoplay:true,path:'assets/PlushPepe(blue).json',rendererSettings:{progressiveLoad:true}});
+  let profileLottieAnim=makeTapToPlayLottie(document.getElementById('lottieContainer'),'https://cdn.changes.tg/gifts/models/Jolly%20Chimp/lottie/Tired%20Primate.json');
 
   let sheetLottieLoaded=false;
   let sheetLottieAnim=null;
@@ -1473,6 +1506,12 @@
       sellAll:'Sell all', withdraw:'Withdraw', withdrawSoon:'Gift is being sent to Telegram…', giftWord1:'gift', giftWord2:'gifts', giftWord5:'gifts', referralBack:'Back', invited:'Invited', earned:'Earned', invite:'Invite', referralLink:'Referral link', copied:'Copied', addGift:'Add gift', inCraft:'In craft', crafting:'Crafting...', chance:'Chance', chanceEmpty:'Chance —', tonLoading:'Connecting wallet...', tonNeedWallet:'Connect TON wallet...', tonNotConnected:'TON wallet is not connected', tonOpening:'Opening TON payment...', tonConfirm:'Confirming TON top up...', loading:'Loading...', loadingWait:'Please wait a bit', promoUnavailable:'Promo code unavailable', upgradeFailed:'Upgrade failed', openTelegramPay:'Open in Telegram to pay', creatingInvoice:'Creating invoice...', openingPayment:'Opening payment...', checkingPayment:'Checking payment...', paymentDelayed:'Payment is accepted, but confirmation is delayed. Balance will update a bit later.', paymentFailed:'Payment failed. Try again.', paymentCancelled:'Payment cancelled.', errorPrefix:'Error: ', topPlaceAt:'You are in the top at <b>{rank}</b> place', topNotYet:'You are not in the top yet', now:'Now', soonPrefix:'In'
     }
   };
+  // Force the new MoneyMonkey build to start in English once, even if an older build saved RU.
+  // Users can still switch language later in settings.
+  if(localStorage.getItem('money_default_en_v4')!=='1'){
+    localStorage.setItem('miniapp_lang','en');
+    localStorage.setItem('money_default_en_v4','1');
+  }
   let currentLang=(localStorage.getItem('miniapp_lang')==='ru')?'ru':'en';
   let pendingLang=currentLang;
   function t(key){return I18N[currentLang][key]||I18N.ru[key]||key}
@@ -1852,7 +1891,7 @@
     sheetOverlay.classList.add('open');sheet.classList.add('open');
     updateLottiePerformance();
     if(!sheetLottieLoaded){
-      sheetLottieAnim=lottie.loadAnimation({container:document.getElementById('sheetLottie'),renderer:'svg',loop:true,autoplay:true,path:'assets/PlushPepe(blue).json',rendererSettings:{progressiveLoad:true}});
+      sheetLottieAnim=makeTapToPlayLottie(document.getElementById('sheetLottie'),'https://cdn.changes.tg/gifts/models/Jolly%20Chimp/lottie/Tired%20Primate.json');
       sheetLottieLoaded=true;
     }
   }
@@ -1980,23 +2019,60 @@
   const TOP_REWARD_GIFTS=TOP_REWARD_GIFT_NAMES.map(name=>GIFT_CATALOG.find(gift=>String(gift?.name||'')===name)||null);
   let tonConnectUI=null;
   let tonWalletAddress='';
+  let tonWalletFriendlyAddress='';
 
+  function crc16Ton(bytes){
+    let crc=0;
+    for(const b of bytes){
+      crc^=(b<<8);
+      for(let i=0;i<8;i++) crc=(crc&0x8000)?((crc<<1)^0x1021):(crc<<1);
+      crc&=0xffff;
+    }
+    return crc;
+  }
+  function bytesToBase64Url(bytes){
+    let bin='';
+    bytes.forEach(b=>bin+=String.fromCharCode(b));
+    return btoa(bin).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  }
+  function tonRawToFriendly(address){
+    const value=String(address||'').trim();
+    const m=value.match(/^(-?\d+):([0-9a-fA-F]{64})$/);
+    if(!m) return value;
+    const wc=Number(m[1]);
+    const hash=m[2];
+    if(wc!==0 && wc!==-1) return value;
+    const body=[0x51,wc===-1?0xff:0x00];
+    for(let i=0;i<hash.length;i+=2) body.push(parseInt(hash.slice(i,i+2),16));
+    const crc=crc16Ton(body);
+    const full=body.concat([(crc>>8)&255,crc&255]);
+    return bytesToBase64Url(full);
+  }
+  function getTonAccountRawAddress(){
+    try{return String(tonConnectUI?.account?.address||tonWalletAddress||'').trim();}catch(e){return String(tonWalletAddress||'').trim();}
+  }
+  function getTonAccountFriendlyAddress(){
+    const raw=getTonAccountRawAddress();
+    if(!raw) return '';
+    return tonRawToFriendly(raw);
+  }
   function formatWalletShort(address){
-    const value=String(address||'');
-    if(value.length<=12) return value;
-    return value.slice(0,6)+'…'+value.slice(-6);
+    const value=String(address||'').trim();
+    if(value.length<=16) return value;
+    return value.slice(0,8)+'…'+value.slice(-8);
   }
   function isTonWalletConnected(){
-    return !!String(tonConnectUI?.account?.address||tonWalletAddress||'').trim();
+    return !!getTonAccountRawAddress();
   }
   function syncTopupWalletUI(){
-    try{ tonWalletAddress=String(tonConnectUI?.account?.address||tonWalletAddress||''); }catch(e){}
+    tonWalletAddress=getTonAccountRawAddress();
+    tonWalletFriendlyAddress=getTonAccountFriendlyAddress();
     const row=document.getElementById('topupWalletRow');
     const pill=document.getElementById('topupWalletPill');
     const disconnect=document.getElementById('topupWalletDisconnect');
     const connected=topupMode==='ton' && isTonWalletConnected();
     if(row) row.classList.toggle('visible', connected);
-    if(pill) pill.textContent=formatWalletShort(tonWalletAddress);
+    if(pill) pill.textContent=formatWalletShort(tonWalletFriendlyAddress||tonWalletAddress);
     if(disconnect) disconnect.textContent=t('disconnectWallet');
   }
 
@@ -2016,6 +2092,7 @@
     if(typeof tonConnectUI.onStatusChange==='function'){
       tonConnectUI.onStatusChange((wallet)=>{
         tonWalletAddress=String(wallet?.account?.address||'');
+        tonWalletFriendlyAddress=getTonAccountFriendlyAddress();
         syncTopupWalletUI();
         syncTopupSubmitLabel();
       });
@@ -2059,6 +2136,7 @@
       return;
     }
     tonWalletAddress=String(tonUi.account.address||tonWalletAddress||'');
+    tonWalletFriendlyAddress=getTonAccountFriendlyAddress();
     const rawTon=getTopupRawValue();
     const starsValue=getTopupStarsValue();
     if(rawTon<=0||starsValue<=0) return;
@@ -2079,7 +2157,7 @@
         body:JSON.stringify({
           amountTon: rawTon,
           starsAmount: starsValue,
-          walletAddress: tonWalletAddress,
+          walletAddress: tonWalletFriendlyAddress||tonWalletAddress,
           txBoc: String(txResult?.boc||''),
         }),
       });
@@ -2092,7 +2170,11 @@
       await Promise.all([refreshBalance(),refreshTop(),refreshReferral()]);
     }catch(e){
       console.error('TON topup error:',e);
-      tg?.showAlert?tg.showAlert('TON: '+e.message):alert('TON: '+e.message);
+      const msg=String(e?.message||'TON transaction failed');
+      const friendly=(/not sent|reject|cancel/i.test(msg))
+        ? (currentLang==='ru'?'TON: транзакция отменена':'TON: transaction was cancelled')
+        : ('TON: '+msg);
+      tg?.showAlert?tg.showAlert(friendly):alert(friendly);
     }finally{
       topupSubmit.disabled=false;
       syncTopupWalletUI();
@@ -2179,20 +2261,14 @@
   function updateLottiePerformance(){
     try{
       const activePage=document.querySelector('.page.visible')?.id||'';
-      if(profileLottieAnim){
-        if(activePage==='profilePage' && inventoryItems.length===0) profileLottieAnim.play(); else profileLottieAnim.pause();
-      }
-      if(trophyLottieAnim){
-        if(activePage==='topPage') trophyLottieAnim.play(); else trophyLottieAnim.pause();
-      }
-      if(sheetLottieAnim){
-        if(sheet.classList.contains('open')) sheetLottieAnim.play(); else sheetLottieAnim.pause();
-      }
+      if(profileLottieAnim && activePage!=='profilePage') profileLottieAnim.goToAndStop(0,true);
+      if(trophyLottieAnim && activePage!=='topPage') trophyLottieAnim.goToAndStop(0,true);
+      if(sheetLottieAnim && !sheet.classList.contains('open')) sheetLottieAnim.goToAndStop(0,true);
     }catch(e){}
   }
 
   // Trophy lottie
-  trophyLottieAnim=lottie.loadAnimation({container:document.getElementById('trophyLottie'),renderer:'svg',loop:true,autoplay:true,path:'assets/trophy.json',rendererSettings:{progressiveLoad:true}});
+  trophyLottieAnim=makeTapToPlayLottie(document.getElementById('trophyLottie'),'assets/trophy.json');
 
   // Generate stars for crash
   const sky=document.getElementById('crashSky');
@@ -2576,8 +2652,19 @@
     if(rawValue<=0) return 0;
     return topupMode==='ton' ? Math.floor(rawValue*TON_TO_STARS) : Math.floor(rawValue);
   }
+  function syncTopupModeIndicator(){
+    const wrap=document.getElementById('topupModeTabs');
+    const indicator=document.getElementById('topupModeIndicator');
+    const active=document.querySelector(`.topup-block[data-type="${topupMode}"]`);
+    if(!wrap||!indicator||!active) return;
+    indicator.style.width=active.offsetWidth+'px';
+    indicator.style.transform='translateX('+active.offsetLeft+'px)';
+  }
   function syncTopupModeUI(){
     const icon=document.getElementById('topupUnitIcon');
+    document.querySelectorAll('.topup-block').forEach(block=>{
+      block.classList.toggle('selected', block.dataset.type===topupMode);
+    });
     if(topupMode==='ton'){
       topupAmount.step='0.1';
       topupAmount.placeholder='0';
@@ -2589,6 +2676,7 @@
     }
     syncTopupWalletUI();
     syncTopupSubmitLabel();
+    requestAnimationFrame(syncTopupModeIndicator);
   }
   function syncTopupSubmitLabel(){
     const starsValue=getTopupStarsValue();
@@ -3827,7 +3915,15 @@
   const topupSubmit=document.getElementById('topupSubmit');
   const topupWalletDisconnect=document.getElementById('topupWalletDisconnect');
 
-  function openTopup(){syncTopupModeUI();topupOverlay.classList.add('open');topupSheet.classList.add('open')}
+  function openTopup(){
+    syncTopupModeUI();
+    topupOverlay.classList.add('open');
+    topupSheet.classList.add('open');
+    if(topupMode==='ton'){
+      ensureTonConnect().then(()=>{syncTopupWalletUI();syncTopupSubmitLabel();}).catch(()=>{});
+    }
+    setTimeout(()=>{syncTopupWalletUI();syncTopupSubmitLabel();syncTopupModeIndicator();},80);
+  }
   function closeTopup(){topupOverlay.classList.remove('open');topupSheet.classList.remove('open')}
 
   document.getElementById('addBtn').addEventListener('click',openTopup);
@@ -3836,13 +3932,12 @@
 
   document.querySelectorAll('.topup-block').forEach(block=>{
     block.addEventListener('click',()=>{
-      document.querySelectorAll('.topup-block').forEach(b=>b.classList.remove('selected'));
-      block.classList.add('selected');
       topupMode=block.dataset.type==='ton' ? 'ton' : 'stars';
       syncTopupModeUI();
     });
   });
 
+  window.addEventListener('resize',()=>{try{syncTopupModeIndicator();}catch(e){}});
   topupAmount.addEventListener('input',syncTopupSubmitLabel);
   topupWalletDisconnect?.addEventListener('click',async(e)=>{e.preventDefault();await disconnectTonWallet();});
 
