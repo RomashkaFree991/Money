@@ -1360,7 +1360,8 @@ app.post('/api/upgrade/spin', async (req, res) => {
       return res.status(400).json({ error: 'Target gift must be more expensive' });
     }
 
-    const chance = Math.max(1, Math.min(95, Math.round((Number(sourceGift.price || 0) / Number(targetGift.price || 1)) * 100)));
+    // House edge: chance = (src/target) * 75, потолок 75% (раньше было *100, потолок 95%)
+    const chance = Math.max(1, Math.min(75, Math.round((Number(sourceGift.price || 0) / Number(targetGift.price || 1)) * 75)));
     const blueDeg = Math.max(12, Math.min(348, (chance / 100) * 360));
     const isWin = Math.random() * 100 < chance;
     const safeBlueDeg = Math.max(12, Math.min(348, blueDeg));
@@ -1837,8 +1838,15 @@ app.post('/api/relayer/credit-gift', async (req, res) => {
     return res.status(404).json({ error: 'No user linked to this sender' });
   }
 
-  // Найти подарок в каталоге, fallback на присланные релеером данные
-  const catalogGift = findGiftInCatalog({ id: String(giftId) });
+  // Найти подарок в каталоге: сначала по giftId, потом по имени (для NFT-уникалок
+  // giftId — это id экземпляра, а не каталога; имя приходит как «Snake Box #96057»,
+  // в каталоге — «Snake Box». Отрезаем хвост с # и пробуем снова.
+  let catalogGift = findGiftInCatalog({ id: String(giftId) });
+  if (!catalogGift && fallbackName) {
+    const baseName = String(fallbackName).replace(/\s*#.*$/, '').trim();
+    catalogGift = findGiftInCatalog({ name: baseName })
+      || findGiftInCatalog({ name: fallbackName });
+  }
   const giftPayload = catalogGift
     ? normalizeGift(catalogGift)
     : normalizeGift({
