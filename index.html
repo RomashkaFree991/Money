@@ -202,20 +202,31 @@
   .inventory-actions{width:100%;display:flex;flex-direction:column;gap:7px;margin-top:auto;padding-top:2px}
   .inventory-sell-btn,.inventory-withdraw-btn{
     width:100%;height:34px;border:none;border-radius:13px;cursor:pointer;padding:0 10px;
-    display:flex;align-items:center;justify-content:center;gap:4px;
+    display:flex;align-items:center;justify-content:center;gap:6px;
     font-size:12px;font-weight:700;font-family:inherit;touch-action:manipulation;
   }
   .inventory-sell-btn{background:#007AFF;color:#fff}
   .inventory-sell-btn img{width:14px;height:14px;object-fit:contain}
-  .inventory-withdraw-btn{background:rgba(255,255,255,.12);color:#fff;justify-content:space-between;gap:8px;transition:opacity .18s ease, filter .18s ease}
-  .inventory-withdraw-btn .inventory-timer-pill{margin-left:auto}
+  .inventory-withdraw-btn{background:rgba(255,255,255,.12);color:#fff;transition:opacity .18s ease, filter .18s ease}
   .inventory-withdraw-btn.pending{opacity:.55;filter:saturate(.7)}
-  .inventory-withdraw-btn.locked{opacity:.92}
+  .inventory-withdraw-btn.locked{opacity:.94;color:rgba(255,255,255,.85)}
   .inventory-timer-pill{
-    height:24px;padding:0 8px;border-radius:999px;white-space:nowrap;
-    display:inline-flex;align-items:center;justify-content:center;
-    background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.08);
-    color:rgba(255,255,255,.74);font-size:10px;font-weight:700;flex-shrink:0;
+    height:22px;padding:0 8px;border-radius:999px;white-space:nowrap;
+    display:inline-flex;align-items:center;justify-content:center;gap:3px;
+    background:linear-gradient(180deg,rgba(255,204,74,.22),rgba(255,176,32,.16));
+    border:1px solid rgba(255,204,74,.34);
+    color:#FFD24A;font-size:10.5px;font-weight:800;flex-shrink:0;
+    box-shadow:0 0 0 1px rgba(255,204,74,.06) inset, 0 2px 6px rgba(255,176,32,.12);
+    letter-spacing:.2px;
+  }
+  .inventory-timer-pill .timer-dot{
+    width:5px;height:5px;border-radius:50%;background:#FFD24A;
+    box-shadow:0 0 6px rgba(255,210,74,.7);
+    animation:timerPulse 1.4s ease-in-out infinite;
+  }
+  @keyframes timerPulse{
+    0%,100%{opacity:1;transform:scale(1)}
+    50%{opacity:.45;transform:scale(.78)}
   }
 
   .referral-page{
@@ -781,43 +792,43 @@
   }
   .crash-bets-stack:empty{display:none}
   .crash-bet-cloud{
-    display:flex;align-items:center;gap:10px;
-    padding:10px 12px;border-radius:16px;
+    display:flex;align-items:center;gap:12px;
+    padding:12px 14px;border-radius:16px;
     background:#1C1C1E;
-    border:1px solid rgba(255,255,255,.08);
-    min-height:66px;
+    border:1.5px solid rgba(255,255,255,.08);
+    min-height:72px;
     transition:border-color .18s ease, box-shadow .18s ease, background .18s ease;
   }
   .crash-bet-cloud.win-state{border-color:rgba(52,199,89,.92);box-shadow:0 0 0 1px rgba(52,199,89,.16),0 0 20px rgba(52,199,89,.12)}
   .crash-bet-cloud.loss-state{border-color:rgba(255,59,48,.92);box-shadow:0 0 0 1px rgba(255,59,48,.14),0 0 20px rgba(255,59,48,.12)}
   .crash-bet-cloud-avatar{
-    width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0;
-    background:rgba(255,255,255,.1);
+    width:44px;height:44px;border-radius:50%;object-fit:cover;flex-shrink:0;
+    background:rgba(255,255,255,.12);
   }
   .crash-bet-cloud-info{min-width:0;display:flex;flex-direction:column;gap:3px;flex:1}
   .crash-bet-cloud-name{
-    color:#fff;font-size:13px;font-weight:700;
+    color:#fff;font-size:15px;font-weight:700;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-    max-width:110px;
+    max-width:130px;
   }
   .crash-bet-cloud-bet{
     display:flex;align-items:center;gap:4px;
-    color:rgba(255,255,255,.45);font-size:12px;font-weight:600;
+    color:rgba(255,255,255,.45);font-size:13px;font-weight:600;
   }
-  .crash-bet-cloud-bet img{width:13px;height:13px;object-fit:contain}
+  .crash-bet-cloud-bet img{width:14px;height:14px;object-fit:contain;filter:drop-shadow(0 0 2px rgba(255,200,0,.3))}
   .crash-bet-cloud-right{
     margin-left:auto;
-    display:flex;align-items:center;justify-content:flex-end;gap:8px;
-    flex-shrink:0;min-width:112px;
+    display:flex;align-items:center;justify-content:flex-end;gap:9px;
+    flex-shrink:0;min-width:120px;
   }
   .crash-bet-cloud-amount{
     display:flex;align-items:center;gap:4px;
-    color:#fff;font-size:13px;font-weight:800;flex-shrink:0;justify-content:flex-end;
+    color:#fff;font-size:17px;font-weight:800;flex-shrink:0;justify-content:flex-end;
     white-space:nowrap;
   }
-  .crash-bet-cloud-amount img{width:13px;height:13px;object-fit:contain}
+  .crash-bet-cloud-amount img{width:18px;height:18px;object-fit:contain;filter:drop-shadow(0 0 3px rgba(255,200,0,.4))}
   .crash-bet-cloud-gift-wrap{
-    width:42px;height:42px;border-radius:12px;flex-shrink:0;
+    width:44px;height:44px;border-radius:12px;flex-shrink:0;
     display:flex;align-items:center;justify-content:center;
     background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);
     box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
@@ -1599,7 +1610,7 @@
     if(canWithdrawItem(item)){
       return {text:t('withdraw'), pill:'', className:'', disabled:false};
     }
-    return {text:t('withdraw'), pill:t('soonPrefix')+formatInventoryTime(getItemWithdrawAt(item)-Date.now()), className:'locked', disabled:true};
+    return {text:t('withdraw'), pill:'<span class="timer-dot"></span>'+formatInventoryTime(getItemWithdrawAt(item)-Date.now()), className:'locked', disabled:true};
   }
   function dismissKeyboard(inputEl=null){
     try{inputEl?.blur?.()}catch(e){}
@@ -1608,6 +1619,33 @@
     try{if(window.Telegram?.WebApp?.hideKeyboard) window.Telegram.WebApp.hideKeyboard()}catch(e){}
   }
 
+  let _inventoryTickTimer=null;
+  function ensureInventoryTick(){
+    if(_inventoryTickTimer) return;
+    _inventoryTickTimer=setInterval(()=>{
+      const hasLocked=inventoryItems.some(it=>!canWithdrawItem(it));
+      if(!hasLocked){ clearInterval(_inventoryTickTimer); _inventoryTickTimer=null; return; }
+      if(document.hidden) return;
+      // Точечно обновляем только текст таймера на запертых кнопках, не дёргая весь грид
+      document.querySelectorAll('.inventory-card').forEach(card=>{
+        const id=card.dataset.id;
+        const item=inventoryItems.find(it=>String(it.id)===String(id));
+        if(!item) return;
+        const btn=card.querySelector('.inventory-withdraw-btn');
+        if(!btn) return;
+        const state=getWithdrawButtonState(item);
+        if(state.className==='' && btn.disabled){
+          // Таймер истёк — перерисовать карточку через renderInventory
+          renderInventory();
+          return;
+        }
+        const pillEl=btn.querySelector('.inventory-timer-pill');
+        if(state.pill && pillEl){
+          pillEl.innerHTML=state.pill;
+        }
+      });
+    },20000);
+  }
   function renderInventory(){
     updateInventorySummary();
     if(upgradeSourceGift && !inventoryItems.some(item=>String(item.id)===String(upgradeSourceGift.id))){
@@ -1634,8 +1672,8 @@
             ${t('sell')} ${formatStars(item.price)} <img src="assets/star.png" alt="">
           </button>
           <button class="inventory-withdraw-btn ${withdrawState.className}" data-action="withdraw" ${withdrawState.disabled?'disabled':''}>
-            <span>${withdrawState.text}</span>
             ${withdrawState.pill?`<span class="inventory-timer-pill">${withdrawState.pill}</span>`:''}
+            <span>${withdrawState.text}</span>
           </button>
         </div>
       </div>
@@ -1643,6 +1681,7 @@
     }).join('');
     renderSheetGifts();
     renderCraftUI();
+    ensureInventoryTick();
   }
 
   function renderSheetGifts(){
@@ -2413,8 +2452,9 @@
     crashWaitText.textContent=shouldShow ? t('waitingBets') : '';
     crashWaitText.style.display=shouldShow ? 'block' : 'none';
   }
-  function renderCrashOtherBets(list=[]){
+  function renderCrashOtherBets(list=[], state=null){
     if(!crashOthers)return;
+    const phase=String(state?.phase||'countdown');
     const others=(Array.isArray(list)?list:[]).filter(player=>String(player.userId)!==String(tgUserId)).slice(0,6);
     const nextIds=new Set(others.map(player=>String(player.userId)));
     Array.from(crashOthers.querySelectorAll('.crash-bet-cloud')).forEach(row=>{
@@ -2428,28 +2468,40 @@
       const betAmount=Number(player.betAmount||player.amount||0);
       const status=String(player.status||'active');
       const payout=Number(player.displayAmount||player.currentPayout||player.payout||player.amount||0);
-      const gift=withCrashGiftValue(player.previewGift||getCrashPreviewGift(payout)||null,payout);
+      // Подарок жёстко привязан к сумме ставки. Не пересчитываем по payout,
+      // иначе картинки мигают на каждом тике сервера во время отсчёта.
+      const giftAmount=betAmount;
+      const gift=withCrashGiftValue(getCrashPreviewGift(giftAmount)||null,giftAmount);
       let row=crashOthers.querySelector('.crash-bet-cloud[data-user-id="'+userId+'"]');
-      const avatar=player.photoUrl
-        ? '<img class="crash-bet-cloud-avatar" src="'+player.photoUrl+'" alt="">'
-        : '<div class="crash-bet-cloud-avatar"></div>';
-      const rowHtml=
-        avatar+
-        '<div class="crash-bet-cloud-info">'+
-          '<div class="crash-bet-cloud-name">'+(player.firstName||'User')+'</div>'+
-          '<div class="crash-bet-cloud-bet">'+formatStars(betAmount)+' <img src="assets/star.png" alt=""></div>'+
-        '</div>'+
-        '<div class="crash-bet-cloud-right">'+
-          '<div class="crash-bet-cloud-amount">'+formatStars(payout)+' <img src="assets/star.png" alt=""></div>'+
-          buildCrashGiftBadge(gift)+
-        '</div>';
-      if(!row){
+      const isNew=!row;
+      if(isNew){
         row=document.createElement('div');
         row.className='crash-bet-cloud';
         row.dataset.userId=userId;
         crashOthers.appendChild(row);
+        const avatar=player.photoUrl
+          ? '<img class="crash-bet-cloud-avatar" src="'+player.photoUrl+'" alt="">'
+          : '<div class="crash-bet-cloud-avatar"></div>';
+        row.innerHTML=
+          avatar+
+          '<div class="crash-bet-cloud-info">'+
+            '<div class="crash-bet-cloud-name">'+(player.firstName||'User')+'</div>'+
+            '<div class="crash-bet-cloud-bet">'+formatStars(betAmount)+' <img src="assets/star.png" alt=""></div>'+
+          '</div>'+
+          '<div class="crash-bet-cloud-right">'+
+            '<div class="crash-bet-cloud-amount">'+formatStars(payout)+' <img src="assets/star.png" alt=""></div>'+
+            buildCrashGiftBadge(gift)+
+          '</div>';
+        const badge=row.querySelector('.crash-bet-cloud-gift-wrap');
+        if(badge){
+          badge.dataset.giftImage=String(resolveGiftImage(gift)||'');
+          badge.dataset.giftName=String(gift?.name||'Gift');
+        }
       }else{
         row.classList.remove('fading-out');
+        // Точечно апдейтим только текстовые поля — НЕ трогаем картинку подарка
+        const amountEl=row.querySelector('.crash-bet-cloud-amount');
+        if(amountEl) amountEl.innerHTML=formatStars(payout)+' <img src="assets/star.png" alt="">';
       }
       row.classList.toggle('win-state',status==='won');
       row.classList.toggle('loss-state',status==='lost');
@@ -2457,45 +2509,48 @@
       row.dataset.payout=String(payout);
       row.dataset.status=status;
       row.dataset.settled=(status==='won'||status==='lost')?'1':'0';
-      row.dataset.giftId=String(gift?.id||gift?.giftId||'');
-      row.dataset.giftName=String(gift?.name||'');
-      row.dataset.giftImage=String(resolveGiftImage(gift)||'');
-      row.innerHTML=rowHtml;
-      const badge=row.querySelector('.crash-bet-cloud-gift-wrap');
-      if(badge){
-        badge.dataset.giftImage=String(resolveGiftImage(gift)||'');
-        badge.dataset.giftName=String(gift?.name||'Gift');
+      // Обновляем картинку подарка только когда раунд закончился (win/lost),
+      // т.к. там сумма уже финальна. Во время countdown/live — оставляем как было.
+      if(phase==='ended' || status==='won' || status==='lost'){
+        const finalGift=withCrashGiftValue(getCrashPreviewGift(payout)||null,payout);
+        const rightEl=row.querySelector('.crash-bet-cloud-right');
+        if(rightEl) updateCrashGiftBadge(rightEl,finalGift);
       }
     });
   }
     function updateCrashOtherBetsLive(state){
     const multiplier=computeCrashMultiplier(state);
+    const phase=String(state?.phase||'countdown');
     crashOthers.querySelectorAll('.crash-bet-cloud').forEach(row=>{
       if(row.dataset.settled==='1') return;
       const betAmount=Number(row.dataset.betAmount||0);
       let value=betAmount;
       let status='pending';
-      if(state?.phase==='live'){
+      if(phase==='live'){
         value=Math.floor(betAmount*multiplier);
         status='active';
-      }else if(state?.phase==='ended'){
+      }else if(phase==='ended'){
         value=betAmount;
         status='lost';
       }
-      const gift=withCrashGiftValue(getCrashPreviewGift(value),value);
       row.dataset.payout=String(value);
       row.dataset.status=status;
       if(status==='lost'){
         row.dataset.settled='1';
         row.classList.add('loss-state');
       }
-      row.dataset.giftId=String(gift?.id||gift?.giftId||'');
-      row.dataset.giftName=String(gift?.name||'');
-      row.dataset.giftImage=String(resolveGiftImage(gift)||'');
       const amountEl=row.querySelector('.crash-bet-cloud-amount');
       if(amountEl) amountEl.innerHTML=formatStars(value)+' <img src="assets/star.png" alt="">';
-      const rightEl=row.querySelector('.crash-bet-cloud-right');
-      if(rightEl) updateCrashGiftBadge(rightEl,gift);
+      // Картинку подарка трогаем только в LIVE-фазе (мультипликатор реально растёт),
+      // а в countdown — оставляем фиксированную (привязана к ставке).
+      if(phase==='live'){
+        const gift=withCrashGiftValue(getCrashPreviewGift(value),value);
+        row.dataset.giftId=String(gift?.id||gift?.giftId||'');
+        row.dataset.giftName=String(gift?.name||'');
+        row.dataset.giftImage=String(resolveGiftImage(gift)||'');
+        const rightEl=row.querySelector('.crash-bet-cloud-right');
+        if(rightEl) updateCrashGiftBadge(rightEl,gift);
+      }
     });
   }
   let crashPrevHistoryFirst='';
@@ -3907,7 +3962,7 @@
     });
   });
   document.getElementById('supportRow').addEventListener('click',()=>{
-    window.open('https://t.me/GiftPepeSupport','_blank');
+    window.open('https://t.me/MoneyMonkeySupport','_blank');
   });
   document.getElementById('modalSave').addEventListener('click',()=>{applyLanguage(pendingLang);closeModal();});
 
