@@ -818,12 +818,21 @@ async function withdrawInventoryGift(userId, targetUserId, giftDbId, targetUsern
 
   if (!claimedRow) throw new Error('Gift not found');
 
-  // 20-минутный холд
+  // Холд после получения подарка
   if (claimedRow.withdraw_available_at) {
     const unlockAt = new Date(claimedRow.withdraw_available_at).getTime();
     if (Number.isFinite(unlockAt) && Date.now() < unlockAt) {
-      const minLeft = Math.ceil((unlockAt - Date.now()) / 60000);
-      throw new Error(`Вывод доступен через ${minLeft} мин.`);
+      const ms = unlockAt - Date.now();
+      const total = Math.ceil(ms / 1000);
+      const d = Math.floor(total / 86400);
+      const h = Math.floor((total % 86400) / 3600);
+      const m = Math.floor((total % 3600) / 60);
+      const s = total % 60;
+      const parts = [];
+      if (d > 0) parts.push(`${d}д`);
+      if (d > 0 || h > 0) parts.push(`${h}ч`);
+      parts.push(`${m}м`, `${s}с`);
+      throw new Error(`До вывода подарка осталось ${parts.join('')}`);
     }
   }
 
@@ -2311,6 +2320,24 @@ app.post('/api/relayer/credit-gift', async (req, res) => {
       } catch (e) {
         console.warn('total_deposited bump failed:', e?.message || e);
       }
+
+      // Реферальный бонус 10% — пригласившему. Подарок засчитывается как пополнение.
+      try {
+        const rewardResult = await sb.rpc('credit_referral_for_deposit', {
+          p_user_id: userId,
+          p_deposit_amount: price,
+        });
+        if (rewardResult.error) {
+          console.error('credit_referral_for_deposit (gift) error:', rewardResult.error);
+        } else {
+          const rewardRow = Array.isArray(rewardResult.data) ? rewardResult.data[0] : rewardResult.data;
+          if (Number(rewardRow?.reward || 0) > 0) {
+            console.log(`🤝 referral bonus (gift) +${rewardRow.reward}⭐ for ${rewardRow.referrer_id}`);
+          }
+        }
+      } catch (e) {
+        console.warn('referral credit (gift) failed:', e?.message || e);
+      }
     }
 
     // DM юзеру: подарок добавлен + кнопка «Посмотреть в инвентаре» → мини-апп.
@@ -2374,6 +2401,119 @@ app.post('/api/admin/credit-unrouted', async (req, res) => {
   }
 });
 
+// ══════════════════════════════════════════════════════════════════════════════
+// ТОП: 7-дневный цикл с авто-выдачей подарков топ-1/2/3 и обнулением.
+// ══════════════════════════════════════════════════════════════════════════════
+const TOP_CYCLE_MS = 7 * 24 * 60 * 60 * 1000;
+const TOP_REWARD_GIFT_NAMES = ['Khabib’s Papakha', 'Crystal Ball', 'Berry Box'];
+
+function getTopRewardGifts() {
+  return TOP_REWARD_GIFT_NAMES.map((name) => {
+    const g = GIFT_CATALOG.find((x) => String(x?.name || '') === name);
+    return g ? normalizeGift(g) : null;
+  });
+}
+
+async function getTopCycleStart() {
+  try {
+    const { data } = await sb.from('app_state').select('value').eq('key', 'top_cycle_start').maybeSingle();
+    const v = data?.value;
+    const ts = v && typeof v === 'object' ? Number(v.startedAt || 0) : Number(v || 0);
+    if (Number.isFinite(ts) && ts > 0) return ts;
+  } catch (e) {}
+  // Инициализируем — сейчас.
+  const now = Date.now();
+  await setTopCycleStart(now).catch(() => {});
+  return now;
+}
+
+async function setTopCycleStart(ms) {
+  await sb.from('app_state').upsert({
+    key: 'top_cycle_start',
+    value: { startedAt: Number(ms) },
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'key' });
+}
+
+let topRolloverBusy = false;
+async function rolloverTopCycleIfDue() {
+  if (topRolloverBusy) return { rolled: false, reason: 'busy' };
+  topRolloverBusy = true;
+  try {
+    const startedAt = await getTopCycleStart();
+    const endsAt = startedAt + TOP_CYCLE_MS;
+    if (Date.now() < endsAt) return { rolled: false, endsAt };
+
+    // 1) Берём текущий топ-3.
+    const { data: leaders, error: leadersErr } = await sb
+      .from('users')
+      .select('id,first_name,total_deposited')
+      .gt('total_deposited', 0)
+      .order('total_deposited', { ascending: false })
+      .limit(3);
+    if (leadersErr) throw new Error(leadersErr.message);
+
+    // 2) Выдаём подарки топ-1/2/3.
+    const rewards = getTopRewardGifts();
+    const awarded = [];
+    for (let i = 0; i < (leaders || []).length; i++) {
+      const gift = rewards[i];
+      const leader = leaders[i];
+      if (!gift || !leader) continue;
+      try {
+        await addGiftToInventory(Number(leader.id), gift);
+        awarded.push({ userId: Number(leader.id), gift: gift.name, place: i + 1 });
+        // DM победителю.
+        try {
+          await tgApi('sendMessage', {
+            chat_id: Number(leader.id),
+            text: `🏆 Поздравляем! Вы заняли ${i + 1} место в топе. Награда «${gift.name}» добавлена в инвентарь.`,
+          });
+        } catch (e) {}
+      } catch (e) {
+        console.warn('top reward award failed:', e?.message || e);
+      }
+    }
+
+    // 3) Обнуляем total_deposited у всех.
+    await sb.from('users').update({ total_deposited: 0, updated_at: new Date().toISOString() }).gt('total_deposited', 0);
+
+    // 4) Стартуем новый 7-дневный цикл.
+    const newStart = Date.now();
+    await setTopCycleStart(newStart);
+    console.log(`🏁 top cycle rolled over. awarded=${JSON.stringify(awarded)} newCycleEndsAt=${new Date(newStart + TOP_CYCLE_MS).toISOString()}`);
+    return { rolled: true, awarded, endsAt: newStart + TOP_CYCLE_MS };
+  } catch (e) {
+    console.error('top rollover failed:', e?.message || e);
+    return { rolled: false, error: e?.message || String(e) };
+  } finally {
+    topRolloverBusy = false;
+  }
+}
+
+app.get('/api/top/cycle', async (req, res) => {
+  try {
+    // Лениво проверяем — вдруг пора катить.
+    await rolloverTopCycleIfDue();
+    const startedAt = await getTopCycleStart();
+    const endsAt = startedAt + TOP_CYCLE_MS;
+    res.set('Cache-Control', 'no-store');
+    res.json({ ok: true, startedAt, endsAt, durationMs: TOP_CYCLE_MS });
+  } catch (e) {
+    res.status(500).json({ error: e?.message || 'cycle failed' });
+  }
+});
+
+app.post('/api/admin/top/rollover', async (req, res) => {
+  if (req.headers['x-admin-key'] !== CONFIG.ADMIN_KEY) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  // Принудительный rollover: сбрасываем стартовое время в прошлое.
+  await setTopCycleStart(Date.now() - TOP_CYCLE_MS - 1000).catch(() => {});
+  const result = await rolloverTopCycleIfDue();
+  res.json(result);
+});
+
 app.listen(CONFIG.PORT, async () => {
   console.log(`🚀 Server on port ${CONFIG.PORT}`);
   try {
@@ -2393,4 +2533,9 @@ app.listen(CONFIG.PORT, async () => {
   setTimeout(() => { syncMarketPricesOnce().catch(() => {}); }, 30 * 1000);
   // 3) Дальше — раз в сутки.
   setInterval(() => { syncMarketPricesOnce().catch(() => {}); }, 24 * 60 * 60 * 1000).unref?.();
+
+  // 4) Инициализируем 7-дневный цикл топа (если ещё не).
+  getTopCycleStart().catch(() => {});
+  // 5) Проверяем — пора ли катить топ — каждую минуту.
+  setInterval(() => { rolloverTopCycleIfDue().catch(() => {}); }, 60 * 1000).unref?.();
 });
