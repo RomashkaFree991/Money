@@ -230,11 +230,8 @@ async function handleBotMessage(message) {
   const appUrl = startParam ? `${baseMiniAppUrl}?startapp=${encodeURIComponent(startParam)}` : baseMiniAppUrl;
 
   const welcome =
-    '🎰 *MoneyMonkey* — топ-казино для NFT подарков Telegram\n\n' +
-    '🎁 Открывай кейсы, крути крэш, апгрейдь подарки и забирай настоящие NFT прямо в Telegram.\n\n' +
-    '💎 Пополнение и вывод — реальными NFT подарками.\n' +
-    '🔥 Бонусы новичкам, реферальная программа, ежедневные дропы.\n' +
-    '⚡️ Честные шансы, мгновенные выплаты.\n\n' +
+    '🎰 *MoneyMonkey* — топ-казино для нфт подарков\n\n' +
+    '🎁 Крути краш, апгрейдь подарки и забирай нфт подарки.\n\n' +
     '👇 Жми «Играть», чтобы начать!';
   return tgApi('sendMessage', {
     chat_id: Number(message.chat.id),
@@ -1960,14 +1957,22 @@ app.post('/api/relayer/credit-gift', async (req, res) => {
     catalogGift = findGiftInCatalog({ name: baseName })
       || findGiftInCatalog({ name: fallbackName });
   }
-  const giftPayload = catalogGift
-    ? normalizeGift(catalogGift)
-    : normalizeGift({
-        id: String(giftId),
-        name: fallbackName || `Gift ${giftId}`,
-        price: Number(fallbackPrice || 0),
-        image: fallbackImage || buildGiftImage(giftId),
-      });
+
+  // Если подарка нет в нашем каталоге — НЕ добавляем в инвентарь.
+  // Логируем в unrouted_gifts, чтобы админ мог разрулить вручную.
+  if (!catalogGift) {
+    console.warn(`🎁 gift not in catalog: giftId=${giftId} name="${fallbackName || ''}" from @${senderUsername || senderTgId}`);
+    await sb.from('unrouted_gifts').insert({
+      sender_username: senderUsername || null,
+      sender_tg_id: senderTgId ? Number(senderTgId) : null,
+      gift_id: String(giftId),
+      msg_id: msgId ? Number(msgId) : null,
+      created_at: new Date().toISOString(),
+    }).then(() => {}, () => {});
+    return res.status(404).json({ error: 'Gift not in catalog', reason: 'not_in_catalog' });
+  }
+
+  const giftPayload = normalizeGift(catalogGift);
 
   if (!giftPayload?.id || !giftPayload?.name || !giftPayload?.image) {
     return res.status(400).json({ error: 'Gift cannot be normalized' });
@@ -1981,6 +1986,47 @@ app.post('/api/relayer/credit-gift', async (req, res) => {
       processedGiftMessages.delete(first);
     }
     console.log(`🎁 deposit gift +${giftPayload.name} (${giftPayload.price}⭐) → user ${userId} from @${senderUsername || senderTgId}`);
+
+    // Прибавляем стоимость подарка к total_deposited, чтобы юзер появлялся в топе.
+    // Баланс при этом НЕ трогаем — сам подарок и есть «депозит».
+    const price = Math.max(0, Math.floor(Number(giftPayload.price || 0)));
+    if (price > 0) {
+      try {
+        const { data: cur } = await sb
+          .from('users')
+          .select('total_deposited')
+          .eq('id', userId)
+          .maybeSingle();
+        const next = Number(cur?.total_deposited || 0) + price;
+        await sb
+          .from('users')
+          .update({ total_deposited: next, updated_at: new Date().toISOString() })
+          .eq('id', userId);
+      } catch (e) {
+        console.warn('total_deposited bump failed:', e?.message || e);
+      }
+    }
+
+    // DM юзеру: подарок добавлен + кнопка «Посмотреть в инвентаре» → мини-апп.
+    try {
+      const baseMiniAppUrl = String(CONFIG.MINI_APP_URL || '').trim().replace(/\/$/, '');
+      const inventoryUrl = baseMiniAppUrl ? `${baseMiniAppUrl}?startapp=inventory` : '';
+      const dmPayload = {
+        chat_id: Number(userId),
+        text: `🎁 ${giftPayload.name} успешно добавлен вам в инвентарь`,
+      };
+      if (inventoryUrl) {
+        dmPayload.reply_markup = {
+          inline_keyboard: [[
+            { text: 'Посмотреть в инвентаре', web_app: { url: inventoryUrl } },
+          ]],
+        };
+      }
+      tgApi('sendMessage', dmPayload, 5000).catch(() => {});
+    } catch (e) {
+      console.warn('deposit DM failed:', e?.message || e);
+    }
+
     res.json({ ok: true, userId, gift: saved });
   } catch (error) {
     res.status(500).json({ error: error.message || 'Credit failed' });
