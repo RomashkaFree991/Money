@@ -1566,11 +1566,9 @@
     const hours=Math.floor(totalMinutes/60);
     const minutes=totalMinutes%60;
     if(currentLang==='en'){
-      if(hours<=0) return totalMinutes+'m';
-      return hours+'h '+String(minutes).padStart(2,'0')+'m';
+      return hours+'h'+String(minutes).padStart(2,'0')+'m';
     }
-    if(hours<=0) return totalMinutes+'м';
-    return hours+'ч'+String(minutes).padStart(2,'0')+'м';
+    return hours+'ч'+String(minutes).padStart(2,'0')+'мин';
   }
   function giftCountWord(count){
     if(currentLang==='en') return count===1?t('giftWord1'):t('giftWord2');
@@ -3618,6 +3616,9 @@
     );
     try{
       await initUser();
+      // Заранее восстанавливаем TON-кошелёк, чтобы при открытии пополнения он
+      // уже был «подключён» и не показывал кнопку Connect.
+      ensureTonConnect().then(()=>{syncTopupWalletUI();syncTopupSubmitLabel();}).catch(()=>{});
       await Promise.allSettled([
         refreshBalance(),
         refreshTop(),
@@ -4124,11 +4125,18 @@
     if(!tg?.initData)return null;
     if(upgradeSpinBusy)return {items:inventoryItems};
     try{
+      const prevCount=Array.isArray(inventoryItems)?inventoryItems.length:0;
       const resp=await fetch(API_BASE+'/api/inventory',{headers:{'x-init-data':tg.initData}});
       const data=await resp.json();
       if(resp.ok){
         inventoryItems=Array.isArray(data.items)?data.items.map(item=>normalizeInventoryGift(item)).filter(Boolean):[];
         renderInventory();
+        // Если в инвентаре появились новые подарки (пополнение через @MoneyMonkeyGift),
+        // подтянем топ и баланс, чтобы стоимость подарка появилась в лидерборде.
+        if(inventoryItems.length>prevCount){
+          refreshTop().catch(()=>{});
+          refreshBalance().catch(()=>{});
+        }
         if(data.pendingPrize&&!crashPrizeResolveBusy){
           enterPendingCrashPrize(data.pendingPrize,crashSettledPayout,crashBetAmount,{autoOpen:false});
         }else if(crashPrizePending&&!crashBetActive&&!crashPrizeResolveBusy){
