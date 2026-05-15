@@ -7,6 +7,8 @@ const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
 const crypto = require('crypto');
 const cors = require('cors');
+const path = require('path');
+const fs = require('fs');
 
 const CONFIG = {
   BOT_TOKEN: process.env.BOT_TOKEN || '8838459279:AAGagwOSSBK0VPc4HXq7QrKHUofnQNs8Lg0', // test bot token
@@ -30,6 +32,23 @@ app.use(express.json());
 const sb = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY);
 
 const paymentReceipts = new Map();
+
+// Withdraw flow: фронт сначала платит 25⭐ комиссию, только потом мы делаем перевод.
+// Промежуточные «intent»-ы храним в памяти: {userId, giftDbId, paid, createdAt}.
+const WITHDRAW_FEE_STARS = Number(process.env.WITHDRAW_FEE_STARS || 25);
+const WITHDRAW_INTENT_TTL_MS = 15 * 60 * 1000;
+const pendingWithdrawIntents = new Map();
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, intent] of pendingWithdrawIntents) {
+    if (now - intent.createdAt > WITHDRAW_INTENT_TTL_MS) pendingWithdrawIntents.delete(id);
+  }
+}, 60 * 1000).unref?.();
+
+// Кеш «рыночных» (минимальных) цен подарков из Telegram NFT-маркета.
+// Обновляется раз в сутки через relayer (payments.GetResaleStarGifts).
+const MARKET_PRICES_FILE = path.join(__dirname, 'data', 'market_prices.json');
+const marketPrices = new Map(); // giftId(str) -> stars(number)
 const tonReceipts = new Map();
 const pendingPrizeMemory = new Map();
 const inventoryMemory = new Map();
@@ -1214,15 +1233,72 @@ app.post('/api/inventory/sell', async (req, res) => {
   }
 });
 
-app.post('/api/inventory/withdraw', async (req, res) => {
+// Шаг 1. Юзер жмёт «Вывести» → создаём Stars-инвойс на WITHDRAW_FEE_STARS звёзд.
+// Сам вывод произойдёт только после оплаты этого инвойса (см. /webhook).
+app.post('/api/inventory/withdraw-invoice', async (req, res) => {
+  await ensureTelegramWebhook(req).catch(() => null);
   const user = requireUser(req, res);
   if (!user) return;
 
   const giftId = Number(req.body.giftId || 0);
   if (!giftId) return res.status(400).json({ error: 'Missing giftId' });
 
+  if (!user.username) {
+    return res.status(400).json({ error: 'Сделайте @username чтобы получить подарок' });
+  }
+
+  // Проверяем, что подарок реально принадлежит юзеру и его можно вывести
+  // (используем существующий инвентарь, без удаления — удалим в момент перевода).
+  const inv = await getUserInventory(user.id);
+  const owned = (inv || []).find((g) => Number(g?.id) === giftId);
+  if (!owned) return res.status(404).json({ error: 'Gift not found in inventory' });
+
+  const intentId = crypto.randomUUID();
+  pendingWithdrawIntents.set(intentId, {
+    userId: user.id,
+    giftDbId: giftId,
+    paid: false,
+    createdAt: Date.now(),
+  });
+
+  const result = await tgApi('createInvoiceLink', {
+    title: 'Комиссия за вывод подарка',
+    description: `Комиссия ${WITHDRAW_FEE_STARS}⭐ за отправку «${owned.name || 'подарка'}» в Telegram`,
+    payload: JSON.stringify({ type: 'withdraw', userId: user.id, intentId }),
+    currency: 'XTR',
+    prices: [{ label: `${WITHDRAW_FEE_STARS} звёзд`, amount: WITHDRAW_FEE_STARS }],
+  });
+  if (!result.ok) {
+    pendingWithdrawIntents.delete(intentId);
+    console.error('withdraw invoice error:', result);
+    return res.status(500).json({ error: result.description || 'Invoice failed' });
+  }
+
+  res.set('Cache-Control', 'no-store');
+  res.json({ invoiceLink: result.result, intentId, fee: WITHDRAW_FEE_STARS });
+});
+
+// Шаг 2. Фронт вызывает после успешной оплаты инвойса.
+app.post('/api/inventory/withdraw', async (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+
+  const giftId = Number(req.body.giftId || 0);
+  const intentId = String(req.body.intentId || '').trim();
+  if (!giftId) return res.status(400).json({ error: 'Missing giftId' });
+  if (!intentId) return res.status(400).json({ error: 'Missing intentId' });
+
+  const intent = pendingWithdrawIntents.get(intentId);
+  if (!intent || intent.userId !== user.id || intent.giftDbId !== giftId) {
+    return res.status(403).json({ error: 'Invoice not found, retry withdraw' });
+  }
+  if (!intent.paid) {
+    return res.status(402).json({ error: 'Сначала оплатите комиссию' });
+  }
+
   try {
     const result = await withdrawInventoryGift(user.id, user.id, giftId, user.username || null);
+    pendingWithdrawIntents.delete(intentId);
     const items = await getUserInventory(user.id);
     res.json({
       ok: true,
@@ -1231,6 +1307,8 @@ app.post('/api/inventory/withdraw', async (req, res) => {
       message: 'Подарок отправлен в Telegram',
     });
   } catch (error) {
+    // Оплата уже снята — оставляем intent paid, чтобы фронт мог ретраить
+    // в течение TTL без повторной комиссии.
     res.status(400).json({ error: error.message || 'Withdraw failed' });
   }
 });
@@ -1436,6 +1514,106 @@ app.get('/api/payment-status', async (req, res) => {
     balance,
     referral,
   });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Авто-синхронизация цен подарков с Telegram NFT-маркета.
+// Раз в сутки бэкэнд просит у релеера минимальную цену по каждому gift_id,
+// мутирует GIFT_CATALOG[i].price и кеширует на диск.
+// Фронт подтягивает overlay через GET /api/market-prices при загрузке.
+// ──────────────────────────────────────────────────────────────────────────────
+function loadMarketPricesFromDisk() {
+  try {
+    if (!fs.existsSync(MARKET_PRICES_FILE)) return;
+    const raw = JSON.parse(fs.readFileSync(MARKET_PRICES_FILE, 'utf8') || '{}');
+    const map = raw && typeof raw === 'object' ? (raw.prices || raw) : {};
+    for (const [k, v] of Object.entries(map)) {
+      const stars = Number(v);
+      if (!Number.isFinite(stars) || stars <= 0) continue;
+      marketPrices.set(String(k), stars);
+    }
+    applyMarketPricesToCatalog();
+    console.log(`📈 loaded ${marketPrices.size} market prices from disk`);
+  } catch (e) {
+    console.warn('market prices load failed:', e?.message || e);
+  }
+}
+
+function saveMarketPricesToDisk() {
+  try {
+    fs.mkdirSync(path.dirname(MARKET_PRICES_FILE), { recursive: true });
+    const obj = {};
+    for (const [k, v] of marketPrices) obj[k] = v;
+    fs.writeFileSync(MARKET_PRICES_FILE, JSON.stringify({
+      updatedAt: new Date().toISOString(),
+      prices: obj,
+    }, null, 2));
+  } catch (e) {
+    console.warn('market prices save failed:', e?.message || e);
+  }
+}
+
+function applyMarketPricesToCatalog() {
+  let changed = 0;
+  for (const entry of GIFT_CATALOG) {
+    const id = String(entry.id || entry.giftId || '');
+    if (!id) continue;
+    const mp = marketPrices.get(id);
+    if (Number.isFinite(mp) && mp > 0 && Number(entry.price) !== mp) {
+      entry.price = mp;
+      changed++;
+    }
+  }
+  if (changed) console.log(`📈 applied ${changed} market prices to catalog`);
+}
+
+async function syncMarketPricesOnce() {
+  const giftIds = GIFT_CATALOG.map((g) => String(g.id || g.giftId || '')).filter(Boolean);
+  if (!giftIds.length) return { ok: true, updated: 0 };
+  try {
+    const r = await fetch(`${CONFIG.RELAYER_URL}/market-min-prices`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-relayer-key': CONFIG.RELAYER_INTERNAL_KEY },
+      body: JSON.stringify({ giftIds }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || !data?.ok) {
+      console.warn('market sync failed:', data?.error || r.status);
+      return { ok: false, error: data?.error || `HTTP ${r.status}` };
+    }
+    const prices = data.prices || {};
+    let updated = 0;
+    for (const [id, stars] of Object.entries(prices)) {
+      const n = Number(stars);
+      if (!Number.isFinite(n) || n <= 0) continue;
+      if (marketPrices.get(String(id)) !== n) updated++;
+      marketPrices.set(String(id), n);
+    }
+    applyMarketPricesToCatalog();
+    saveMarketPricesToDisk();
+    console.log(`📈 market sync: ${updated} prices updated, ${marketPrices.size} total`);
+    return { ok: true, updated, total: marketPrices.size };
+  } catch (e) {
+    console.warn('market sync error:', e?.message || e);
+    return { ok: false, error: e?.message || String(e) };
+  }
+}
+
+// Публичный overlay для фронта (frontend подмешает в свой GIFT_CATALOG).
+app.get('/api/market-prices', (req, res) => {
+  const obj = {};
+  for (const [k, v] of marketPrices) obj[k] = v;
+  res.set('Cache-Control', 'public, max-age=300');
+  res.json({ ok: true, prices: obj, updatedAt: new Date().toISOString() });
+});
+
+// Ручной триггер синка (для админа/cron-задач извне).
+app.post('/api/admin/sync-market-prices', async (req, res) => {
+  if (req.headers['x-admin-key'] !== CONFIG.ADMIN_KEY) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  const out = await syncMarketPricesOnce();
+  res.json(out);
 });
 
 app.post('/api/invoice', async (req, res) => {
@@ -1823,7 +2001,25 @@ app.post('/webhook', async (req, res) => {
     const p = u.message.successful_payment;
     const senderId = u.message.from.id;
     try {
-      const { userId, amount, invoiceId } = JSON.parse(p.invoice_payload);
+      const payload = JSON.parse(p.invoice_payload);
+      // Комиссия за вывод подарка — НЕ зачисляем на баланс, помечаем intent оплаченным.
+      if (payload && payload.type === 'withdraw') {
+        const { userId, intentId } = payload;
+        if (Number(userId) !== senderId) {
+          console.error('withdraw userId mismatch!');
+        } else {
+          const intent = pendingWithdrawIntents.get(String(intentId));
+          if (intent) {
+            intent.paid = true;
+            console.log(`💸 withdraw fee paid: user ${userId} intent ${intentId}`);
+          } else {
+            console.warn(`withdraw intent ${intentId} not found (TTL?)`);
+          }
+        }
+        return;
+      }
+      // Обычное пополнение баланса
+      const { userId, amount, invoiceId } = payload;
       if (Number(userId) !== senderId) {
         console.error('userId mismatch!');
       } else {
@@ -2190,4 +2386,11 @@ app.listen(CONFIG.PORT, async () => {
   } catch (error) {
     console.log('⚠️ Webhook setup failed:', error?.message || error);
   }
+
+  // 1) Сразу подтягиваем сохранённые рыночные цены с диска (если есть).
+  loadMarketPricesFromDisk();
+  // 2) Первый синк через 30 сек после старта (даём релееру подняться).
+  setTimeout(() => { syncMarketPricesOnce().catch(() => {}); }, 30 * 1000);
+  // 3) Дальше — раз в сутки.
+  setInterval(() => { syncMarketPricesOnce().catch(() => {}); }, 24 * 60 * 60 * 1000).unref?.();
 });

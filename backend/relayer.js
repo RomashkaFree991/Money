@@ -288,6 +288,36 @@ async function transferGiftToUser(client, { userId, username, giftName, giftPric
 // ────────────────────────────────────────────────────────────────────────────
 // HTTP сервер для бэкэнда
 // ────────────────────────────────────────────────────────────────────────────
+// Минимальная цена перепродажи NFT-подарка по его gift_id.
+// Использует payments.GetResaleStarGifts с сортировкой по цене.
+// Если у установленной версии gramjs этого конструктора нет — возвращает null.
+async function fetchMinResalePrice(client, giftId) {
+  const Ctor = Api.payments?.GetResaleStarGifts;
+  if (typeof Ctor !== 'function') {
+    throw new Error('GetResaleStarGifts not supported by installed gramjs');
+  }
+  let res;
+  try {
+    res = await client.invoke(new Ctor({
+      sortByPrice: true,
+      giftId: BigInt(giftId),
+      offset: '',
+      limit: 1,
+    }));
+  } catch (e) {
+    // Часто бывает у нерезалабельных / отсутствующих в маркете подарков.
+    throw e;
+  }
+  const list = res?.gifts || [];
+  if (!list.length) return null;
+  const first = list[0];
+  // У unique-gift поле resellStars / resell_stars; иногда stars.
+  const stars = Number(
+    first?.resellStars ?? first?.resell_stars ?? first?.stars ?? 0
+  );
+  return Number.isFinite(stars) && stars > 0 ? stars : null;
+}
+
 function readJson(req) {
   return new Promise((resolve, reject) => {
     let buf = '';
@@ -312,6 +342,41 @@ function startHttpServer() {
       if (req.method === 'GET' && req.url === '/health') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true }));
+        return;
+      }
+
+      if (req.method === 'POST' && req.url === '/market-min-prices') {
+        if (!tgClient) {
+          res.writeHead(503, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'Telegram client not ready' }));
+          return;
+        }
+        const body = await readJson(req);
+        const giftIds = Array.isArray(body.giftIds) ? body.giftIds.map(String) : [];
+        if (!giftIds.length) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'giftIds required' }));
+          return;
+        }
+        const prices = {};
+        let okCount = 0; let failCount = 0;
+        for (const id of giftIds) {
+          try {
+            const stars = await fetchMinResalePrice(tgClient, id);
+            if (Number.isFinite(stars) && stars > 0) {
+              prices[id] = stars;
+              okCount++;
+            }
+          } catch (e) {
+            failCount++;
+            // Не логируем каждый промах — их много, если подарка нет в перепродаже.
+          }
+          // Лёгкая пауза, чтобы не ловить FLOOD_WAIT.
+          await new Promise((r) => setTimeout(r, 120));
+        }
+        console.log(`📈 market-min-prices: ok=${okCount} fail=${failCount}`);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, prices }));
         return;
       }
 
