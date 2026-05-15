@@ -94,6 +94,13 @@
   .section-title{color:#fff;font-size:17px;font-weight:700;margin-bottom:10px}
 
   /* === TOP/LEADERBOARD === */
+  .top-timer-cloud{
+    background:#007AFF;border-radius:16px;padding:14px 18px;margin:0 16px 16px;
+    display:flex;align-items:center;justify-content:center;text-align:center;
+    color:#fff;font-weight:800;font-size:15px;letter-spacing:.2px;
+    box-shadow:0 6px 18px rgba(0,122,255,.28);
+  }
+  .top-timer-cloud b{color:#fff;font-weight:800}
   .top-trophy-box{
     background:#1C1C1E;
     border:1px solid rgba(255,255,255,.08);
@@ -290,7 +297,8 @@
   }
   .upgrade-wheel-window{position:relative;width:188px;height:188px;border-radius:50%;display:flex;align-items:center;justify-content:center;}
   .upgrade-wheel-disc{display:none}
-  .upgrade-wheel-logo{position:relative;z-index:2;width:112px;height:112px;object-fit:contain;filter:drop-shadow(0 10px 18px rgba(0,0,0,.24));pointer-events:none;}
+  .upgrade-wheel-logo{position:relative;z-index:2;width:112px;height:112px;display:flex;align-items:center;justify-content:center;filter:drop-shadow(0 10px 18px rgba(0,0,0,.24));pointer-events:none;}
+  .upgrade-wheel-logo svg, .upgrade-wheel-logo canvas{width:100%;height:100%;}
   .upgrade-wheel-center-glow{position:absolute;z-index:1;width:126px;height:126px;border-radius:50%;background:radial-gradient(circle, rgba(255,255,255,.08), rgba(255,255,255,0));pointer-events:none;}
   .upgrade-subtitle{color:rgba(255,255,255,.4);font-size:14px;font-weight:600;margin-bottom:12px}
   .upgrade-chance{color:#fff;font-size:16px;font-weight:700;margin-bottom:20px;opacity:.92}
@@ -1026,6 +1034,7 @@
         <div class="top-my-score">0 <img src="assets/star.png" alt=""></div>
       </div>
     </div>
+    <div class="top-timer-cloud" id="topTimerCloud">До конца топа <b id="topTimerText">7д0ч0м0с</b></div>
     <div class="top-list">
       <div class="top-row">
         <span class="top-rank gold">1</span>
@@ -1174,7 +1183,7 @@
           <div class="upgrade-wheel-window">
             <div class="upgrade-wheel-disc" id="upgradeWheelDisc"></div>
             <div class="upgrade-wheel-center-glow"></div>
-            <img class="upgrade-wheel-logo" id="upgradeWheelLogo" src="assets/logotip.png" alt="">
+            <div class="upgrade-wheel-logo" id="upgradeWheelLogo"></div>
           </div>
         </div>
       </div>
@@ -1566,13 +1575,23 @@
   }
   function formatInventoryTime(ms){
     const safe=Math.max(0,ms);
-    const totalMinutes=Math.ceil(safe/60000);
-    const hours=Math.floor(totalMinutes/60);
-    const minutes=totalMinutes%60;
+    const total=Math.ceil(safe/1000);
+    const d=Math.floor(total/86400);
+    const h=Math.floor((total%86400)/3600);
+    const m=Math.floor((total%3600)/60);
+    const s=total%60;
     if(currentLang==='en'){
-      return hours+'h'+String(minutes).padStart(2,'0')+'m';
+      const parts=[];
+      if(d>0) parts.push(d+'d');
+      if(d>0||h>0) parts.push(h+'h');
+      parts.push(m+'m', s+'s');
+      return parts.join('');
     }
-    return hours+'ч'+String(minutes).padStart(2,'0')+'мин';
+    const parts=[];
+    if(d>0) parts.push(d+'д');
+    if(d>0||h>0) parts.push(h+'ч');
+    parts.push(m+'м', s+'с');
+    return parts.join('');
   }
   function giftCountWord(count){
     if(currentLang==='en') return count===1?t('giftWord1'):t('giftWord2');
@@ -2337,6 +2356,18 @@
 
   // Trophy lottie
   trophyLottieAnim=makeTapToPlayLottie(document.getElementById('trophyLottie'),'assets/trophy.json');
+
+  // Lottie в центре колеса апгрейда — играет только при клике по кнопке «Сделать апгрейд».
+  let upgradeRedoAnim=null;
+  try{
+    const _redoEl=document.getElementById('upgradeWheelLogo');
+    if(_redoEl&&window.lottie){
+      upgradeRedoAnim=lottie.loadAnimation({container:_redoEl,renderer:'svg',loop:false,autoplay:false,path:'assets/redo.json'});
+      const _resetRedo=()=>{try{upgradeRedoAnim.goToAndStop(0,true)}catch(e){}};
+      try{upgradeRedoAnim.addEventListener('DOMLoaded',_resetRedo);upgradeRedoAnim.addEventListener('complete',_resetRedo);}catch(e){}
+    }
+  }catch(e){console.warn('redo lottie init failed:',e)}
+  function playUpgradeRedo(){try{upgradeRedoAnim?.stop?.();upgradeRedoAnim?.goToAndPlay?.(0,true);}catch(e){}}
 
   // Generate stars for crash
   const sky=document.getElementById('crashSky');
@@ -3865,6 +3896,7 @@
     if(!chance) return;
     upgradeSpinBusy=true;
     renderUpgradeUI();
+    playUpgradeRedo();
     try{
       const resp=await fetch(API_BASE+'/api/upgrade/spin',{
         method:'POST',
@@ -4207,6 +4239,43 @@
       renderTop(leaders,myRank);
     }catch(e){console.warn('Top refresh failed:',e.message)}
   }
+
+  // === Цикл топа: 7 дней, синее облако с обратным отсчётом ===
+  let topCycleEndsAt=0;
+  let topCycleTimer=null;
+  function fmtCycleTime(ms){
+    const total=Math.max(0,Math.ceil(ms/1000));
+    const d=Math.floor(total/86400);
+    const h=Math.floor((total%86400)/3600);
+    const m=Math.floor((total%3600)/60);
+    const s=total%60;
+    return d+'д'+h+'ч'+m+'м'+s+'с';
+  }
+  async function refreshTopCycle(){
+    try{
+      const r=await fetch(API_BASE+'/api/top/cycle?ts='+Date.now(),{cache:'no-store'});
+      const d=await r.json().catch(()=>({}));
+      const ends=Number(d&&d.endsAt||0);
+      if(Number.isFinite(ends)&&ends>0) topCycleEndsAt=ends;
+    }catch(e){}
+  }
+  function startTopCycleTicker(){
+    const el=document.getElementById('topTimerText');
+    if(!el) return;
+    if(topCycleTimer) return;
+    let prevWasPositive=true;
+    topCycleTimer=setInterval(()=>{
+      if(document.hidden) return;
+      const left=topCycleEndsAt-Date.now();
+      el.textContent=fmtCycleTime(left);
+      if(left<=0 && prevWasPositive){
+        prevWasPositive=false;
+        // Цикл закончился — обновляем endsAt с сервера и перерисовываем топ.
+        refreshTopCycle().then(()=>{ prevWasPositive=true; refreshTop(); });
+      }
+    },1000);
+  }
+  refreshTopCycle().then(startTopCycleTicker);
 
   function renderTop(leaders,myRank){
     const placeText=document.querySelector('#topPage .top-place-text');
