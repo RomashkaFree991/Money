@@ -747,7 +747,7 @@ async function sellInventoryGift(userId, giftDbId) {
   };
 }
 
-async function withdrawInventoryGift(userId, targetUserId, giftDbId) {
+async function withdrawInventoryGift(userId, targetUserId, giftDbId, targetUsername = null) {
   // Стратегия: «claim by delete». Сначала атомарно удаляем строку из БД, и только
   // если удалось — зовём релеер. При неудаче релеера — восстанавливаем подарок,
   // чтобы юзер не потерял его. Это закрывает гонку двойного вывода.
@@ -841,6 +841,7 @@ async function withdrawInventoryGift(userId, targetUserId, giftDbId) {
       },
       body: JSON.stringify({
         userId: Number(targetUserId),
+        username: targetUsername || null,
         msgId: claimedRow.tg_msg_id ? Number(claimedRow.tg_msg_id) : null,
         slug: claimedRow.tg_slug || null,
         isUnique: typeof claimedRow.tg_is_unique === 'boolean' ? claimedRow.tg_is_unique : null,
@@ -1221,7 +1222,7 @@ app.post('/api/inventory/withdraw', async (req, res) => {
   if (!giftId) return res.status(400).json({ error: 'Missing giftId' });
 
   try {
-    const result = await withdrawInventoryGift(user.id, user.id, giftId);
+    const result = await withdrawInventoryGift(user.id, user.id, giftId, user.username || null);
     const items = await getUserInventory(user.id);
     res.json({
       ok: true,

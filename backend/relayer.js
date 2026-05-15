@@ -222,9 +222,36 @@ async function findSavedGift(client, { giftName, giftPrice }) {
   return null;
 }
 
-async function transferGiftToUser(client, { userId, giftName, giftPrice }) {
+async function resolveTargetEntity(client, { username, userId }) {
+  const NO_USERNAME_MSG = 'Сделайте @username чтобы получить подарок';
+
+  // 1) По username — самый надёжный путь: gramjs внутри сделает
+  //    contacts.ResolveUsername и сам подтянет access_hash.
+  if (username) {
+    const clean = String(username).replace(/^@/, '').trim();
+    if (clean) {
+      try {
+        return await client.getInputEntity(clean);
+      } catch (e) {
+        // падаем в фолбэк
+      }
+    }
+  }
+  // 2) По числовому ID — сработает только если юзер уже есть в кэше клиента
+  //    (был в диалогах/контактах). Иначе Telegram отдаёт PEER_ID_INVALID.
+  if (userId) {
+    try {
+      return await client.getInputEntity(Number(userId));
+    } catch (e) {
+      throw new Error(NO_USERNAME_MSG);
+    }
+  }
+  throw new Error(NO_USERNAME_MSG);
+}
+
+async function transferGiftToUser(client, { userId, username, giftName, giftPrice }) {
   if (!giftName) throw new Error('giftName обязателен для поиска подарка');
-  const target = await client.getInputEntity(Number(userId));
+  const target = await resolveTargetEntity(client, { username, userId });
 
   // Всегда идём от профиля релеера: ищем первый подходящий NFT по имени
   // (и опционально по цене) в сохранённых подарках, и его передаём.
@@ -233,15 +260,17 @@ async function transferGiftToUser(client, { userId, giftName, giftPrice }) {
     throw new Error(`NFT-подарок «${giftName}» не найден в сохранённых на аккаунте релеера`);
   }
 
-  // payments.TransferStarGift работает только для уникальных (NFT) подарков.
-  // Идентификатор — slug (если есть), иначе msgId.
+  // payments.TransferStarGift для уникальных (NFT) подарков.
+  // Используем InputSavedStarGiftSlug если конструктор есть в этой версии gramjs,
+  // иначе fallback на InputSavedStarGiftUser({msgId}) — msgId берём из ответа
+  // payments.GetSavedStarGifts (это тот msgId, который Telegram реально ожидает).
   let stargift;
-  if (saved.slug) {
+  if (saved.slug && typeof Api.InputSavedStarGiftSlug === 'function') {
     stargift = new Api.InputSavedStarGiftSlug({ slug: saved.slug });
-  } else if (saved.msgId) {
+  } else if (saved.msgId && typeof Api.InputSavedStarGiftUser === 'function') {
     stargift = new Api.InputSavedStarGiftUser({ msgId: saved.msgId });
   } else {
-    throw new Error('У найденного подарка нет ни slug, ни msgId');
+    throw new Error('Версия gramjs не поддерживает InputSavedStarGift*');
   }
 
   try {
@@ -294,17 +323,18 @@ function startHttpServer() {
         }
         const body = await readJson(req);
         const userId = Number(body.userId || 0);
+        const username = body.username ? String(body.username).replace(/^@/, '').trim() : null;
         const giftName = String(body.giftName || '');
         const giftPrice = Number(body.giftPrice || 0);
-        if (!userId || !giftName) {
+        if ((!userId && !username) || !giftName) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: 'userId and giftName required' }));
+          res.end(JSON.stringify({ ok: false, error: '(userId|username) and giftName required' }));
           return;
         }
 
-        console.log(`📤 transfer request: «${giftName}» (${giftPrice}⭐) → user ${userId}`);
+        console.log(`📤 transfer request: «${giftName}» (${giftPrice}⭐) → @${username || ''}/${userId || '?'}`);
         try {
-          const out = await transferGiftToUser(tgClient, { userId, giftName, giftPrice });
+          const out = await transferGiftToUser(tgClient, { userId, username, giftName, giftPrice });
           console.log(`   ✅ sent msgId=${out.msgId}`);
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: true, ...out }));
