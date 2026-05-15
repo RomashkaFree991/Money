@@ -212,22 +212,13 @@
   .inventory-withdraw-btn.locked{opacity:.94;color:rgba(255,255,255,.85)}
   .inventory-timer-pill{
     height:22px;padding:0 8px;border-radius:999px;white-space:nowrap;
-    display:inline-flex;align-items:center;justify-content:center;gap:3px;
-    background:linear-gradient(180deg,rgba(255,204,74,.22),rgba(255,176,32,.16));
-    border:1px solid rgba(255,204,74,.34);
-    color:#FFD24A;font-size:10.5px;font-weight:800;flex-shrink:0;
-    box-shadow:0 0 0 1px rgba(255,204,74,.06) inset, 0 2px 6px rgba(255,176,32,.12);
+    display:inline-flex;align-items:center;justify-content:center;
+    background:rgba(255,255,255,.10);
+    border:1px solid rgba(255,255,255,.16);
+    color:rgba(255,255,255,.78);font-size:10.5px;font-weight:800;flex-shrink:0;
     letter-spacing:.2px;
   }
-  .inventory-timer-pill .timer-dot{
-    width:5px;height:5px;border-radius:50%;background:#FFD24A;
-    box-shadow:0 0 6px rgba(255,210,74,.7);
-    animation:timerPulse 1.4s ease-in-out infinite;
-  }
-  @keyframes timerPulse{
-    0%,100%{opacity:1;transform:scale(1)}
-    50%{opacity:.45;transform:scale(.78)}
-  }
+  .inventory-timer-pill .timer-dot{display:none}
 
   .referral-page{
     position:absolute;top:0;left:0;right:0;bottom:0;
@@ -1504,7 +1495,7 @@
       makeContract:'Сделать контракт', addGifts:'Добавить подарки', waiting:'Ожидание', waitingBets:'Ожидание ставок', placeBet:'Сделать ставку', cashOut:'Забрать',
       giftUnlocked:'Ваш подарок', claim:'Забрать', sell:'Продать', support:'Поддержка', language:'Язык', saveAndExit:'Сохранить и выйти', topup:'Пополнение', stars:'Звезды', ton:'TON',
       topupBtn:'Пополнить', connectWallet:'Подключить кошелек', disconnectWallet:'Отключить кошелек', bet:'Ставка', top:'Топ', craft:'Крафт', crash:'Краш', upgrade:'Апгрейд', profileNav:'Профиль', giftReady:'Подарок', giftOpened:'Подарок открыт',
-      sellAll:'Продать все', withdraw:'Вывести', withdrawSoon:'Подарок отправляется в Telegram…', giftWord1:'подарок', giftWord2:'подарка', giftWord5:'подарков', referralBack:'Назад', invited:'Приглашено', earned:'Заработано', invite:'Пригласить', referralLink:'Реферальная ссылка', copied:'Скопировано', addGift:'Добавить подарок', inCraft:'В крафте', crafting:'Создаём контракт...', chance:'Шанс', chanceEmpty:'Шанс —', tonLoading:'Подключаем кошелёк...', tonNeedWallet:'Подключи TON кошелёк...', tonNotConnected:'TON кошелёк не подключён', tonOpening:'Открываем TON оплату...', tonConfirm:'Подтверждаем TON пополнение...', loading:'Загрузка...', loadingWait:'Подождите немного', promoUnavailable:'Промокод недоступен', upgradeFailed:'Апгрейд не удался', openTelegramPay:'Открой в Telegram для оплаты', creatingInvoice:'Создаём инвойс...', openingPayment:'Открываем оплату...', checkingPayment:'Проверяем оплату...', paymentDelayed:'Оплата принята, но подтверждение задержалось. Баланс обновится чуть позже.', paymentFailed:'Оплата не прошла. Попробуй снова.', paymentCancelled:'Оплата отменена.', errorPrefix:'Ошибка: ', topPlaceAt:'Вы в топе на <b>{rank}</b> месте', topNotYet:'Вы ещё не в топе', now:'Сейчас', soonPrefix:'Оч'
+      sellAll:'Продать все', withdraw:'Вывести', withdrawSoon:'Выводится...', giftWord1:'подарок', giftWord2:'подарка', giftWord5:'подарков', referralBack:'Назад', invited:'Приглашено', earned:'Заработано', invite:'Пригласить', referralLink:'Реферальная ссылка', copied:'Скопировано', addGift:'Добавить подарок', inCraft:'В крафте', crafting:'Создаём контракт...', chance:'Шанс', chanceEmpty:'Шанс —', tonLoading:'Подключаем кошелёк...', tonNeedWallet:'Подключи TON кошелёк...', tonNotConnected:'TON кошелёк не подключён', tonOpening:'Открываем TON оплату...', tonConfirm:'Подтверждаем TON пополнение...', loading:'Загрузка...', loadingWait:'Подождите немного', promoUnavailable:'Промокод недоступен', upgradeFailed:'Апгрейд не удался', openTelegramPay:'Открой в Telegram для оплаты', creatingInvoice:'Создаём инвойс...', openingPayment:'Открываем оплату...', checkingPayment:'Проверяем оплату...', paymentDelayed:'Оплата принята, но подтверждение задержалось. Баланс обновится чуть позже.', paymentFailed:'Оплата не прошла. Попробуй снова.', paymentCancelled:'Оплата отменена.', errorPrefix:'Ошибка: ', topPlaceAt:'Вы в топе на <b>{rank}</b> месте', topNotYet:'Вы ещё не в топе', now:'Сейчас', soonPrefix:'Оч'
     },
     en:{
       topPlace:'You are in the top at <b>—</b> place', waitingDots:'Waiting...', profile:'Profile', promocodes:'Promo codes', promoPlaceholder:'Enter promo code', apply:'Apply',
@@ -1514,7 +1505,7 @@
       makeContract:'Make contract', addGifts:'Add gifts', waiting:'Waiting', waitingBets:'Waiting for bets', placeBet:'Place bet', cashOut:'Cash out',
       giftUnlocked:'Your gift', claim:'Claim', sell:'Sell', support:'Support', language:'Language', saveAndExit:'Save and exit', topup:'Top up', stars:'Stars', ton:'TON',
       topupBtn:'Top up', connectWallet:'Connect wallet', disconnectWallet:'Disconnect wallet', bet:'Bet', top:'Top', craft:'Craft', crash:'Crash', upgrade:'Upgrade', profileNav:'Profile', giftReady:'Gift', giftOpened:'Gift opened',
-      sellAll:'Sell all', withdraw:'Withdraw', withdrawSoon:'Gift is being sent to Telegram…', giftWord1:'gift', giftWord2:'gifts', giftWord5:'gifts', referralBack:'Back', invited:'Invited', earned:'Earned', invite:'Invite', referralLink:'Referral link', copied:'Copied', addGift:'Add gift', inCraft:'In craft', crafting:'Crafting...', chance:'Chance', chanceEmpty:'Chance —', tonLoading:'Connecting wallet...', tonNeedWallet:'Connect TON wallet...', tonNotConnected:'TON wallet is not connected', tonOpening:'Opening TON payment...', tonConfirm:'Confirming TON top up...', loading:'Loading...', loadingWait:'Please wait a bit', promoUnavailable:'Promo code unavailable', upgradeFailed:'Upgrade failed', openTelegramPay:'Open in Telegram to pay', creatingInvoice:'Creating invoice...', openingPayment:'Opening payment...', checkingPayment:'Checking payment...', paymentDelayed:'Payment is accepted, but confirmation is delayed. Balance will update a bit later.', paymentFailed:'Payment failed. Try again.', paymentCancelled:'Payment cancelled.', errorPrefix:'Error: ', topPlaceAt:'You are in the top at <b>{rank}</b> place', topNotYet:'You are not in the top yet', now:'Now', soonPrefix:'In'
+      sellAll:'Sell all', withdraw:'Withdraw', withdrawSoon:'Withdrawing...', giftWord1:'gift', giftWord2:'gifts', giftWord5:'gifts', referralBack:'Back', invited:'Invited', earned:'Earned', invite:'Invite', referralLink:'Referral link', copied:'Copied', addGift:'Add gift', inCraft:'In craft', crafting:'Crafting...', chance:'Chance', chanceEmpty:'Chance —', tonLoading:'Connecting wallet...', tonNeedWallet:'Connect TON wallet...', tonNotConnected:'TON wallet is not connected', tonOpening:'Opening TON payment...', tonConfirm:'Confirming TON top up...', loading:'Loading...', loadingWait:'Please wait a bit', promoUnavailable:'Promo code unavailable', upgradeFailed:'Upgrade failed', openTelegramPay:'Open in Telegram to pay', creatingInvoice:'Creating invoice...', openingPayment:'Opening payment...', checkingPayment:'Checking payment...', paymentDelayed:'Payment is accepted, but confirmation is delayed. Balance will update a bit later.', paymentFailed:'Payment failed. Try again.', paymentCancelled:'Payment cancelled.', errorPrefix:'Error: ', topPlaceAt:'You are in the top at <b>{rank}</b> place', topNotYet:'You are not in the top yet', now:'Now', soonPrefix:'In'
     }
   };
   // Force the new MoneyMonkey build to start in English once, even if an older build saved RU.
@@ -1608,7 +1599,7 @@
     if(canWithdrawItem(item)){
       return {text:t('withdraw'), pill:'', className:'', disabled:false};
     }
-    return {text:t('withdraw'), pill:'<span class="timer-dot"></span>'+formatInventoryTime(getItemWithdrawAt(item)-Date.now()), className:'locked', disabled:true};
+    return {text:t('withdraw'), pill:formatInventoryTime(getItemWithdrawAt(item)-Date.now()), className:'locked', disabled:true};
   }
   function dismissKeyboard(inputEl=null){
     try{inputEl?.blur?.()}catch(e){}
@@ -1670,8 +1661,8 @@
             ${t('sell')} ${formatStars(item.price)} <img src="assets/star.png" alt="">
           </button>
           <button class="inventory-withdraw-btn ${withdrawState.className}" data-action="withdraw" ${withdrawState.disabled?'disabled':''}>
-            ${withdrawState.pill?`<span class="inventory-timer-pill">${withdrawState.pill}</span>`:''}
             <span>${withdrawState.text}</span>
+            ${withdrawState.pill?`<span class="inventory-timer-pill">${withdrawState.pill}</span>`:''}
           </button>
         </div>
       </div>
