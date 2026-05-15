@@ -76,13 +76,16 @@ function extractGiftFromAction(action) {
   if (!giftId) return null;
 
   const stars = Number(gift.stars || gift.convertStars || action.convertStars || 0);
-  const title = String(gift.title || gift.slug || gift.name || '');
+  const title = String(gift.title || gift.name || '');
+  const slug = String(gift.slug || '');
+  const isUnique = String(className).includes('Unique');
 
   return {
     giftId,
-    isUnique: String(className).includes('Unique'),
+    isUnique,
+    slug: slug || null,
     fallbackPrice: stars,
-    fallbackName: title || null,
+    fallbackName: title || slug || null,
     raw: className,
   };
 }
@@ -143,6 +146,8 @@ async function handleMessage(client, event) {
     senderTgId: sender.id,
     giftId: gift.giftId,
     msgId: message.id,
+    slug: gift.slug,
+    isUnique: gift.isUnique,
     fallbackName: gift.fallbackName,
     fallbackPrice: gift.fallbackPrice,
     fallbackImage: null,
@@ -197,6 +202,7 @@ async function findSavedGift(client, { giftName, giftPrice }) {
       const inner = sg.gift || sg;
       const isUnique = String(inner?.className || '').includes('Unique');
       const title = String(inner?.title || inner?.slug || '');
+      const slug = String(inner?.slug || '') || null;
       const stars = Number(inner?.stars || sg?.convertStars || 0);
 
       if (!isUnique) continue;
@@ -205,9 +211,9 @@ async function findSavedGift(client, { giftName, giftPrice }) {
       if (giftPrice && stars && Math.abs(stars - giftPrice) > Math.max(50, giftPrice * 0.5)) continue;
 
       const msgId = Number(sg.msgId || sg.savedId || sg.savedStarGiftId || 0);
-      if (!msgId) continue;
+      if (!msgId && !slug) continue;
 
-      return { msgId, title, stars, raw: sg };
+      return { msgId, slug, isUnique, title, stars, raw: sg };
     }
 
     offset = resp?.nextOffset || '';
@@ -216,26 +222,27 @@ async function findSavedGift(client, { giftName, giftPrice }) {
   return null;
 }
 
-async function transferGiftToUser(client, { userId, msgId, giftName, giftPrice }) {
+async function transferGiftToUser(client, { userId, giftName, giftPrice }) {
+  if (!giftName) throw new Error('giftName обязателен для поиска подарка');
   const target = await client.getInputEntity(Number(userId));
 
-  // 1) Если бэкэнд передал точный msg_id того сервисного сообщения, по которому
-  //    подарок попал к нам, — используем именно его. Это исключает «перепутать
-  //    экземпляры», когда одно и то же название депонировали несколько юзеров.
-  let finalMsgId = msgId ? Number(msgId) : null;
-  let title = giftName;
-
-  // 2) Fallback: поиск по имени/цене (для старых записей без tg_msg_id)
-  if (!finalMsgId) {
-    const saved = await findSavedGift(client, { giftName, giftPrice });
-    if (!saved) {
-      throw new Error(`Подарок «${giftName}» не найден в сохранённых на аккаунте релеера`);
-    }
-    finalMsgId = saved.msgId;
-    title = saved.title;
+  // Всегда идём от профиля релеера: ищем первый подходящий NFT по имени
+  // (и опционально по цене) в сохранённых подарках, и его передаём.
+  const saved = await findSavedGift(client, { giftName, giftPrice });
+  if (!saved) {
+    throw new Error(`NFT-подарок «${giftName}» не найден в сохранённых на аккаунте релеера`);
   }
 
-  const stargift = new Api.InputSavedStarGiftUser({ msgId: finalMsgId });
+  // payments.TransferStarGift работает только для уникальных (NFT) подарков.
+  // Идентификатор — slug (если есть), иначе msgId.
+  let stargift;
+  if (saved.slug) {
+    stargift = new Api.InputSavedStarGiftSlug({ slug: saved.slug });
+  } else if (saved.msgId) {
+    stargift = new Api.InputSavedStarGiftUser({ msgId: saved.msgId });
+  } else {
+    throw new Error('У найденного подарка нет ни slug, ни msgId');
+  }
 
   try {
     await client.invoke(new Api.payments.TransferStarGift({
@@ -246,7 +253,7 @@ async function transferGiftToUser(client, { userId, msgId, giftName, giftPrice }
     throw new Error('TransferStarGift failed: ' + (err?.message || err));
   }
 
-  return { ok: true, msgId: finalMsgId, title };
+  return { ok: true, msgId: saved.msgId, slug: saved.slug, title: saved.title };
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -287,18 +294,17 @@ function startHttpServer() {
         }
         const body = await readJson(req);
         const userId = Number(body.userId || 0);
-        const msgId = body.msgId ? Number(body.msgId) : null;
         const giftName = String(body.giftName || '');
         const giftPrice = Number(body.giftPrice || 0);
-        if (!userId || (!msgId && !giftName)) {
+        if (!userId || !giftName) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: 'userId and (msgId or giftName) required' }));
+          res.end(JSON.stringify({ ok: false, error: 'userId and giftName required' }));
           return;
         }
 
-        console.log(`📤 transfer request: msgId=${msgId || '-'} «${giftName}» (${giftPrice}⭐) → user ${userId}`);
+        console.log(`📤 transfer request: «${giftName}» (${giftPrice}⭐) → user ${userId}`);
         try {
-          const out = await transferGiftToUser(tgClient, { userId, msgId, giftName, giftPrice });
+          const out = await transferGiftToUser(tgClient, { userId, giftName, giftPrice });
           console.log(`   ✅ sent msgId=${out.msgId}`);
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: true, ...out }));

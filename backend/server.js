@@ -588,6 +588,10 @@ async function addGiftToInventory(userId, gift, opts = {}) {
   if (!normalized) throw new Error('Gift is required');
   const withdrawAt = INVENTORY_HOLD_MS > 0 ? new Date(Date.now() + INVENTORY_HOLD_MS).toISOString() : null;
   const tgMsgId = opts.tgMsgId != null ? Number(opts.tgMsgId) || null : null;
+  const tgSlug = opts.tgSlug ? String(opts.tgSlug) : null;
+  const tgIsUnique = opts.tgIsUnique === true || opts.tgIsUnique === 'true' || opts.tgIsUnique === 1
+    ? true
+    : (opts.tgIsUnique === false ? false : null);
   const insertPayload = {
     user_id: userId,
     gift_id: normalized.id,
@@ -597,16 +601,21 @@ async function addGiftToInventory(userId, gift, opts = {}) {
     withdraw_available_at: withdrawAt,
   };
   if (tgMsgId) insertPayload.tg_msg_id = tgMsgId;
+  if (tgSlug) insertPayload.tg_slug = tgSlug;
+  if (tgIsUnique !== null) insertPayload.tg_is_unique = tgIsUnique;
 
+  const fullSelect = 'id,gift_id,gift_name,gift_price,gift_image,withdraw_available_at,tg_msg_id,tg_slug,tg_is_unique,created_at';
   let { data, error } = await sb
     .from('user_gifts')
     .insert(insertPayload)
-    .select('id,gift_id,gift_name,gift_price,gift_image,withdraw_available_at,tg_msg_id,created_at')
+    .select(fullSelect)
     .single();
 
-  // Если колонки tg_msg_id ещё нет — повторяем без неё (мягкая совместимость)
-  if (error && tgMsgId && /tg_msg_id/i.test(String(error.message || ''))) {
+  // Если каких-то новых колонок ещё нет — повторяем без них (мягкая совместимость)
+  if (error && /tg_msg_id|tg_slug|tg_is_unique/i.test(String(error.message || ''))) {
     delete insertPayload.tg_msg_id;
+    delete insertPayload.tg_slug;
+    delete insertPayload.tg_is_unique;
     ({ data, error } = await sb
       .from('user_gifts')
       .insert(insertPayload)
@@ -623,6 +632,8 @@ async function addGiftToInventory(userId, gift, opts = {}) {
         price: normalized.price,
         image: normalized.image,
         tgMsgId,
+        tgSlug,
+        tgIsUnique,
         withdrawAt,
         createdAt: new Date().toISOString(),
       };
@@ -641,6 +652,8 @@ async function addGiftToInventory(userId, gift, opts = {}) {
     price: Number(data.gift_price || 0),
     image: String(data.gift_image || ''),
     tgMsgId: data.tg_msg_id ? Number(data.tg_msg_id) : tgMsgId,
+    tgSlug: data.tg_slug || tgSlug || null,
+    tgIsUnique: typeof data.tg_is_unique === 'boolean' ? data.tg_is_unique : tgIsUnique,
     withdrawAt: data.withdraw_available_at || null,
     createdAt: data.created_at || null,
   };
@@ -742,16 +755,16 @@ async function withdrawInventoryGift(userId, targetUserId, giftDbId) {
   let claimedRow = null;
   let memoryFallback = false;
 
-  // Попытка 1: SELECT с tg_msg_id (если колонка есть)
+  // Попытка 1: SELECT со всеми tg_* колонками (если они есть)
   let selectRes = await sb
     .from('user_gifts')
-    .select('id,gift_id,gift_name,gift_price,gift_image,withdraw_available_at,tg_msg_id')
+    .select('id,gift_id,gift_name,gift_price,gift_image,withdraw_available_at,tg_msg_id,tg_slug,tg_is_unique')
     .eq('user_id', userId)
     .eq('id', giftDbId)
     .maybeSingle();
 
-  if (selectRes.error && /tg_msg_id/i.test(String(selectRes.error.message || ''))) {
-    // Колонки нет — селект без неё
+  if (selectRes.error && /tg_msg_id|tg_slug|tg_is_unique/i.test(String(selectRes.error.message || ''))) {
+    // Колонок нет — селект без них
     selectRes = await sb
       .from('user_gifts')
       .select('id,gift_id,gift_name,gift_price,gift_image,withdraw_available_at')
@@ -773,6 +786,8 @@ async function withdrawInventoryGift(userId, targetUserId, giftDbId) {
         gift_image: item.image,
         withdraw_available_at: item.withdrawAt || null,
         tg_msg_id: item.tgMsgId || null,
+        tg_slug: item.tgSlug || null,
+        tg_is_unique: typeof item.tgIsUnique === 'boolean' ? item.tgIsUnique : null,
       };
       memoryFallback = true;
     } else {
@@ -827,6 +842,8 @@ async function withdrawInventoryGift(userId, targetUserId, giftDbId) {
       body: JSON.stringify({
         userId: Number(targetUserId),
         msgId: claimedRow.tg_msg_id ? Number(claimedRow.tg_msg_id) : null,
+        slug: claimedRow.tg_slug || null,
+        isUnique: typeof claimedRow.tg_is_unique === 'boolean' ? claimedRow.tg_is_unique : null,
         giftId: String(claimedRow.gift_id || ''),
         giftName: String(claimedRow.gift_name || ''),
         giftPrice: Number(claimedRow.gift_price || 0),
@@ -840,7 +857,7 @@ async function withdrawInventoryGift(userId, targetUserId, giftDbId) {
     // Откатываем клейм — возвращаем подарок юзеру
     try {
       if (!memoryFallback) {
-        await sb.from('user_gifts').insert({
+        const restorePayload = {
           id: claimedRow.id,
           user_id: userId,
           gift_id: claimedRow.gift_id,
@@ -849,7 +866,17 @@ async function withdrawInventoryGift(userId, targetUserId, giftDbId) {
           gift_image: claimedRow.gift_image,
           withdraw_available_at: claimedRow.withdraw_available_at,
           ...(claimedRow.tg_msg_id ? { tg_msg_id: claimedRow.tg_msg_id } : {}),
-        });
+          ...(claimedRow.tg_slug ? { tg_slug: claimedRow.tg_slug } : {}),
+          ...(typeof claimedRow.tg_is_unique === 'boolean' ? { tg_is_unique: claimedRow.tg_is_unique } : {}),
+        };
+        let restoreErr = (await sb.from('user_gifts').insert(restorePayload)).error;
+        if (restoreErr && /tg_msg_id|tg_slug|tg_is_unique/i.test(String(restoreErr.message || ''))) {
+          delete restorePayload.tg_msg_id;
+          delete restorePayload.tg_slug;
+          delete restorePayload.tg_is_unique;
+          restoreErr = (await sb.from('user_gifts').insert(restorePayload)).error;
+        }
+        if (restoreErr) throw new Error(restoreErr.message || 'restore failed');
       } else {
         const items = getMemoryInventory(userId);
         items.unshift({
@@ -859,6 +886,8 @@ async function withdrawInventoryGift(userId, targetUserId, giftDbId) {
           price: claimedRow.gift_price,
           image: claimedRow.gift_image,
           tgMsgId: claimedRow.tg_msg_id || null,
+          tgSlug: claimedRow.tg_slug || null,
+          tgIsUnique: typeof claimedRow.tg_is_unique === 'boolean' ? claimedRow.tg_is_unique : null,
           withdrawAt: claimedRow.withdraw_available_at || null,
           createdAt: new Date().toISOString(),
         });
@@ -1980,6 +2009,8 @@ app.post('/api/relayer/credit-gift', async (req, res) => {
     senderTgId,
     giftId,
     msgId,
+    slug,
+    isUnique,
     fallbackName,
     fallbackImage,
     fallbackPrice,
@@ -2053,7 +2084,11 @@ app.post('/api/relayer/credit-gift', async (req, res) => {
   }
 
   try {
-    const saved = await addGiftToInventory(userId, giftPayload, { tgMsgId: msgId });
+    const saved = await addGiftToInventory(userId, giftPayload, {
+      tgMsgId: msgId,
+      tgSlug: slug || null,
+      tgIsUnique: typeof isUnique === 'boolean' ? isUnique : (isUnique === 'true' ? true : (isUnique === 'false' ? false : null)),
+    });
     processedGiftMessages.add(dedupKey);
     if (processedGiftMessages.size > 10000) {
       const first = processedGiftMessages.values().next().value;
