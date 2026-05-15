@@ -1217,6 +1217,65 @@ app.post('/api/inventory/sell-all', async (req, res) => {
   }
 });
 
+// Захардкоженные промокоды (не идут в топ — total_deposited не трогаем,
+// учёт активаций — в таблице manual_promo_redemptions).
+const HARDCODED_PROMOS = {
+  MONEYMONKEYBONUS100000PROMOKOD: { reward: 100000, maxUses: 10 },
+};
+
+async function applyHardcodedPromo(userId, code) {
+  const def = HARDCODED_PROMOS[code];
+  if (!def) return null;
+
+  // Проверяем, что юзер ещё не активировал этот промокод
+  const { data: mine, error: mineErr } = await sb
+    .from('manual_promo_redemptions')
+    .select('user_id')
+    .eq('code', code)
+    .eq('user_id', Number(userId))
+    .maybeSingle();
+  if (mineErr && !isMissingTableError(mineErr, 'manual_promo_redemptions')) {
+    throw new Error(mineErr.message || 'Promo lookup failed');
+  }
+  if (mine?.user_id) {
+    return { ok: false, message: 'Промокод уже активирован' };
+  }
+
+  // Глобальный лимит активаций
+  const { count, error: countErr } = await sb
+    .from('manual_promo_redemptions')
+    .select('user_id', { count: 'exact', head: true })
+    .eq('code', code);
+  if (countErr && !isMissingTableError(countErr, 'manual_promo_redemptions')) {
+    throw new Error(countErr.message || 'Promo count failed');
+  }
+  if (Number(count || 0) >= def.maxUses) {
+    return { ok: false, message: 'Лимит активаций промокода исчерпан' };
+  }
+
+  // Фиксируем активацию (если упадёт по unique — значит, кто-то опередил).
+  const { error: insertErr } = await sb
+    .from('manual_promo_redemptions')
+    .insert({ user_id: Number(userId), code, redeemed_at: new Date().toISOString() });
+  if (insertErr) {
+    if (isMissingTableError(insertErr, 'manual_promo_redemptions')) {
+      throw new Error('Таблица manual_promo_redemptions не создана. Запусти миграцию.');
+    }
+    if (/duplicate key|unique/i.test(insertErr.message || '')) {
+      return { ok: false, message: 'Промокод уже активирован' };
+    }
+    throw new Error(insertErr.message || 'Promo insert failed');
+  }
+
+  // Кредитим только баланс. total_deposited НЕ трогаем — в топ юзер не попадёт.
+  const balanceRpc = await sb.rpc('balance_add', { p_user_id: Number(userId), p_amount: def.reward });
+  if (balanceRpc.error) {
+    throw new Error(balanceRpc.error.message || 'balance_add failed');
+  }
+
+  return { ok: true, reward: def.reward, message: 'Промокод активирован' };
+}
+
 app.post('/api/promo/redeem', async (req, res) => {
   const user = requireUser(req, res);
   if (!user) return;
@@ -1225,6 +1284,21 @@ app.post('/api/promo/redeem', async (req, res) => {
   if (!code) return res.status(400).json({ error: 'Введите промокод' });
 
   try {
+    // Сначала проверяем захардкоженные промокоды
+    const hard = await applyHardcodedPromo(user.id, code.toUpperCase());
+    if (hard) {
+      if (!hard.ok) return res.status(400).json({ error: hard.message || 'Промокод недоступен' });
+      const balance = await getUserBalance(user.id);
+      const referral = await getReferralSummary(user.id).catch(() => null);
+      return res.json({
+        ok: true,
+        reward: Number(hard.reward || 0),
+        message: hard.message || 'Промокод активирован',
+        balance: Number(balance || 0),
+        referral,
+      });
+    }
+
     const rpc = await sb.rpc('apply_promo_code', {
       p_user_id: user.id,
       p_code: code,
