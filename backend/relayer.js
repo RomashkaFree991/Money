@@ -1,12 +1,19 @@
 // ══════════════════════════════════════════════════════════════════════════════
-// GiftPepe Relayer — MTProto userbot для @MoneyMonkeyGift
-// Слушает входящие NFT-подарки и зачисляет их в инвентарь юзеров мини-аппы.
+// MoneyMonkey Relayer — MTProto userbot для @MoneyMonkeyGift
+//
+// Что умеет:
+//   1. Слушать входящие NFT-подарки на свой аккаунт и слать /api/relayer/credit-gift
+//      → подарок появляется в инвентаре нужного юзера в мини-аппе.
+//   2. Поднимать локальный HTTP-сервер для бэкэнда (POST /transfer):
+//      backend зовёт его, когда юзер жмёт «Вывести», и релеер реально передаёт
+//      NFT-подарок получателю через payments.TransferStarGift.
 //
 // Запуск:
 //   1. Один раз: node login.js  — получить TG_USER_SESSION
 //   2. Боевой:   node relayer.js
 // ══════════════════════════════════════════════════════════════════════════════
 
+const http = require('http');
 const { TelegramClient } = require('telegram');
 const { StringSession } = require('telegram/sessions');
 const { NewMessage, Raw } = require('telegram/events');
@@ -22,6 +29,8 @@ const CONFIG = {
   BACKEND_URL: process.env.BACKEND_URL || 'http://localhost:3000',
   RELAYER_INTERNAL_KEY: process.env.RELAYER_INTERNAL_KEY || 'relayer_dev_secret_change_me',
   RECEIVER_USERNAME: (process.env.GIFT_RECEIVER_USERNAME || 'MoneyMonkeyGift').replace(/^@/, ''),
+  HTTP_PORT: Number(process.env.RELAYER_HTTP_PORT || 4011),
+  HTTP_HOST: process.env.RELAYER_HTTP_HOST || '127.0.0.1',
 };
 
 if (!CONFIG.SESSION) {
@@ -30,6 +39,7 @@ if (!CONFIG.SESSION) {
 }
 
 const stringSession = new StringSession(CONFIG.SESSION);
+let tgClient = null;
 
 async function creditGift(payload) {
   try {
@@ -53,21 +63,15 @@ async function creditGift(payload) {
   }
 }
 
-// Извлекает gift_id и метаданные из действия (action) сервисного сообщения о подарке.
-// Поддерживает: MessageActionStarGift (обычный звёздный подарок),
-// MessageActionStarGiftUnique (уникальный/NFT-подарок).
 function extractGiftFromAction(action) {
   if (!action) return null;
   const className = action.className || action.CONSTRUCTOR_ID || '';
   const isStarGift = String(className).includes('StarGift');
   if (!isStarGift) return null;
 
-  // gift может быть на самом action.gift или вложен глубже
   const gift = action.gift || action.starGift || null;
   if (!gift) return null;
 
-  // У regular star-gift поле id (BigInt). У unique — id уникального экземпляра,
-  // а вид определяется gift.slug или gift.title.
   const giftId = String(gift.id || gift.giftId || '');
   if (!giftId) return null;
 
@@ -84,7 +88,6 @@ function extractGiftFromAction(action) {
 }
 
 async function resolveSender(client, message) {
-  // Сначала пробуем встроенный метод (на Custom message wrapper)
   try {
     if (typeof message.getSender === 'function') {
       const sender = await message.getSender().catch(() => null);
@@ -98,7 +101,6 @@ async function resolveSender(client, message) {
     }
   } catch {}
 
-  // Fallback: достаём userId из peerId/fromId и резолвим через getEntity
   const fromId = message.fromId || message.peerId;
   const rawId = fromId?.userId || fromId?.user_id || null;
   if (!rawId) return { id: null, username: null };
@@ -120,8 +122,6 @@ async function resolveSender(client, message) {
 async function handleMessage(client, event) {
   const message = event.message;
   if (!message) return;
-
-  // Нас интересуют только входящие сервисные сообщения нам в личку
   if (message.out) return;
   if (!message.action) return;
 
@@ -157,6 +157,171 @@ async function handleMessage(client, event) {
   }
 }
 
+// ────────────────────────────────────────────────────────────────────────────
+// ВЫВОД (TransferStarGift)
+//
+// Логика: ищем у себя в "сохранённых подарках" уникальный NFT с подходящим
+// названием (и при возможности — с подходящей ценой в звёздах), и передаём
+// его получателю через payments.TransferStarGift.
+//
+// Требования Telegram:
+//   • подарок должен быть НЕ обычным звёздным, а уникальным (NFT)
+//   • с момента получения подарка должно пройти достаточно времени
+//     (обычно ~24ч-7 дней — Telegram периодически меняет)
+//   • на аккаунте релеера должны быть звёзды на комиссию передачи
+// ────────────────────────────────────────────────────────────────────────────
+function normalizeName(s) {
+  return String(s || '').replace(/\s*#.*$/, '').trim().toLowerCase();
+}
+
+async function findSavedGift(client, { giftName, giftPrice }) {
+  const targetName = normalizeName(giftName);
+  const me = await client.getMe();
+  const meInput = await client.getInputEntity(me);
+
+  let offset = '';
+  for (let page = 0; page < 10; page++) {
+    let resp;
+    try {
+      resp = await client.invoke(new Api.payments.GetSavedStarGifts({
+        peer: meInput,
+        offset,
+        limit: 100,
+      }));
+    } catch (err) {
+      throw new Error('GetSavedStarGifts failed: ' + (err?.message || err));
+    }
+
+    const gifts = resp?.gifts || [];
+    for (const sg of gifts) {
+      const inner = sg.gift || sg;
+      const isUnique = String(inner?.className || '').includes('Unique');
+      const title = String(inner?.title || inner?.slug || '');
+      const stars = Number(inner?.stars || sg?.convertStars || 0);
+
+      if (!isUnique) continue;
+      if (normalizeName(title) !== targetName) continue;
+      // Если указана цена — допускаем небольшое отклонение
+      if (giftPrice && stars && Math.abs(stars - giftPrice) > Math.max(50, giftPrice * 0.5)) continue;
+
+      const msgId = Number(sg.msgId || sg.savedId || sg.savedStarGiftId || 0);
+      if (!msgId) continue;
+
+      return { msgId, title, stars, raw: sg };
+    }
+
+    offset = resp?.nextOffset || '';
+    if (!offset) break;
+  }
+  return null;
+}
+
+async function transferGiftToUser(client, { userId, msgId, giftName, giftPrice }) {
+  const target = await client.getInputEntity(Number(userId));
+
+  // 1) Если бэкэнд передал точный msg_id того сервисного сообщения, по которому
+  //    подарок попал к нам, — используем именно его. Это исключает «перепутать
+  //    экземпляры», когда одно и то же название депонировали несколько юзеров.
+  let finalMsgId = msgId ? Number(msgId) : null;
+  let title = giftName;
+
+  // 2) Fallback: поиск по имени/цене (для старых записей без tg_msg_id)
+  if (!finalMsgId) {
+    const saved = await findSavedGift(client, { giftName, giftPrice });
+    if (!saved) {
+      throw new Error(`Подарок «${giftName}» не найден в сохранённых на аккаунте релеера`);
+    }
+    finalMsgId = saved.msgId;
+    title = saved.title;
+  }
+
+  const stargift = new Api.InputSavedStarGiftUser({ msgId: finalMsgId });
+
+  try {
+    await client.invoke(new Api.payments.TransferStarGift({
+      stargift,
+      toId: target,
+    }));
+  } catch (err) {
+    throw new Error('TransferStarGift failed: ' + (err?.message || err));
+  }
+
+  return { ok: true, msgId: finalMsgId, title };
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// HTTP сервер для бэкэнда
+// ────────────────────────────────────────────────────────────────────────────
+function readJson(req) {
+  return new Promise((resolve, reject) => {
+    let buf = '';
+    req.on('data', (chunk) => { buf += chunk; if (buf.length > 1e6) { req.destroy(); reject(new Error('payload too large')); } });
+    req.on('end', () => {
+      try { resolve(buf ? JSON.parse(buf) : {}); }
+      catch (e) { reject(e); }
+    });
+    req.on('error', reject);
+  });
+}
+
+function startHttpServer() {
+  const server = http.createServer(async (req, res) => {
+    try {
+      if (req.headers['x-relayer-key'] !== CONFIG.RELAYER_INTERNAL_KEY) {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'Forbidden' }));
+        return;
+      }
+
+      if (req.method === 'GET' && req.url === '/health') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true }));
+        return;
+      }
+
+      if (req.method === 'POST' && req.url === '/transfer') {
+        if (!tgClient) {
+          res.writeHead(503, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'Telegram client not ready' }));
+          return;
+        }
+        const body = await readJson(req);
+        const userId = Number(body.userId || 0);
+        const msgId = body.msgId ? Number(body.msgId) : null;
+        const giftName = String(body.giftName || '');
+        const giftPrice = Number(body.giftPrice || 0);
+        if (!userId || (!msgId && !giftName)) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'userId and (msgId or giftName) required' }));
+          return;
+        }
+
+        console.log(`📤 transfer request: msgId=${msgId || '-'} «${giftName}» (${giftPrice}⭐) → user ${userId}`);
+        try {
+          const out = await transferGiftToUser(tgClient, { userId, msgId, giftName, giftPrice });
+          console.log(`   ✅ sent msgId=${out.msgId}`);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true, ...out }));
+        } catch (err) {
+          console.warn(`   ❌ transfer failed: ${err?.message || err}`);
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: err?.message || String(err) }));
+        }
+        return;
+      }
+
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: 'Not found' }));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: err?.message || String(err) }));
+    }
+  });
+  server.listen(CONFIG.HTTP_PORT, CONFIG.HTTP_HOST, () => {
+    console.log(`🌐 Relayer HTTP listening on ${CONFIG.HTTP_HOST}:${CONFIG.HTTP_PORT}`);
+  });
+}
+
 async function main() {
   const client = new TelegramClient(stringSession, CONFIG.API_ID, CONFIG.API_HASH, {
     connectionRetries: 5,
@@ -164,6 +329,7 @@ async function main() {
   });
 
   await client.connect();
+  tgClient = client;
 
   const me = await client.getMe();
   const myUsername = (me?.username || '').toLowerCase();
@@ -176,18 +342,15 @@ async function main() {
 
   console.log(`✅ Relayer started as @${myUsername || me?.id} → backend=${CONFIG.BACKEND_URL}`);
 
-  // NewMessage — ловит обычные сообщения
   client.addEventHandler((event) => {
     handleMessage(client, event).catch((err) => {
       console.error('handler error:', err?.message || err);
     });
   }, new NewMessage({}));
 
-  // Raw — ловит ВСЕ обновления, включая сервисные (MessageService с подарком)
   client.addEventHandler(async (update) => {
     try {
       const cls = update?.className || '';
-      // Логируем все апдейты для диагностики
       if (cls.includes('NewMessage') || cls.includes('NewChannelMessage')) {
         const m = update.message;
         const mCls = m?.className || '';
@@ -195,7 +358,6 @@ async function main() {
         console.log(`📥 raw ${cls} → message=${mCls} action=${aCls || '-'}`);
 
         if (mCls === 'MessageService' && m?.action) {
-          // Собираем псевдо-event и пускаем через тот же handler
           await handleMessage(client, { message: m });
         }
       }
@@ -204,7 +366,8 @@ async function main() {
     }
   }, new Raw({}));
 
-  // Держим процесс живым
+  startHttpServer();
+
   process.on('SIGINT', async () => {
     console.log('\n👋 Stopping relayer...');
     await client.disconnect().catch(() => {});

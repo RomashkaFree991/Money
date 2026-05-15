@@ -20,6 +20,7 @@ const CONFIG = {
   // Gift relayer config (used by relayer.js)
   RELAYER_INTERNAL_KEY: process.env.RELAYER_INTERNAL_KEY || 'relayer_dev_secret_change_me',
   GIFT_RECEIVER_USERNAME: (process.env.GIFT_RECEIVER_USERNAME || 'MoneyMonkeyGift').replace(/^@/, ''),
+  RELAYER_URL: process.env.RELAYER_URL || 'http://127.0.0.1:4011',
 };
 
 const app = express();
@@ -35,7 +36,7 @@ const inventoryMemory = new Map();
 let inventorySeq = 1;
 const LATE_CRASH_BET_GRACE_MS = 1400;
 const LATE_CRASH_CASHOUT_GRACE_MS = 2600;
-const INVENTORY_HOLD_MS = 0;
+const INVENTORY_HOLD_MS = 20 * 60 * 1000;
 
 function isMissingTableError(error, tableName) {
   const msg = String(error?.message || '');
@@ -228,14 +229,26 @@ async function handleBotMessage(message) {
   const baseMiniAppUrl = String(CONFIG.MINI_APP_URL || '').trim().replace(/\/$/, '');
   const appUrl = startParam ? `${baseMiniAppUrl}?startapp=${encodeURIComponent(startParam)}` : baseMiniAppUrl;
 
+  const welcome =
+    '🎰 *MoneyMonkey* — топ-казино для NFT подарков Telegram\n\n' +
+    '🎁 Открывай кейсы, крути крэш, апгрейдь подарки и забирай настоящие NFT прямо в Telegram.\n\n' +
+    '💎 Пополнение и вывод — реальными NFT подарками.\n' +
+    '🔥 Бонусы новичкам, реферальная программа, ежедневные дропы.\n' +
+    '⚡️ Честные шансы, мгновенные выплаты.\n\n' +
+    '👇 Жми «Играть», чтобы начать!';
   return tgApi('sendMessage', {
     chat_id: Number(message.chat.id),
-    text: 'MoneyMonkey — топ казино для NFT подарков Telegram 🎁\n\nНажми на кнопку ниже, чтобы играть.',
+    text: welcome,
+    parse_mode: 'Markdown',
+    disable_web_page_preview: true,
     reply_markup: {
-      inline_keyboard: [[{
-        text: 'Играть',
-        web_app: { url: appUrl },
-      }]],
+      inline_keyboard: [
+        [{ text: '🎮 Играть', web_app: { url: appUrl } }],
+        [
+          { text: '📣 Канал', url: 'https://t.me/MoneyMonkeyi' },
+          { text: '💬 Поддержка', url: 'https://t.me/MoneyMonkeySupport' },
+        ],
+      ],
     },
   }, 5000);
 }
@@ -573,22 +586,36 @@ async function getUserInventory(userId) {
   }));
 }
 
-async function addGiftToInventory(userId, gift) {
+async function addGiftToInventory(userId, gift, opts = {}) {
   const normalized = normalizeGift(gift);
   if (!normalized) throw new Error('Gift is required');
   const withdrawAt = INVENTORY_HOLD_MS > 0 ? new Date(Date.now() + INVENTORY_HOLD_MS).toISOString() : null;
-  const { data, error } = await sb
+  const tgMsgId = opts.tgMsgId != null ? Number(opts.tgMsgId) || null : null;
+  const insertPayload = {
+    user_id: userId,
+    gift_id: normalized.id,
+    gift_name: normalized.name,
+    gift_price: normalized.price,
+    gift_image: normalized.image,
+    withdraw_available_at: withdrawAt,
+  };
+  if (tgMsgId) insertPayload.tg_msg_id = tgMsgId;
+
+  let { data, error } = await sb
     .from('user_gifts')
-    .insert({
-      user_id: userId,
-      gift_id: normalized.id,
-      gift_name: normalized.name,
-      gift_price: normalized.price,
-      gift_image: normalized.image,
-      withdraw_available_at: withdrawAt,
-    })
-    .select('id,gift_id,gift_name,gift_price,gift_image,withdraw_available_at,created_at')
+    .insert(insertPayload)
+    .select('id,gift_id,gift_name,gift_price,gift_image,withdraw_available_at,tg_msg_id,created_at')
     .single();
+
+  // Если колонки tg_msg_id ещё нет — повторяем без неё (мягкая совместимость)
+  if (error && tgMsgId && /tg_msg_id/i.test(String(error.message || ''))) {
+    delete insertPayload.tg_msg_id;
+    ({ data, error } = await sb
+      .from('user_gifts')
+      .insert(insertPayload)
+      .select('id,gift_id,gift_name,gift_price,gift_image,withdraw_available_at,created_at')
+      .single());
+  }
 
   if (error) {
     if (isMissingTableError(error, 'user_gifts')) {
@@ -598,6 +625,7 @@ async function addGiftToInventory(userId, gift) {
         name: normalized.name,
         price: normalized.price,
         image: normalized.image,
+        tgMsgId,
         withdrawAt,
         createdAt: new Date().toISOString(),
       };
@@ -615,6 +643,7 @@ async function addGiftToInventory(userId, gift) {
     name: String(data.gift_name || 'Gift'),
     price: Number(data.gift_price || 0),
     image: String(data.gift_image || ''),
+    tgMsgId: data.tg_msg_id ? Number(data.tg_msg_id) : tgMsgId,
     withdrawAt: data.withdraw_available_at || null,
     createdAt: data.created_at || null,
   };
@@ -709,63 +738,147 @@ async function sellInventoryGift(userId, giftDbId) {
 }
 
 async function withdrawInventoryGift(userId, targetUserId, giftDbId) {
-  let gift = null;
+  // Стратегия: «claim by delete». Сначала атомарно удаляем строку из БД, и только
+  // если удалось — зовём релеер. При неудаче релеера — восстанавливаем подарок,
+  // чтобы юзер не потерял его. Это закрывает гонку двойного вывода.
 
-  const { data, error } = await sb
+  let claimedRow = null;
+  let memoryFallback = false;
+
+  // Попытка 1: SELECT с tg_msg_id (если колонка есть)
+  let selectRes = await sb
     .from('user_gifts')
-    .select('id,gift_id,gift_name,gift_price,gift_image')
+    .select('id,gift_id,gift_name,gift_price,gift_image,withdraw_available_at,tg_msg_id')
     .eq('user_id', userId)
     .eq('id', giftDbId)
     .maybeSingle();
 
-  if (error) {
-    if (isMissingTableError(error, 'user_gifts')) {
+  if (selectRes.error && /tg_msg_id/i.test(String(selectRes.error.message || ''))) {
+    // Колонки нет — селект без неё
+    selectRes = await sb
+      .from('user_gifts')
+      .select('id,gift_id,gift_name,gift_price,gift_image,withdraw_available_at')
+      .eq('user_id', userId)
+      .eq('id', giftDbId)
+      .maybeSingle();
+  }
+
+  if (selectRes.error) {
+    if (isMissingTableError(selectRes.error, 'user_gifts')) {
       const items = getMemoryInventory(userId);
       const item = items.find((entry) => Number(entry.id) === Number(giftDbId));
       if (!item) throw new Error('Gift not found');
-      gift = {
+      claimedRow = {
         id: Number(item.id),
         gift_id: item.giftId,
         gift_name: item.name,
         gift_price: item.price,
         gift_image: item.image,
+        withdraw_available_at: item.withdrawAt || null,
+        tg_msg_id: item.tgMsgId || null,
       };
+      memoryFallback = true;
     } else {
-      throw new Error(error.message || 'Gift not found');
+      throw new Error(selectRes.error.message || 'Gift not found');
     }
   } else {
-    gift = data;
+    claimedRow = selectRes.data;
   }
 
-  if (!gift) throw new Error('Gift not found');
+  if (!claimedRow) throw new Error('Gift not found');
 
-  const telegramResult = await tgApi('sendGift', {
-    user_id: Number(targetUserId),
-    gift_id: String(gift.gift_id || ''),
-  });
-
-  if (!telegramResult?.ok) {
-    throw new Error(telegramResult?.description || 'Telegram gift send failed');
+  // 20-минутный холд
+  if (claimedRow.withdraw_available_at) {
+    const unlockAt = new Date(claimedRow.withdraw_available_at).getTime();
+    if (Number.isFinite(unlockAt) && Date.now() < unlockAt) {
+      const minLeft = Math.ceil((unlockAt - Date.now()) / 60000);
+      throw new Error(`Вывод доступен через ${minLeft} мин.`);
+    }
   }
 
-  if (data) {
-    const { error: deleteError } = await sb
+  // Атомарный клейм: DELETE...RETURNING. Если строка уже удалена параллельным
+  // запросом, .select().single() вернёт ошибку «no rows» — значит, второй вывод
+  // отвалится.
+  if (!memoryFallback) {
+    const { data: deletedRow, error: delErr } = await sb
       .from('user_gifts')
       .delete()
       .eq('user_id', userId)
-      .eq('id', giftDbId);
-    if (deleteError) throw new Error(deleteError.message || 'Gift delete failed');
+      .eq('id', giftDbId)
+      .select('id')
+      .maybeSingle();
+    if (delErr) throw new Error(delErr.message || 'Gift claim failed');
+    if (!deletedRow) throw new Error('Подарок уже выводится или удалён');
   } else {
     const items = getMemoryInventory(userId);
-    setMemoryInventory(userId, items.filter((entry) => Number(entry.id) !== Number(giftDbId)));
+    if (!items.some((e) => Number(e.id) === Number(giftDbId))) {
+      throw new Error('Подарок уже выводится или удалён');
+    }
+    setMemoryInventory(userId, items.filter((e) => Number(e.id) !== Number(giftDbId)));
+  }
+
+  // Зовём релеер (MTProto userbot). Передаём точный msg_id, если есть, —
+  // тогда релеер передаст ИМЕННО этот NFT и не перепутает экземпляры.
+  let relayerData = null;
+  try {
+    const relayerResp = await fetch(`${CONFIG.RELAYER_URL}/transfer`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-relayer-key': CONFIG.RELAYER_INTERNAL_KEY,
+      },
+      body: JSON.stringify({
+        userId: Number(targetUserId),
+        msgId: claimedRow.tg_msg_id ? Number(claimedRow.tg_msg_id) : null,
+        giftId: String(claimedRow.gift_id || ''),
+        giftName: String(claimedRow.gift_name || ''),
+        giftPrice: Number(claimedRow.gift_price || 0),
+      }),
+    });
+    relayerData = await relayerResp.json().catch(() => ({}));
+    if (!relayerResp.ok || !relayerData?.ok) {
+      throw new Error(relayerData?.error || 'Не удалось передать подарок (релеер)');
+    }
+  } catch (transferErr) {
+    // Откатываем клейм — возвращаем подарок юзеру
+    try {
+      if (!memoryFallback) {
+        await sb.from('user_gifts').insert({
+          id: claimedRow.id,
+          user_id: userId,
+          gift_id: claimedRow.gift_id,
+          gift_name: claimedRow.gift_name,
+          gift_price: claimedRow.gift_price,
+          gift_image: claimedRow.gift_image,
+          withdraw_available_at: claimedRow.withdraw_available_at,
+          ...(claimedRow.tg_msg_id ? { tg_msg_id: claimedRow.tg_msg_id } : {}),
+        });
+      } else {
+        const items = getMemoryInventory(userId);
+        items.unshift({
+          id: Number(claimedRow.id),
+          giftId: claimedRow.gift_id,
+          name: claimedRow.gift_name,
+          price: claimedRow.gift_price,
+          image: claimedRow.gift_image,
+          tgMsgId: claimedRow.tg_msg_id || null,
+          withdrawAt: claimedRow.withdraw_available_at || null,
+          createdAt: new Date().toISOString(),
+        });
+        setMemoryInventory(userId, items);
+      }
+    } catch (rollbackErr) {
+      console.error('❌ withdraw rollback failed:', rollbackErr?.message || rollbackErr);
+    }
+    throw new Error(transferErr?.message || 'Relayer недоступен');
   }
 
   return {
     sentGift: normalizeGift({
-      id: gift.gift_id,
-      name: gift.gift_name,
-      price: gift.gift_price,
-      image: gift.gift_image,
+      id: claimedRow.gift_id,
+      name: claimedRow.gift_name,
+      price: claimedRow.gift_price,
+      image: claimedRow.gift_image,
     }),
   };
 }
@@ -1861,7 +1974,7 @@ app.post('/api/relayer/credit-gift', async (req, res) => {
   }
 
   try {
-    const saved = await addGiftToInventory(userId, giftPayload);
+    const saved = await addGiftToInventory(userId, giftPayload, { tgMsgId: msgId });
     processedGiftMessages.add(dedupKey);
     if (processedGiftMessages.size > 10000) {
       const first = processedGiftMessages.values().next().value;
