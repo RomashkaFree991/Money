@@ -1523,6 +1523,19 @@
   const INVENTORY_HOLD_MS=0;
   const MAX_CRASH_HISTORY=10;
   let inventoryItems=[];
+  // Подтягиваем актуальные минимальные цены с Telegram NFT-маркета (бэкэнд кеширует).
+  // Молча применяем поверх захардкоженного каталога — крафт/краш/инвентарь читают .price.
+  (async()=>{try{
+    const r=await fetch(API_BASE+'/api/market-prices',{cache:'no-store'});
+    if(!r.ok) return;
+    const d=await r.json().catch(()=>({}));
+    const prices=d&&d.prices||{};
+    for(const g of GIFT_CATALOG){
+      const id=String(g.id||g.giftId||'');
+      const mp=Number(prices[id]);
+      if(Number.isFinite(mp)&&mp>0) g.price=mp;
+    }
+  }catch(e){}})();
   const withdrawingGiftIds=new Set();
   let crashPrizeGift=null;
   let crashPrizePending=false;
@@ -1980,22 +1993,49 @@
     if(e.target.closest('[data-action="withdraw"]')){
       if(!canWithdrawItem(item) || withdrawingGiftIds.has(String(item.id))) return;
       dismissKeyboard();
+      if(!tg?.openInvoice){
+        tg?.showAlert?tg.showAlert(t('openTelegramPay')):alert(t('openTelegramPay'));
+        return;
+      }
       withdrawingGiftIds.add(String(item.id));
       renderInventory();
+      const cleanup=()=>{withdrawingGiftIds.delete(String(item.id));renderInventory();};
       try{
-        const resp=await fetch(API_BASE+'/api/inventory/withdraw',{
+        // Шаг 1: создаём инвойс на комиссию (25⭐ по умолчанию)
+        const invResp=await fetch(API_BASE+'/api/inventory/withdraw-invoice',{
           method:'POST',
           headers:{'Content-Type':'application/json','x-init-data':tg?.initData||''},
           body:JSON.stringify({giftId:item.id}),
         });
-        const data=await resp.json().catch(()=>({}));
-        if(!resp.ok) throw new Error(data.error||'Withdraw failed');
-        if(Array.isArray(data.items)) inventoryItems=data.items.map(item=>normalizeInventoryGift(item)).filter(Boolean);
-        withdrawingGiftIds.delete(String(item.id));
-        renderInventory();
+        const invData=await invResp.json().catch(()=>({}));
+        if(!invResp.ok) throw new Error(invData.error||'Invoice failed');
+        const {invoiceLink,intentId}=invData;
+        if(!invoiceLink||!intentId) throw new Error('Bad invoice response');
+        // Шаг 2: открываем оплату. Только status==='paid' → реальный вывод.
+        tg.openInvoice(invoiceLink, async(status)=>{
+          if(status!=='paid'){
+            cleanup();
+            if(status==='failed') tg?.showAlert?.(t('paymentFailed'));
+            else if(status==='cancelled') tg?.showAlert?.(t('paymentCancelled'));
+            return;
+          }
+          try{
+            const resp=await fetch(API_BASE+'/api/inventory/withdraw',{
+              method:'POST',
+              headers:{'Content-Type':'application/json','x-init-data':tg?.initData||''},
+              body:JSON.stringify({giftId:item.id,intentId}),
+            });
+            const data=await resp.json().catch(()=>({}));
+            if(!resp.ok) throw new Error(data.error||'Withdraw failed');
+            if(Array.isArray(data.items)) inventoryItems=data.items.map(it=>normalizeInventoryGift(it)).filter(Boolean);
+            cleanup();
+          }catch(err){
+            cleanup();
+            tg?.showAlert?tg.showAlert(err.message):alert(err.message);
+          }
+        });
       }catch(err){
-        withdrawingGiftIds.delete(String(item.id));
-        renderInventory();
+        cleanup();
         tg?.showAlert?tg.showAlert(err.message):alert(err.message);
       }
     }
