@@ -95,8 +95,8 @@
 
   /* === TOP/LEADERBOARD === */
   .top-timer-cloud{
-    background:#007AFF;border-radius:16px;padding:14px 18px;margin:0 16px 16px;
-    display:flex;align-items:center;justify-content:center;text-align:center;
+    background:#007AFF;border-radius:18px;padding:18px 16px;margin:0 0 16px;
+    display:flex;align-items:center;justify-content:center;text-align:center;gap:6px;
     color:#fff;font-weight:800;font-size:15px;letter-spacing:.2px;
     box-shadow:0 6px 18px rgba(0,122,255,.28);
   }
@@ -299,6 +299,9 @@
   .upgrade-wheel-disc{display:none}
   .upgrade-wheel-logo{position:relative;z-index:2;width:112px;height:112px;display:flex;align-items:center;justify-content:center;filter:drop-shadow(0 10px 18px rgba(0,0,0,.24));pointer-events:none;}
   .upgrade-wheel-logo svg, .upgrade-wheel-logo canvas{width:100%;height:100%;}
+  .upgrade-wheel-logo.hidden{display:none}
+  .upgrade-wheel-percent{position:absolute;z-index:3;color:#fff;font-weight:900;font-size:36px;letter-spacing:.5px;text-shadow:0 4px 14px rgba(0,0,0,.45);display:none;pointer-events:none;}
+  .upgrade-wheel-percent.visible{display:block}
   .upgrade-wheel-center-glow{position:absolute;z-index:1;width:126px;height:126px;border-radius:50%;background:radial-gradient(circle, rgba(255,255,255,.08), rgba(255,255,255,0));pointer-events:none;}
   .upgrade-subtitle{color:rgba(255,255,255,.4);font-size:14px;font-weight:600;margin-bottom:12px}
   .upgrade-chance{color:#fff;font-size:16px;font-weight:700;margin-bottom:20px;opacity:.92}
@@ -1034,7 +1037,7 @@
         <div class="top-my-score">0 <img src="assets/star.png" alt=""></div>
       </div>
     </div>
-    <div class="top-timer-cloud" id="topTimerCloud">До конца топа <b id="topTimerText">7д0ч0м0с</b></div>
+    <div class="top-timer-cloud" id="topTimerCloud">ДО КОНЦА <b id="topTimerText">7д0ч0м0с</b></div>
     <div class="top-list">
       <div class="top-row">
         <span class="top-rank gold">1</span>
@@ -1184,11 +1187,12 @@
             <div class="upgrade-wheel-disc" id="upgradeWheelDisc"></div>
             <div class="upgrade-wheel-center-glow"></div>
             <div class="upgrade-wheel-logo" id="upgradeWheelLogo"></div>
+            <div class="upgrade-wheel-percent" id="upgradeWheelPercent"></div>
           </div>
         </div>
       </div>
       <div class="upgrade-subtitle">Выберите подарок</div>
-      <div class="upgrade-chance" id="upgradeChance">Шанс —</div>
+      <div class="upgrade-chance" id="upgradeChance" style="display:none"></div>
       <div class="slots-row">
         <div class="slot-cell" id="slotMyGifts">
           <svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/></svg>
@@ -1920,7 +1924,16 @@
     slotSourceEl.classList.toggle('active',!!upgradeSourceGift);
     slotTargetEl.classList.toggle('active',!!upgradeTargetGift);
     const chance=getUpgradeChance();
-    upgradeChanceEl.textContent=chance?(t('chance')+' '+chance+'%'):t('chanceEmpty');
+    // Прячем строку «Шанс —» — теперь % показываем в центре колеса.
+    const _logoEl=document.getElementById('upgradeWheelLogo');
+    const _pctEl=document.getElementById('upgradeWheelPercent');
+    if(chance){
+      if(_pctEl){_pctEl.textContent=chance+'%';_pctEl.classList.add('visible');}
+      if(_logoEl) _logoEl.classList.add('hidden');
+    } else {
+      if(_pctEl){_pctEl.textContent='';_pctEl.classList.remove('visible');}
+      if(_logoEl) _logoEl.classList.remove('hidden');
+    }
     const canUpgrade=!!(upgradeSourceGift&&upgradeTargetGift&&!upgradeSpinBusy);
     upgradeBtnEl.classList.toggle('active',canUpgrade);
     upgradeBtnEl.classList.toggle('dim',!canUpgrade);
