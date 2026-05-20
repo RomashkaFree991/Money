@@ -636,9 +636,10 @@
   }
 
   /* === CRASH === */
-  .crash-page{display:flex;flex-direction:column;height:100%}
+  .crash-page{display:flex;flex-direction:column;height:100%;min-height:0}
   .crash-sky{
-    flex:4;background:#000;position:relative;overflow:hidden;
+    flex:4 1 0;min-height:55vh;
+    background:#000;position:relative;overflow:hidden;
     display:flex;flex-direction:column;align-items:center;justify-content:flex-end;
     padding-bottom:20px;
   }
@@ -737,9 +738,12 @@
   .crash-bet-btn.dim{opacity:.3;cursor:default}
   .crash-bet-btn img{width:18px;height:18px;object-fit:contain;filter:drop-shadow(0 0 3px rgba(255,200,0,.4))}
   .crash-ground{
-    flex:1;
-    display:flex;align-items:center;justify-content:center;
+    flex:0 0 auto;
+    max-height:38vh;
+    min-height:0;
+    display:flex;align-items:flex-start;justify-content:center;
     padding:16px 12px;
+    overflow:hidden;
   }
   .crash-wait{
     width:100%;border-radius:24px;
@@ -747,8 +751,8 @@
     border:1px solid rgba(255,255,255,.08);
     display:flex;flex-direction:column;align-items:center;justify-content:center;
     overflow:hidden;padding:16px 14px;
-    transition:height .3s ease;
-    min-height:88px;
+    transition:max-height .3s ease;
+    min-height:88px;max-height:100%;
   }
   .crash-wait.empty{height:88px}
   .crash-wait.has-bet{height:auto}
@@ -791,7 +795,11 @@
   .crash-bets-stack{
     display:flex;flex-direction:column;gap:8px;
     width:100%;margin-top:10px;
+    overflow-y:auto;min-height:0;
+    max-height:calc(38vh - 120px);
+    -webkit-overflow-scrolling:touch;
   }
+  .crash-bets-stack::-webkit-scrollbar{width:0;display:none}
   .crash-bets-stack:empty{display:none}
   .crash-bet-cloud{
     display:flex;align-items:center;gap:12px;
@@ -995,6 +1003,59 @@
   .nav-item.active{transform:scale(1.15)}
   .nav-item.active .nav-label{color:#007AFF}
   .nav-item.active .nav-icon img{opacity:1;filter:brightness(0) saturate(100%) invert(33%) sepia(100%) saturate(3000%) hue-rotate(207deg) brightness(103%) contrast(101%)}
+
+  /* === ADMIN PANEL === */
+  .admin-open-btn{
+    display:flex;align-items:center;justify-content:center;gap:8px;
+    width:100%;height:46px;margin:8px 0 14px;
+    border:none;border-radius:14px;cursor:pointer;
+    background:linear-gradient(135deg,#FF9500 0%,#FF3B30 100%);
+    color:#fff;font-size:15px;font-weight:800;
+    box-shadow:0 6px 18px rgba(255,69,58,.28);
+  }
+  .admin-overlay{
+    position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.78);
+    display:none;align-items:flex-end;justify-content:center;
+    -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+  }
+  .admin-overlay.open{display:flex}
+  .admin-sheet{
+    width:100%;max-width:520px;max-height:90vh;overflow-y:auto;
+    background:#0E0E10;border-radius:24px 24px 0 0;padding:18px 16px 30px;
+    border-top:1px solid rgba(255,255,255,.08);
+  }
+  .admin-sheet h2{color:#fff;font-size:18px;font-weight:800;margin:0;display:flex;align-items:center;justify-content:space-between}
+  .admin-close{
+    background:rgba(255,255,255,.08);color:#fff;border:none;
+    width:32px;height:32px;border-radius:50%;font-size:18px;cursor:pointer;
+  }
+  .admin-tabs{display:flex;gap:6px;margin:14px 0 12px;background:rgba(255,255,255,.06);border-radius:12px;padding:4px}
+  .admin-tab{flex:1;border:none;background:transparent;color:rgba(255,255,255,.55);padding:9px 6px;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer}
+  .admin-tab.active{background:#007AFF;color:#fff}
+  .admin-section{display:none}
+  .admin-section.active{display:block}
+  .admin-section label{display:block;color:rgba(255,255,255,.6);font-size:12px;font-weight:600;margin:10px 0 4px}
+  .admin-section input,.admin-section select{
+    width:100%;height:42px;border-radius:10px;
+    background:#1C1C1E;border:1px solid rgba(255,255,255,.08);
+    color:#fff;font-size:14px;padding:0 12px;outline:none;
+  }
+  .admin-section input:focus,.admin-section select:focus{border-color:#007AFF}
+  .admin-row.choice{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+  .admin-choice{
+    flex:1;min-width:90px;padding:10px 8px;border-radius:10px;cursor:pointer;text-align:center;
+    background:#1C1C1E;border:1.5px solid rgba(255,255,255,.08);
+    color:rgba(255,255,255,.6);font-size:13px;font-weight:700;user-select:none;
+  }
+  .admin-choice.active{background:#007AFF;border-color:#007AFF;color:#fff}
+  .admin-submit{
+    width:100%;height:46px;margin-top:14px;border:none;border-radius:12px;cursor:pointer;
+    background:#34C759;color:#fff;font-size:15px;font-weight:800;
+  }
+  .admin-submit.danger{background:#FF3B30}
+  .admin-msg{margin-top:10px;color:#34C759;font-size:13px;font-weight:600;min-height:18px;word-break:break-word}
+  .admin-msg.err{color:#FF3B30}
+  .admin-hint{color:rgba(255,255,255,.4);font-size:12px;margin-top:6px}
 </style>
 </head>
 <body>
@@ -1118,6 +1179,10 @@
       <div class="profile-name" id="profileName">User</div>
       <div class="profile-username" id="profileUser">@user</div>
     </div>
+
+    <button id="adminPanelBtn" class="admin-open-btn" style="display:none">
+      <span>🔧</span><span>Админ-панель</span>
+    </button>
 
     <div class="section-title">Промокоды</div>
     <div class="promo-input-wrap">
@@ -3101,7 +3166,11 @@
       return;
     }
 
-    if(viewerBet.status==='lost'||state?.phase==='ended'){
+    // Бывал баг: своя ставка моргала «проигрышной» в самом конце раунда,
+    // когда server.phase уже 'ended', а cashedOut ещё не успел докатиться.
+    // Теперь доверяем ТОЛЬКО серверному status==='lost' — он атомарно ставится
+    // на финализации раунда. Гонка с локальным «выиграл» больше не возможна.
+    if(viewerBet.status==='lost' && !crashBetSettled){
       crashCashoutBusy=false;
       crashBetSyncPending=false;
       crashBetActive=false;
@@ -4338,6 +4407,219 @@
   }
 
 
+
+  // ════════════════════ АДМИНКА ════════════════════
+  (function initAdmin(){
+    const btn=document.getElementById('adminPanelBtn');
+    if(!btn) return;
+    const overlay=document.getElementById('adminOverlay');
+    const tabs=overlay?.querySelectorAll('.admin-tab')||[];
+    const sections=overlay?.querySelectorAll('.admin-section')||[];
+
+    // Подняли админский флаг — показываем кнопку.
+    fetch(API_BASE+'/api/admin/me',{headers:{'x-init-data':tg?.initData||''}})
+      .then(r=>r.ok?r.json():null)
+      .then(j=>{ if(j&&j.isAdmin){ btn.style.display='flex'; } })
+      .catch(()=>{});
+
+    btn.addEventListener('click',()=>{
+      overlay.classList.add('open');
+      loadPolicy();
+      buildGiftSelect();
+    });
+    overlay?.querySelector('.admin-close')?.addEventListener('click',()=>overlay.classList.remove('open'));
+    overlay?.addEventListener('click',e=>{ if(e.target===overlay) overlay.classList.remove('open'); });
+
+    tabs.forEach(t=>t.addEventListener('click',()=>{
+      tabs.forEach(x=>x.classList.remove('active'));
+      sections.forEach(s=>s.classList.remove('active'));
+      t.classList.add('active');
+      document.getElementById('adminSec_'+t.dataset.tab)?.classList.add('active');
+    }));
+
+    // ───── PROMO ─────
+    const promoCode=document.getElementById('adm_promoCode');
+    const promoMax=document.getElementById('adm_promoMax');
+    const promoStars=document.getElementById('adm_promoReward');
+    const promoGift=document.getElementById('adm_promoGift');
+    const promoTypeBtns=overlay?.querySelectorAll('[data-promotype]')||[];
+    const promoStarsBlock=document.getElementById('adm_promoStarsBlock');
+    const promoGiftBlock=document.getElementById('adm_promoGiftBlock');
+    const promoMsg=document.getElementById('adm_promoMsg');
+
+    let promoType='stars';
+    function setPromoType(t){
+      promoType=t;
+      promoTypeBtns.forEach(b=>b.classList.toggle('active',b.dataset.promotype===t));
+      promoStarsBlock.style.display = t==='stars'?'block':'none';
+      promoGiftBlock.style.display  = t==='gift' ?'block':'none';
+    }
+    promoTypeBtns.forEach(b=>b.addEventListener('click',()=>setPromoType(b.dataset.promotype)));
+    setPromoType('stars');
+
+    function buildGiftSelect(){
+      if(!promoGift||promoGift.options.length>0) return;
+      const sorted=[...GIFT_CATALOG].sort((a,b)=>(a.price||0)-(b.price||0));
+      const frag=document.createDocumentFragment();
+      for(const g of sorted){
+        const opt=document.createElement('option');
+        opt.value=String(g.id||'');
+        opt.textContent=`${g.name} — ${g.price}⭐`;
+        frag.appendChild(opt);
+      }
+      promoGift.appendChild(frag);
+    }
+
+    document.getElementById('adm_promoCreate').addEventListener('click',async()=>{
+      promoMsg.classList.remove('err'); promoMsg.textContent='Создаём…';
+      const body={
+        code:(promoCode.value||'').trim(),
+        maxUses:Number(promoMax.value||1),
+      };
+      if(promoType==='gift') body.giftId=promoGift.value;
+      else body.reward=Number(promoStars.value||0);
+      try{
+        const r=await fetch(API_BASE+'/api/admin/promo/create',{
+          method:'POST',
+          headers:{'Content-Type':'application/json','x-init-data':tg?.initData||''},
+          body:JSON.stringify(body),
+        });
+        const j=await r.json();
+        if(!r.ok) throw new Error(j.error||'fail');
+        promoMsg.textContent=`✅ Создан промокод ${j.code}` + (j.gift?` (подарок «${j.gift.name}»)`:` (+${j.reward}⭐)`) + `, использований: ${j.maxUses}`;
+        promoCode.value=''; promoStars.value='';
+      }catch(e){
+        promoMsg.classList.add('err'); promoMsg.textContent='❌ '+(e.message||'Ошибка');
+      }
+    });
+
+    // ───── BALANCE ─────
+    const balUid=document.getElementById('adm_balUid');
+    const balAmt=document.getElementById('adm_balAmt');
+    const balMsg=document.getElementById('adm_balMsg');
+    document.getElementById('adm_balGrant').addEventListener('click',async()=>{
+      balMsg.classList.remove('err'); balMsg.textContent='Зачисляем…';
+      try{
+        const r=await fetch(API_BASE+'/api/admin/balance/grant',{
+          method:'POST',
+          headers:{'Content-Type':'application/json','x-init-data':tg?.initData||''},
+          body:JSON.stringify({userId:Number(balUid.value||0),amount:Number(balAmt.value||0)}),
+        });
+        const j=await r.json();
+        if(!r.ok) throw new Error(j.error||'fail');
+        balMsg.textContent=`✅ Юзер ${j.userId}: ${j.granted>0?'+':''}${j.granted}⭐ → баланс ${j.balance}⭐`;
+        balAmt.value='';
+      }catch(e){
+        balMsg.classList.add('err'); balMsg.textContent='❌ '+(e.message||'Ошибка');
+      }
+    });
+
+    // ───── WITHDRAW POLICY ─────
+    const polChoices=overlay?.querySelectorAll('[data-pol]')||[];
+    const polUidRow=document.getElementById('adm_polUidRow');
+    const polUid=document.getElementById('adm_polUid');
+    const polMsg=document.getElementById('adm_polMsg');
+    let polMode='none';
+
+    function setPolMode(m){
+      polMode=m;
+      polChoices.forEach(c=>c.classList.toggle('active',c.dataset.pol===m));
+      polUidRow.style.display = m==='user' ? 'block' : 'none';
+    }
+    polChoices.forEach(c=>c.addEventListener('click',()=>setPolMode(c.dataset.pol)));
+
+    async function loadPolicy(){
+      polMsg.textContent='';
+      try{
+        const r=await fetch(API_BASE+'/api/admin/withdraw-policy',{headers:{'x-init-data':tg?.initData||''}});
+        if(!r.ok) return;
+        const j=await r.json();
+        setPolMode(j.mode||'none');
+        polUid.value=(j.userIds||[]).join(',');
+      }catch{}
+    }
+    document.getElementById('adm_polSave').addEventListener('click',async()=>{
+      polMsg.classList.remove('err'); polMsg.textContent='Сохраняем…';
+      const body={mode:polMode};
+      if(polMode==='user'){
+        body.userIds=(polUid.value||'').split(',').map(s=>Number(String(s).trim())).filter(Boolean);
+      }
+      try{
+        const r=await fetch(API_BASE+'/api/admin/withdraw-policy',{
+          method:'POST',
+          headers:{'Content-Type':'application/json','x-init-data':tg?.initData||''},
+          body:JSON.stringify(body),
+        });
+        const j=await r.json();
+        if(!r.ok) throw new Error(j.error||'fail');
+        const txt=({all:'🚫 Запрещён ВСЕМ',user:`🚫 Запрещён юзерам: ${(j.policy.userIds||[]).join(', ')}`,none:'✅ Вывод разрешён всем'})[j.policy.mode];
+        polMsg.textContent=txt;
+      }catch(e){
+        polMsg.classList.add('err'); polMsg.textContent='❌ '+(e.message||'Ошибка');
+      }
+    });
+  })();
+
 </script>
+<div class="admin-overlay" id="adminOverlay">
+  <div class="admin-sheet">
+    <h2>🔧 Админ-панель <button class="admin-close" type="button">✕</button></h2>
+    <div class="admin-tabs">
+      <button class="admin-tab active" data-tab="promo" type="button">Промокод</button>
+      <button class="admin-tab" data-tab="bal" type="button">Баланс</button>
+      <button class="admin-tab" data-tab="pol" type="button">Вывод</button>
+    </div>
+
+    <!-- PROMO -->
+    <div class="admin-section active" id="adminSec_promo">
+      <label>Код промокода</label>
+      <input id="adm_promoCode" type="text" placeholder="MONEYMONKEY100" autocapitalize="characters">
+      <label>Тип награды</label>
+      <div class="admin-row choice">
+        <div class="admin-choice active" data-promotype="stars">⭐ Звёзды</div>
+        <div class="admin-choice" data-promotype="gift">🎁 Подарок</div>
+      </div>
+      <div id="adm_promoStarsBlock">
+        <label>Сколько звёзд</label>
+        <input id="adm_promoReward" type="number" min="1" placeholder="100">
+      </div>
+      <div id="adm_promoGiftBlock" style="display:none">
+        <label>Какой подарок</label>
+        <select id="adm_promoGift"></select>
+      </div>
+      <label>Максимум активаций (одним юзером)</label>
+      <input id="adm_promoMax" type="number" min="1" value="1">
+      <div class="admin-hint">Промокод можно использовать любому количеству юзеров — каждый юзер «N раз», где N — число выше.</div>
+      <button class="admin-submit" id="adm_promoCreate" type="button">Создать промокод</button>
+      <div class="admin-msg" id="adm_promoMsg"></div>
+    </div>
+
+    <!-- BALANCE -->
+    <div class="admin-section" id="adminSec_bal">
+      <label>Telegram User ID</label>
+      <input id="adm_balUid" type="number" placeholder="123456789">
+      <label>Сумма в звёздах (минус = списать)</label>
+      <input id="adm_balAmt" type="number" placeholder="1000">
+      <button class="admin-submit" id="adm_balGrant" type="button">Выдать / списать</button>
+      <div class="admin-msg" id="adm_balMsg"></div>
+    </div>
+
+    <!-- POLICY -->
+    <div class="admin-section" id="adminSec_pol">
+      <label>Кому запретить вывод подарков</label>
+      <div class="admin-row choice">
+        <div class="admin-choice active" data-pol="none">Никому</div>
+        <div class="admin-choice" data-pol="user">Конкретным</div>
+        <div class="admin-choice" data-pol="all">Всем</div>
+      </div>
+      <div id="adm_polUidRow" style="display:none">
+        <label>User ID через запятую</label>
+        <input id="adm_polUid" type="text" placeholder="123456789, 987654321">
+      </div>
+      <button class="admin-submit danger" id="adm_polSave" type="button">Применить политику</button>
+      <div class="admin-msg" id="adm_polMsg"></div>
+    </div>
+  </div>
+</div>
 </body>
 </html>
