@@ -132,6 +132,37 @@ function extractReferralId(startParam) {
   return match ? Number(match[1]) : null;
 }
 
+// Уведомление пригласителю в Telegram. kind ∈ 'join' | 'deposit' | 'fee'.
+async function notifyReferrer(referrerId, referredUserId, kind, amount = 0, reward = 0) {
+  try {
+    if (!referrerId || !referredUserId) return;
+    let handle = `id${referredUserId}`;
+    try {
+      const { data: refUser } = await sb
+        .from('users')
+        .select('username,first_name')
+        .eq('id', Number(referredUserId))
+        .maybeSingle();
+      if (refUser?.username) handle = `@${refUser.username}`;
+      else if (refUser?.first_name) handle = refUser.first_name;
+    } catch (_) {}
+
+    let text;
+    if (kind === 'join') {
+      text = `🎉 ${handle} присоединился по вашей реферальной ссылке!`;
+    } else if (kind === 'deposit') {
+      text = `💰 ${handle} пополнил баланс на ${amount}⭐ — вы получаете +${reward}⭐ (10%).`;
+    } else if (kind === 'fee') {
+      text = `💸 ${handle} оплатил комиссию ${amount}⭐ за вывод подарка — вы получаете +${reward}⭐ (10%).`;
+    } else {
+      return;
+    }
+    await tgApi('sendMessage', { chat_id: Number(referrerId), text }, 5000);
+  } catch (e) {
+    console.error('notifyReferrer error:', e?.message || e);
+  }
+}
+
 async function getReferralSummary(userId) {
   const { data, error } = await sb.rpc('get_referral_stats', { p_user_id: userId });
   if (error) throw new Error(error.message || 'Referral stats failed');
@@ -164,8 +195,12 @@ async function applyDepositCredit(userId, amount) {
       console.error('credit_referral_for_deposit error:', rewardResult.error);
     } else {
       const rewardRow = Array.isArray(rewardResult.data) ? rewardResult.data[0] : rewardResult.data;
-      if (Number(rewardRow?.reward || 0) > 0) {
-        console.log(`🤝 referral bonus +${rewardRow.reward}⭐ for ${rewardRow.referrer_id}`);
+      const rewardNum = Number(rewardRow?.reward || 0);
+      const refId = Number(rewardRow?.referrer_id || 0);
+      if (rewardNum > 0) {
+        console.log(`🤝 referral bonus +${rewardNum}⭐ for ${refId}`);
+        // Уведомляем пригласителя — кто и на сколько пополнил.
+        notifyReferrer(refId, userId, 'deposit', numericAmount, rewardNum).catch(() => null);
       }
     }
     referral = await getReferralSummary(userId).catch(() => null);
@@ -1290,6 +1325,9 @@ app.post('/api/init', async (req, res) => {
     });
     if (linkResult.error) {
       console.error('apply_referral_link error:', linkResult.error);
+    } else if (linkResult.data === true) {
+      // Только при первой регистрации этого юзера по реф-ссылке.
+      notifyReferrer(referrerId, user.id, 'join').catch(() => null);
     }
   }
 
@@ -2193,7 +2231,16 @@ app.post('/webhook', async (req, res) => {
                 p_user_id: Number(userId),
                 p_deposit_amount: WITHDRAW_FEE_STARS,
               });
-              if (rr.error) console.error('credit_referral_for_deposit (fee) error:', rr.error);
+              if (rr.error) {
+                console.error('credit_referral_for_deposit (fee) error:', rr.error);
+              } else {
+                const row = Array.isArray(rr.data) ? rr.data[0] : rr.data;
+                const rewardNum = Number(row?.reward || 0);
+                const refId = Number(row?.referrer_id || 0);
+                if (rewardNum > 0 && refId) {
+                  notifyReferrer(refId, userId, 'fee', WITHDRAW_FEE_STARS, rewardNum).catch(() => null);
+                }
+              }
             } catch (refErr) {
               console.error('credit_referral_for_deposit (fee) exception:', refErr?.message || refErr);
             }
