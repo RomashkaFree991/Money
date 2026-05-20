@@ -739,33 +739,35 @@
   .crash-bet-btn img{width:18px;height:18px;object-fit:contain;filter:drop-shadow(0 0 3px rgba(255,200,0,.4))}
   .crash-ground{
     flex:0 0 auto;
-    max-height:38vh;
+    max-height:46vh;
     min-height:0;
     display:flex;align-items:flex-start;justify-content:center;
-    padding:16px 12px;
+    padding:18px 12px 12px;
     overflow:hidden;
   }
   .crash-wait{
     width:100%;border-radius:24px;
     background:#1C1C1E;
     border:1px solid rgba(255,255,255,.08);
-    display:flex;flex-direction:column;align-items:center;justify-content:center;
-    overflow:hidden;padding:16px 14px;
+    display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;
+    padding:16px 14px;
     transition:max-height .3s ease;
     min-height:88px;max-height:100%;
   }
+  .crash-wait.has-bet{padding-top:18px}
   .crash-wait.empty{height:88px}
   .crash-wait.has-bet{height:auto}
   .crash-wait span{
     color:rgba(255,255,255,.4);font-size:15px;font-weight:600;
   }
   .crash-player{
-    display:none;width:100%;padding:12px 14px;
+    display:none;width:100%;padding:14px 16px;
     align-items:center;gap:12px;
     background:#1C1C1E;
     border-radius:16px;
     border:1.5px solid rgba(255,255,255,.08);
     transition:opacity .5s ease,border-color .25s ease,box-shadow .25s ease;
+    flex:0 0 auto;align-self:center;
   }
   @keyframes playerSlideIn{
     0%{opacity:0;transform:translateY(-30px);filter:blur(6px)}
@@ -795,8 +797,8 @@
   .crash-bets-stack{
     display:flex;flex-direction:column;gap:8px;
     width:100%;margin-top:10px;
-    overflow-y:auto;min-height:0;
-    max-height:calc(38vh - 120px);
+    overflow-y:auto;min-height:0;flex:1 1 auto;
+    max-height:calc(46vh - 160px);
     -webkit-overflow-scrolling:touch;
   }
   .crash-bets-stack::-webkit-scrollbar{width:0;display:none}
@@ -4409,10 +4411,15 @@
 
 
   // ════════════════════ АДМИНКА ════════════════════
-  (function initAdmin(){
+  function initAdmin(){
     const btn=document.getElementById('adminPanelBtn');
     if(!btn) return;
     const overlay=document.getElementById('adminOverlay');
+    if(!overlay){
+      // DOM ещё не готов (overlay объявлен ниже в HTML) — повторим чуть позже.
+      setTimeout(initAdmin, 50);
+      return;
+    }
     const tabs=overlay?.querySelectorAll('.admin-tab')||[];
     const sections=overlay?.querySelectorAll('.admin-section')||[];
 
@@ -4558,7 +4565,12 @@
         polMsg.classList.add('err'); polMsg.textContent='❌ '+(e.message||'Ошибка');
       }
     });
-  })();
+  }
+  if(document.readyState==='loading'){
+    document.addEventListener('DOMContentLoaded', initAdmin);
+  } else {
+    initAdmin();
+  }
 
 </script>
 <div class="admin-overlay" id="adminOverlay">
