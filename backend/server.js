@@ -15,6 +15,8 @@ const CONFIG = {
   SUPABASE_URL: process.env.SUPABASE_URL || 'https://fqpuvmvylevrnunsescf.supabase.co',
   SUPABASE_KEY: process.env.SUPABASE_KEY || 'sb_publishable_er2vwdrEh-XRKLZqxf1FhQ_sR0MncqZ',
   ADMIN_KEY: process.env.ADMIN_KEY || 'GiftPepe_2026',
+  // Список Telegram-айди админов через запятую (без пробелов) — для внутренней админки в мини-аппе.
+  ADMIN_IDS: (process.env.ADMIN_IDS || '5345465097,8667321828').split(',').map((s) => Number(String(s).trim())).filter(Boolean),
   PORT: process.env.PORT || 3000,
   MINI_APP_URL: process.env.MINI_APP_URL || 'https://moneymonkey.live',
   WEBHOOK_URL: process.env.WEBHOOK_URL || 'https://api.moneymonkey.live/webhook',
@@ -35,7 +37,7 @@ const paymentReceipts = new Map();
 
 // Withdraw flow: фронт сначала платит 25⭐ комиссию, только потом мы делаем перевод.
 // Промежуточные «intent»-ы храним в памяти: {userId, giftDbId, paid, createdAt}.
-const WITHDRAW_FEE_STARS = Number(process.env.WITHDRAW_FEE_STARS || 25);
+const WITHDRAW_FEE_STARS = Number(process.env.WITHDRAW_FEE_STARS || 30);
 const WITHDRAW_INTENT_TTL_MS = 15 * 60 * 1000;
 const pendingWithdrawIntents = new Map();
 setInterval(() => {
@@ -227,7 +229,7 @@ async function ensureTelegramWebhook(req = null) {
   if (!url) return { ok: false, skipped: true, description: 'Webhook URL not configured' };
   return tgApi('setWebhook', {
     url,
-    allowed_updates: ['message', 'pre_checkout_query'],
+    allowed_updates: ['message', 'pre_checkout_query', 'callback_query'],
     drop_pending_updates: false,
   }, 5000);
 }
@@ -243,6 +245,62 @@ async function answerPreCheckout(update) {
 
 async function handleBotMessage(message) {
   const text = String(message?.text || '').trim();
+  const chatId = Number(message?.chat?.id);
+  const senderId = Number(message?.from?.id);
+
+  // === /gift @username|id — админская команда ===
+  // Показывает кнопочный список подарков указанного юзера; нажатие = удалить.
+  const giftMatch = text.match(/^\/gift(?:@\w+)?(?:\s+(.+))?$/i);
+  if (giftMatch) {
+    if (!CONFIG.ADMIN_IDS.includes(senderId)) {
+      return tgApi('sendMessage', { chat_id: chatId, text: '⛔ Команда только для администраторов.' }, 5000);
+    }
+    const arg = String(giftMatch[1] || '').trim();
+    if (!arg) {
+      return tgApi('sendMessage', {
+        chat_id: chatId,
+        text: 'Использование: `/gift @username` или `/gift 123456789`',
+        parse_mode: 'Markdown',
+      }, 5000);
+    }
+
+    // Резолвим userId по username или принимаем числовой id напрямую.
+    let targetUserId = null;
+    if (/^\d+$/.test(arg)) {
+      targetUserId = Number(arg);
+    } else {
+      const uname = normalizeUsername(arg);
+      if (uname) {
+        try { targetUserId = await getUserIdByUsername(uname); } catch (e) { targetUserId = null; }
+      }
+    }
+    if (!targetUserId) {
+      return tgApi('sendMessage', { chat_id: chatId, text: `❌ Юзер «${arg}» не найден.` }, 5000);
+    }
+
+    let inv = [];
+    try { inv = await getUserInventory(targetUserId); } catch (e) {
+      return tgApi('sendMessage', { chat_id: chatId, text: `❌ Не удалось получить инвентарь: ${e?.message || e}` }, 5000);
+    }
+    if (!inv.length) {
+      return tgApi('sendMessage', { chat_id: chatId, text: `📭 У юзера \`${targetUserId}\` нет подарков.`, parse_mode: 'Markdown' }, 5000);
+    }
+
+    // Одна кнопка на подарок. callback_data ограничен 64 байтами, поэтому короткий формат.
+    const buttons = inv.slice(0, 80).map((g) => ([{
+      text: `🗑 ${String(g.name || 'gift').slice(0, 40)} · ${Number(g.price || 0)}⭐`,
+      callback_data: `gd:${targetUserId}:${Number(g.id)}`,
+    }]));
+    const total = inv.reduce((s, g) => s + Number(g.price || 0), 0);
+    return tgApi('sendMessage', {
+      chat_id: chatId,
+      text: `🎁 Инвентарь юзера \`${targetUserId}\` — ${inv.length} шт. на ${total}⭐\n_Нажми на подарок чтобы удалить._`,
+      parse_mode: 'Markdown',
+      reply_markup: { inline_keyboard: buttons },
+    }, 5000);
+  }
+
+  // === /start — приветствие ===
   if (!/^\/start(?:@\w+)?(?:\s|$)/i.test(text)) return null;
   const startParam = text.replace(/^\/start(?:@\w+)?\s*/i, '').trim();
   const baseMiniAppUrl = String(CONFIG.MINI_APP_URL || '').trim().replace(/\/$/, '');
@@ -253,7 +311,7 @@ async function handleBotMessage(message) {
     '🎁 Крути краш, апгрейдь подарки и забирай нфт подарки.\n\n' +
     '👇 Жми «Играть», чтобы начать!';
   return tgApi('sendMessage', {
-    chat_id: Number(message.chat.id),
+    chat_id: chatId,
     text: welcome,
     parse_mode: 'Markdown',
     disable_web_page_preview: true,
@@ -266,6 +324,64 @@ async function handleBotMessage(message) {
         ],
       ],
     },
+  }, 5000);
+}
+
+// Обработка нажатий на кнопки (callback_query). Сейчас только gd:* — админское
+// удаление подарка из инвентаря юзера.
+async function handleBotCallback(cb) {
+  const data = String(cb?.data || '');
+  const fromId = Number(cb?.from?.id);
+  const chatId = Number(cb?.message?.chat?.id);
+  const msgId = Number(cb?.message?.message_id);
+
+  const m = data.match(/^gd:(\d+):(\d+)$/);
+  if (!m) {
+    return tgApi('answerCallbackQuery', { callback_query_id: cb.id, text: 'Неизвестная кнопка', show_alert: false }, 5000);
+  }
+  if (!CONFIG.ADMIN_IDS.includes(fromId)) {
+    return tgApi('answerCallbackQuery', { callback_query_id: cb.id, text: 'Только для администраторов', show_alert: true }, 5000);
+  }
+
+  const targetUserId = Number(m[1]);
+  const giftDbId = Number(m[2]);
+  let consumed = null;
+  try {
+    consumed = await consumeInventoryGift(targetUserId, giftDbId);
+  } catch (err) {
+    return tgApi('answerCallbackQuery', { callback_query_id: cb.id, text: `Ошибка: ${err?.message || err}`, show_alert: true }, 5000);
+  }
+
+  // Перерисуем список без удалённого подарка.
+  let inv = [];
+  try { inv = await getUserInventory(targetUserId); } catch (e) { inv = []; }
+
+  await tgApi('answerCallbackQuery', {
+    callback_query_id: cb.id,
+    text: `Удалён: ${consumed?.name || 'подарок'} (${Number(consumed?.price || 0)}⭐)`,
+    show_alert: false,
+  }, 5000);
+
+  if (!inv.length) {
+    return tgApi('editMessageText', {
+      chat_id: chatId,
+      message_id: msgId,
+      text: `📭 Инвентарь юзера \`${targetUserId}\` теперь пуст.`,
+      parse_mode: 'Markdown',
+    }, 5000);
+  }
+
+  const buttons = inv.slice(0, 80).map((g) => ([{
+    text: `🗑 ${String(g.name || 'gift').slice(0, 40)} · ${Number(g.price || 0)}⭐`,
+    callback_data: `gd:${targetUserId}:${Number(g.id)}`,
+  }]));
+  const total = inv.reduce((s, g) => s + Number(g.price || 0), 0);
+  return tgApi('editMessageText', {
+    chat_id: chatId,
+    message_id: msgId,
+    text: `🎁 Инвентарь юзера \`${targetUserId}\` — ${inv.length} шт. на ${total}⭐\n_Нажми на подарок чтобы удалить._`,
+    parse_mode: 'Markdown',
+    reply_markup: { inline_keyboard: buttons },
   }, 5000);
 }
 
@@ -962,12 +1078,13 @@ async function sellAllInventoryGifts(userId) {
 
 
 function sampleCrashTarget() {
+  // v8.10: ещё немного смягчили — 45% на самый низ.
   const r = Math.random();
-  if (r < 0.42) return round2(1.01 + Math.random() * 0.74);
-  if (r < 0.74) return round2(1.75 + Math.random() * 2.05);
-  if (r < 0.91) return round2(3.8 + Math.random() * 4.7);
-  if (r < 0.98) return round2(8.5 + Math.random() * 9.5);
-  return round2(18 + Math.random() * 14);
+  if (r < 0.45) return round2(1.01 + Math.random() * 0.49);   // 45% : 1.01–1.50
+  if (r < 0.75) return round2(1.50 + Math.random() * 1.00);   // 30% : 1.50–2.50
+  if (r < 0.90) return round2(2.50 + Math.random() * 2.50);   // 15% : 2.50–5.00
+  if (r < 0.97) return round2(5.00 + Math.random() * 5.00);   // 7%  : 5.00–10.00
+  return round2(10.00 + Math.random() * 10.00);                // 3%  : 10.00–20.00
 }
 
 function sampleCraftMultiplier() {
@@ -1252,6 +1369,11 @@ app.post('/api/inventory/withdraw-invoice', async (req, res) => {
   const giftId = Number(req.body.giftId || 0);
   if (!giftId) return res.status(400).json({ error: 'Missing giftId' });
 
+  // Проверка глобального запрета вывода (см. админку: all / user / none).
+  const _wp = await getWithdrawPolicy().catch(() => ({ mode: 'none', userIds: [] }));
+  const _wpCheck = checkWithdrawAllowed(_wp, user.id);
+  if (!_wpCheck.allowed) return res.status(403).json({ error: _wpCheck.message });
+
   if (!user.username) {
     return res.status(400).json({ error: 'Сделайте @username чтобы получить подарок' });
   }
@@ -1316,9 +1438,52 @@ app.post('/api/inventory/withdraw', async (req, res) => {
       message: 'Подарок отправлен в Telegram',
     });
   } catch (error) {
-    // Оплата уже снята — оставляем intent paid, чтобы фронт мог ретраить
-    // в течение TTL без повторной комиссии.
-    res.status(400).json({ error: error.message || 'Withdraw failed' });
+    const rawMsg = String(error?.message || 'Withdraw failed');
+
+    // Ловим STARGIFT_TRANSFER_TOO_EARLY_<секунд> — подарок ещё нельзя передавать
+    // (Telegram холд). Возвращаем юзеру комиссию и показываем понятный текст.
+    const tooEarly = rawMsg.match(/STARGIFT_TRANSFER_TOO_EARLY_(\d+)/i);
+    if (tooEarly) {
+      const secs = Number(tooEarly[1] || 0);
+      let unlockText = 'позже';
+      if (Number.isFinite(secs) && secs > 0) {
+        const d = Math.floor(secs / 86400);
+        const h = Math.floor((secs % 86400) / 3600);
+        const m = Math.floor((secs % 3600) / 60);
+        const parts = [];
+        if (d > 0) parts.push(`${d}д`);
+        if (d > 0 || h > 0) parts.push(`${h}ч`);
+        if (d === 0) parts.push(`${m}м`);
+        unlockText = `через ${parts.join(' ')}`;
+      }
+
+      // Рефанд комиссии (Stars Bot API: refundStarPayment).
+      let refunded = false;
+      try {
+        if (intent.chargeId) {
+          const r = await tgApi('refundStarPayment', {
+            user_id: Number(user.id),
+            telegram_payment_charge_id: intent.chargeId,
+          });
+          refunded = !!r?.ok;
+          if (!r?.ok) console.error('refundStarPayment failed:', r);
+        }
+      } catch (refundErr) {
+        console.error('refundStarPayment error:', refundErr?.message || refundErr);
+      }
+
+      // Intent больше не нужен — подарок остался на месте, комиссия возвращена.
+      pendingWithdrawIntents.delete(intentId);
+
+      const msg = refunded
+        ? `Подарок ещё нельзя передавать (Telegram-холд). Попробуйте ${unlockText}. Комиссия ${WITHDRAW_FEE_STARS}⭐ возвращена.`
+        : `Подарок ещё нельзя передавать (Telegram-холд). Попробуйте ${unlockText}.`;
+      return res.status(400).json({ error: msg, code: 'TOO_EARLY', unlockSeconds: secs, refunded });
+    }
+
+    // Прочие ошибки — оплата уже снята, оставляем intent paid, чтобы фронт мог
+    // ретраить в течение TTL без повторной комиссии.
+    res.status(400).json({ error: rawMsg });
   }
 });
 
@@ -1338,6 +1503,7 @@ app.post('/api/inventory/sell-all', async (req, res) => {
 // учёт активаций — в таблице manual_promo_redemptions).
 const HARDCODED_PROMOS = {
   MONEYMONKEYBONUS100000PROMOKOD: { reward: 100000, maxUses: 10 },
+  MONEYMONKEY1500: { reward: 1500, maxUses: 1 },
 };
 
 async function applyHardcodedPromo(userId, code) {
@@ -1416,15 +1582,13 @@ app.post('/api/promo/redeem', async (req, res) => {
       });
     }
 
-    const rpc = await sb.rpc('apply_promo_code', {
-      p_user_id: user.id,
-      p_code: code,
-    });
-    if (rpc.error) throw new Error(rpc.error.message || 'Promo redeem failed');
-
-    const row = Array.isArray(rpc.data) ? rpc.data[0] : rpc.data;
-    if (!row?.ok) {
-      return res.status(400).json({ error: row?.message || 'Промокод недоступен' });
+    // DB-промики (таблица promo_codes). Поддерживаем и звёзды, и подарки.
+    const db = await applyDbPromo(user.id, code);
+    if (!db) {
+      return res.status(400).json({ error: 'Промокод не найден' });
+    }
+    if (!db.ok) {
+      return res.status(400).json({ error: db.message || 'Промокод недоступен' });
     }
 
     const [balanceData, referral] = await Promise.all([
@@ -1434,8 +1598,9 @@ app.post('/api/promo/redeem', async (req, res) => {
 
     res.json({
       ok: true,
-      reward: Number(row.reward || 0),
-      message: row.message || 'Промокод активирован',
+      reward: Number(db.reward || 0),
+      gift: db.gift || null,
+      message: db.message || 'Промокод активирован',
       balance: Number(balanceData || 0),
       referral,
     });
@@ -1761,8 +1926,8 @@ app.post('/api/upgrade/spin', async (req, res) => {
       return res.status(400).json({ error: 'Target gift must be more expensive' });
     }
 
-    // House edge: chance = (src/target) * 75, потолок 75% (раньше было *100, потолок 95%)
-    const chance = Math.max(1, Math.min(75, Math.round((Number(sourceGift.price || 0) / Number(targetGift.price || 1)) * 75)));
+    // House edge v8.10: chance = (src/target) * 55, потолок 60%.
+    const chance = Math.max(1, Math.min(60, Math.round((Number(sourceGift.price || 0) / Number(targetGift.price || 1)) * 55)));
     const blueDeg = Math.max(12, Math.min(348, (chance / 100) * 360));
     const isWin = Math.random() * 100 < chance;
     const safeBlueDeg = Math.max(12, Math.min(348, blueDeg));
@@ -2020,7 +2185,18 @@ app.post('/webhook', async (req, res) => {
           const intent = pendingWithdrawIntents.get(String(intentId));
           if (intent) {
             intent.paid = true;
+            intent.chargeId = p.telegram_payment_charge_id || null;
             console.log(`💸 withdraw fee paid: user ${userId} intent ${intentId}`);
+            // Реферальный бонус 10% от комиссии за вывод (например, 30⭐ → +3⭐ рефереру).
+            try {
+              const rr = await sb.rpc('credit_referral_for_deposit', {
+                p_user_id: Number(userId),
+                p_deposit_amount: WITHDRAW_FEE_STARS,
+              });
+              if (rr.error) console.error('credit_referral_for_deposit (fee) error:', rr.error);
+            } catch (refErr) {
+              console.error('credit_referral_for_deposit (fee) exception:', refErr?.message || refErr);
+            }
           } else {
             console.warn(`withdraw intent ${intentId} not found (TTL?)`);
           }
@@ -2047,6 +2223,15 @@ app.post('/webhook', async (req, res) => {
     return;
   }
 
+  if (u.callback_query) {
+    try {
+      await handleBotCallback(u.callback_query);
+    } catch (error) {
+      console.error('bot callback error:', error);
+    }
+    return;
+  }
+
   if (u.message?.text) {
     try {
       await handleBotMessage(u.message);
@@ -2062,7 +2247,7 @@ app.post('/api/set-webhook', async (req, res) => {
   }
   res.json(await tgApi('setWebhook', {
     url: req.body.url,
-    allowed_updates: ['message', 'pre_checkout_query'],
+    allowed_updates: ['message', 'pre_checkout_query', 'callback_query'],
   }));
 });
 
@@ -2512,6 +2697,229 @@ app.post('/api/admin/top/rollover', async (req, res) => {
   await setTopCycleStart(Date.now() - TOP_CYCLE_MS - 1000).catch(() => {});
   const result = await rolloverTopCycleIfDue();
   res.json(result);
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// АДМИНКА В МИНИ-АППЕ (auth по Telegram ID из ADMIN_IDS).
+// ══════════════════════════════════════════════════════════════════════════════
+
+function isAdminUser(user) {
+  return !!(user && CONFIG.ADMIN_IDS.includes(Number(user.id)));
+}
+
+function requireAdmin(req, res) {
+  const user = requireUser(req, res);
+  if (!user) return null;
+  if (!isAdminUser(user)) {
+    res.status(403).json({ error: 'Доступ только для администраторов' });
+    return null;
+  }
+  return user;
+}
+
+// --- Промокоды из БД (поддержка звёзд И подарков) ----------------------------
+async function applyDbPromo(userId, rawCode) {
+  const code = String(rawCode || '').trim();
+  if (!code) return null;
+
+  // Регистронезависимый поиск
+  const { data: rows, error } = await sb
+    .from('promo_codes')
+    .select('code,reward,max_uses_per_user,active,reward_gift_id')
+    .ilike('code', code)
+    .limit(5);
+  if (error) {
+    console.error('promo_codes lookup error:', error.message);
+    return null;
+  }
+  const promo = (rows || []).find((r) => r.active);
+  if (!promo) return null;
+
+  const { count, error: cntErr } = await sb
+    .from('manual_promo_redemptions')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('code', promo.code);
+  if (cntErr) {
+    console.error('manual_promo_redemptions count error:', cntErr.message);
+  }
+  if ((count || 0) >= Number(promo.max_uses_per_user || 1)) {
+    return { ok: false, message: 'Промокод уже активирован' };
+  }
+
+  // Кредит сначала, активация после — если кредит упал, не палим активацию.
+  let giftPayload = null;
+  let rewardStars = 0;
+
+  if (promo.reward_gift_id) {
+    const catalogGift = GIFT_CATALOG.find((g) => String(g.id || g.giftId || '') === String(promo.reward_gift_id));
+    if (!catalogGift) return { ok: false, message: 'Подарок промокода не найден в каталоге' };
+    const saved = await addGiftToInventory(userId, normalizeGift(catalogGift));
+    giftPayload = saved || normalizeGift(catalogGift);
+  } else {
+    rewardStars = Math.max(0, Math.floor(Number(promo.reward || 0)));
+    if (rewardStars > 0) {
+      const rpc = await sb.rpc('balance_add', { p_user_id: Number(userId), p_amount: rewardStars });
+      if (rpc.error) throw new Error(rpc.error.message || 'balance_add failed');
+    }
+  }
+
+  const { error: insErr } = await sb.from('manual_promo_redemptions').insert({
+    user_id: userId,
+    code: promo.code,
+    reward: rewardStars || Number(promo.reward || 0),
+  });
+  if (insErr) console.error('manual_promo_redemptions insert error:', insErr.message);
+
+  return {
+    ok: true,
+    reward: rewardStars,
+    gift: giftPayload,
+    message: giftPayload
+      ? `Промокод активирован: подарок «${giftPayload.name}»`
+      : `Промокод активирован: +${rewardStars}⭐`,
+  };
+}
+
+// --- Политика запрета вывода (app_state.key='withdraw_policy') ---------------
+async function getWithdrawPolicy() {
+  try {
+    const { data } = await sb.from('app_state').select('value').eq('key', 'withdraw_policy').maybeSingle();
+    const v = data?.value || {};
+    return {
+      mode: ['all', 'user', 'none'].includes(v.mode) ? v.mode : 'none',
+      userIds: Array.isArray(v.userIds) ? v.userIds.map((x) => Number(x)).filter(Boolean) : [],
+    };
+  } catch {
+    return { mode: 'none', userIds: [] };
+  }
+}
+
+async function setWithdrawPolicy(policy) {
+  await sb.from('app_state').upsert(
+    { key: 'withdraw_policy', value: policy, updated_at: new Date().toISOString() },
+    { onConflict: 'key' }
+  );
+  return policy;
+}
+
+function checkWithdrawAllowed(policy, userId) {
+  if (policy.mode === 'all') {
+    return { allowed: false, message: 'Вывод временно отключен администрацией' };
+  }
+  if (policy.mode === 'user' && policy.userIds.includes(Number(userId))) {
+    return { allowed: false, message: 'Вывод для вашего аккаунта временно отключен' };
+  }
+  return { allowed: true };
+}
+
+// --- Эндпойнты админки -------------------------------------------------------
+app.get('/api/admin/me', async (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  res.json({ isAdmin: isAdminUser(user), userId: user.id });
+});
+
+app.post('/api/admin/balance/grant', async (req, res) => {
+  const admin = requireAdmin(req, res);
+  if (!admin) return;
+  const targetId = Number(req.body?.userId || 0);
+  const amount = Math.floor(Number(req.body?.amount || 0));
+  if (!targetId) return res.status(400).json({ error: 'Введите userId' });
+  if (!amount) return res.status(400).json({ error: 'Введите сумму (можно отрицательную)' });
+
+  try {
+    if (amount > 0) {
+      const rpc = await sb.rpc('balance_add', { p_user_id: targetId, p_amount: amount });
+      if (rpc.error) throw new Error(rpc.error.message);
+    } else {
+      // Списание — через update users.balance
+      const cur = await getUserBalance(targetId);
+      const next = Math.max(0, cur + amount); // amount отрицательный
+      const { error } = await sb.from('users').update({ balance: next, updated_at: new Date().toISOString() }).eq('id', targetId);
+      if (error) throw new Error(error.message);
+    }
+    const balance = await getUserBalance(targetId);
+    res.json({ ok: true, userId: targetId, granted: amount, balance });
+  } catch (e) {
+    res.status(500).json({ error: e.message || 'Grant failed' });
+  }
+});
+
+app.post('/api/admin/promo/create', async (req, res) => {
+  const admin = requireAdmin(req, res);
+  if (!admin) return;
+  const code = String(req.body?.code || '').trim();
+  if (!code) return res.status(400).json({ error: 'Введите код' });
+  const maxUses = Math.max(1, Math.floor(Number(req.body?.maxUses || 1)));
+  const giftId = req.body?.giftId ? String(req.body.giftId).trim() : null;
+
+  try {
+    if (giftId) {
+      const gift = GIFT_CATALOG.find((g) => String(g.id || g.giftId || '') === giftId);
+      if (!gift) return res.status(400).json({ error: 'Подарок не найден' });
+      const { error } = await sb.from('promo_codes').upsert(
+        { code, reward: Number(gift.price || 0), max_uses_per_user: maxUses, active: true, reward_gift_id: giftId },
+        { onConflict: 'code' }
+      );
+      if (error) throw new Error(error.message);
+      return res.json({ ok: true, code, maxUses, gift: { id: gift.id, name: gift.name, price: gift.price } });
+    }
+
+    const reward = Math.floor(Number(req.body?.reward || 0));
+    if (!reward || reward <= 0) return res.status(400).json({ error: 'Введите награду в звёздах' });
+    const { error } = await sb.from('promo_codes').upsert(
+      { code, reward, max_uses_per_user: maxUses, active: true, reward_gift_id: null },
+      { onConflict: 'code' }
+    );
+    if (error) throw new Error(error.message);
+    res.json({ ok: true, code, reward, maxUses });
+  } catch (e) {
+    res.status(500).json({ error: e.message || 'Promo create failed' });
+  }
+});
+
+app.get('/api/admin/promo/list', async (req, res) => {
+  const admin = requireAdmin(req, res);
+  if (!admin) return;
+  const { data, error } = await sb
+    .from('promo_codes')
+    .select('code,reward,max_uses_per_user,active,reward_gift_id')
+    .order('code', { ascending: true })
+    .limit(200);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ items: data || [] });
+});
+
+app.post('/api/admin/promo/delete', async (req, res) => {
+  const admin = requireAdmin(req, res);
+  if (!admin) return;
+  const code = String(req.body?.code || '').trim();
+  if (!code) return res.status(400).json({ error: 'Введите код' });
+  const { error } = await sb.from('promo_codes').delete().eq('code', code);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
+});
+
+app.get('/api/admin/withdraw-policy', async (req, res) => {
+  const admin = requireAdmin(req, res);
+  if (!admin) return;
+  res.json(await getWithdrawPolicy());
+});
+
+app.post('/api/admin/withdraw-policy', async (req, res) => {
+  const admin = requireAdmin(req, res);
+  if (!admin) return;
+  const mode = String(req.body?.mode || 'none');
+  if (!['all', 'user', 'none'].includes(mode)) return res.status(400).json({ error: 'Bad mode' });
+  let userIds = [];
+  if (mode === 'user') {
+    const raw = req.body?.userIds ?? req.body?.userId;
+    userIds = (Array.isArray(raw) ? raw : [raw]).map(Number).filter(Boolean);
+    if (!userIds.length) return res.status(400).json({ error: 'Укажи хотя бы один userId' });
+  }
+  const policy = await setWithdrawPolicy({ mode, userIds });
+  res.json({ ok: true, policy });
 });
 
 app.listen(CONFIG.PORT, async () => {
