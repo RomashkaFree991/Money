@@ -1459,7 +1459,7 @@
     </div>
     <div class="bet-body">
       <div class="bet-input-row">
-        <input class="bet-amount" id="betAmount" type="number" min="1" placeholder="от 1" value="">
+        <input class="bet-amount" id="betAmount" type="number" min="1" placeholder="0" value="">
         <img src="assets/star.png" alt="star">
       </div>
       <button type="button" class="bet-submit" id="betSubmit">Сделать ставку</button>
@@ -2391,8 +2391,11 @@
   }
 
   function buildReferralLink(){
+    // v8.20: используем ?start= (а не ?startapp=) — ссылка ведёт в чат бота.
+    // Это гарантирует, что приглашённый юзер сначала нажмёт /start у бота,
+    // бот фиксирует реф-связку и шлёт уведомление пригласителю — рефералка работает 100%.
     const refId=String(referralCode||('ref_'+String(tg?.initDataUnsafe?.user?.id||'guest')));
-    return 'https://t.me/'+REFERRAL_BOT_USERNAME+'?startapp='+encodeURIComponent(refId);
+    return 'https://t.me/'+REFERRAL_BOT_USERNAME+'?start='+encodeURIComponent(refId);
   }
 
   function updateReferralUI(){
