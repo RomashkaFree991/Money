@@ -762,13 +762,14 @@
     text-align:center;align-self:center;
   }
   .crash-player{
-    display:none;width:100%;padding:14px 16px;
-    align-items:center;gap:12px;
+    display:none;width:100%;padding:7px 12px;
+    align-items:center;gap:10px;
     background:#1C1C1E;
-    border-radius:16px;
+    border-radius:14px;
     border:1.5px solid rgba(255,255,255,.08);
+    min-height:50px;
     transition:opacity .5s ease,border-color .25s ease,box-shadow .25s ease;
-    flex:0 0 auto;align-self:center;
+    flex:0 0 auto;align-self:stretch;
   }
   @keyframes playerSlideIn{
     0%{opacity:0;transform:translateY(-30px);filter:blur(6px)}
@@ -780,19 +781,18 @@
   .crash-player.fading{opacity:0}
   .crash-player.win-state{border-color:rgba(52,199,89,.95);box-shadow:0 0 0 1px rgba(52,199,89,.18),0 0 24px rgba(52,199,89,.18)}
   .crash-player.loss-state{border-color:rgba(255,59,48,.95);box-shadow:0 0 0 1px rgba(255,59,48,.16),0 0 24px rgba(255,59,48,.16)}
-  .crash-player-avatar{width:44px;height:44px;border-radius:50%;object-fit:cover;background:rgba(255,255,255,.12)}
-  .crash-player-info{flex:1}
-  .crash-player-name{color:#fff;font-size:15px;font-weight:700}
-  .crash-player-bet{display:flex;align-items:center;gap:4px;color:rgba(255,255,255,.45);font-size:13px;font-weight:600}
-  .crash-player-bet img{width:14px;height:14px;object-fit:contain;filter:drop-shadow(0 0 2px rgba(255,200,0,.3))}
-  .crash-player-win{color:#fff;font-size:17px;font-weight:800;white-space:nowrap;display:flex;align-items:center;gap:9px;flex-shrink:0}
-  .crash-player-win .crash-win-value img{width:18px;height:18px;object-fit:contain;filter:drop-shadow(0 0 3px rgba(255,200,0,.4))}
+  .crash-player-avatar{width:34px;height:34px;border-radius:50%;object-fit:cover;background:rgba(255,255,255,.12);flex-shrink:0}
+  .crash-player-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+  .crash-player-name{color:#fff;font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px}
+  .crash-player-bet{display:flex;align-items:center;gap:3px;color:rgba(255,255,255,.45);font-size:11px;font-weight:600}
+  .crash-player-bet img{width:11px;height:11px;object-fit:contain;filter:drop-shadow(0 0 2px rgba(255,200,0,.3))}
+  .crash-player-win{color:#fff;font-size:14px;font-weight:800;white-space:nowrap;display:flex;align-items:center;gap:7px;flex-shrink:0;margin-left:auto}
+  .crash-player-win .crash-win-value img{width:14px;height:14px;object-fit:contain;filter:drop-shadow(0 0 3px rgba(255,200,0,.4))}
 
-  .crash-player-info{min-width:0}
-  .crash-win-value{display:flex;align-items:center;gap:4px}
-  .crash-win-value img{width:18px;height:18px;object-fit:contain;filter:drop-shadow(0 0 3px rgba(255,200,0,.4))}
+  .crash-win-value{display:flex;align-items:center;gap:3px}
+  .crash-win-value img{width:14px;height:14px;object-fit:contain;filter:drop-shadow(0 0 3px rgba(255,200,0,.4))}
   .crash-win-gift{
-    width:34px;height:34px;object-fit:contain;flex-shrink:0;
+    width:26px;height:26px;object-fit:contain;flex-shrink:0;
     filter:drop-shadow(0 8px 12px rgba(0,0,0,.24));
   }
   .crash-bets-stack{
@@ -1459,7 +1459,7 @@
     </div>
     <div class="bet-body">
       <div class="bet-input-row">
-        <input class="bet-amount" id="betAmount" type="number" placeholder="0" value="">
+        <input class="bet-amount" id="betAmount" type="number" min="1" placeholder="от 1" value="">
         <img src="assets/star.png" alt="star">
       </div>
       <button type="button" class="bet-submit" id="betSubmit">Сделать ставку</button>
@@ -3407,6 +3407,7 @@
 
   async function placeBet(amount){
     if(!crashRealtimeState||balance<amount||crashPrizePending)return false;
+    if(Number(amount)<1) return false;
     const phase=deriveCrashDisplayPhase(crashRealtimeState);
     const lateStartGrace=!!(phase==='live' && Number(crashRealtimeState.liveStartAt||0) && (getServerNow()-Number(crashRealtimeState.liveStartAt||0))<=1400);
     if(phase!=='countdown' && !lateStartGrace) return false;
@@ -4119,14 +4120,21 @@
     crashBetSubmitLockUntil=now+240;
     const betAmountInput=document.getElementById('betAmount');
     const v=parseInt(betAmountInput.value)||0;
-    if(v>0&&v<=balance){
-      dismissKeyboard(betAmountInput);
-      closeBet();
-      const prevValue=betAmountInput.value;
-      betAmountInput.value='';
-      const ok=await placeBet(v);
-      if(!ok) betAmountInput.value=prevValue;
+    if(v<1){
+      try{tg?.HapticFeedback?.notificationOccurred?.('error');}catch(_){}
+      try{tg?.showAlert?.('Минимальная ставка 1⭐');}catch(_){alert('Минимальная ставка 1⭐');}
+      return;
     }
+    if(v>balance){
+      try{tg?.HapticFeedback?.notificationOccurred?.('error');}catch(_){}
+      return;
+    }
+    dismissKeyboard(betAmountInput);
+    closeBet();
+    const prevValue=betAmountInput.value;
+    betAmountInput.value='';
+    const ok=await placeBet(v);
+    if(!ok) betAmountInput.value=prevValue;
   }
   const betSubmitEl=document.getElementById('betSubmit');
   ['pointerdown','click'].forEach(evt=>betSubmitEl.addEventListener(evt,submitCrashBet,{passive:false}));
