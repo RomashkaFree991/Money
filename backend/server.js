@@ -360,11 +360,12 @@ async function handleBotMessage(message) {
   const chatId = Number(message?.chat?.id);
   const senderId = Number(message?.from?.id);
 
-  // === Force-reply: списание звёзд ===
-  // Админ нажал «⭐ Списать звёзды» в /info → бот спросил сумму. Ответ ловим тут.
+  const isAdmin = CONFIG.ADMIN_IDS.includes(senderId);
   const replyTo = message?.reply_to_message?.text || '';
+
+  // === Force-reply: списание звёзд ===
   const starsPrompt = replyTo.match(/Списание звёзд у юзера\s+(\d+)/);
-  if (starsPrompt && CONFIG.ADMIN_IDS.includes(senderId)) {
+  if (starsPrompt && isAdmin) {
     const targetId = Number(starsPrompt[1]);
     const amount = Math.floor(Number(String(text).replace(/[^\d-]/g, '')) || 0);
     if (!amount || amount <= 0) {
@@ -374,11 +375,46 @@ async function handleBotMessage(message) {
       const newBal = await spendBalance(targetId, amount);
       return tgApi('sendMessage', {
         chat_id: chatId,
-        text: `✅ Списано *${amount}⭐* у юзера \`${targetId}\`.\nОстаток: *${newBal}⭐*`,
-        parse_mode: 'Markdown',
+        text: `✅ Списано ${amount}⭐ у юзера ${targetId}.\nОстаток: ${newBal}⭐`,
       }, 5000);
     } catch (e) {
       return tgApi('sendMessage', { chat_id: chatId, text: `❌ Не удалось списать: ${e?.message || e}` }, 5000);
+    }
+  }
+
+  // === Force-reply: ввод цели для INFO/BAN/UNBAN/GIFT через админ-клавиатуру ===
+  if (isAdmin && replyTo) {
+    if (replyTo.startsWith('ℹ️ INFO — введи')) {
+      return runAdminInfo(chatId, text);
+    }
+    if (replyTo.startsWith('🚫 BAN — введи')) {
+      const parts = text.trim().split(/\s+/);
+      const ident = parts.shift();
+      const reason = parts.join(' ').trim() || 'Нарушение правил';
+      return runAdminBan(chatId, ident, reason);
+    }
+    if (replyTo.startsWith('✅ UNBAN — введи')) {
+      return runAdminUnban(chatId, text.trim());
+    }
+    if (replyTo.startsWith('🎁 GIFT — введи')) {
+      return runAdminGift(chatId, text.trim());
+    }
+  }
+
+  // === Reply-клавиатура: тексты-кнопки админ-панели ===
+  if (isAdmin) {
+    if (text === '📊 ТОП')   return runAdminTop(chatId);
+    if (text === 'ℹ️ INFO')  return adminForcePrompt(chatId, 'ℹ️ INFO — введи @username или ID:');
+    if (text === '🚫 BAN')   return adminForcePrompt(chatId, '🚫 BAN — введи: @username [причина]');
+    if (text === '✅ UNBAN') return adminForcePrompt(chatId, '✅ UNBAN — введи @username или ID:');
+    if (text === '🎁 GIFT')  return adminForcePrompt(chatId, '🎁 GIFT — введи @username или ID (покажу подарки):');
+    if (text === '🛠 АДМИН' || /^\/admin(?:@\w+)?(?:\s|$)/i.test(text)) {
+      return tgApi('sendMessage', {
+        chat_id: chatId,
+        text: '🛠 *Админ-панель MoneyMonkey*\n\nИспользуй кнопки внизу:',
+        parse_mode: 'Markdown',
+        reply_markup: ADMIN_KEYBOARD,
+      }, 5000);
     }
   }
 
@@ -588,7 +624,9 @@ async function handleBotMessage(message) {
     '🎰 *MoneyMonkey* — топ-казино для нфт подарков\n\n' +
     '🎁 Крути краш, апгрейдь подарки и забирай нфт подарки.\n\n' +
     '👇 Жми «Играть», чтобы начать!';
-  return tgApi('sendMessage', {
+
+  // Сначала приветствие с web_app-кнопкой.
+  await tgApi('sendMessage', {
     chat_id: chatId,
     text: welcome,
     parse_mode: 'Markdown',
@@ -602,6 +640,160 @@ async function handleBotMessage(message) {
         ],
       ],
     },
+  }, 5000);
+
+  // Админам сразу показываем reply-клавиатуру.
+  if (isAdmin) {
+    return tgApi('sendMessage', {
+      chat_id: chatId,
+      text: '🛠 *Админ-панель* загружена.\nКнопки внизу 👇',
+      parse_mode: 'Markdown',
+      reply_markup: ADMIN_KEYBOARD,
+    }, 5000);
+  }
+  return null;
+}
+
+// === Админ-клавиатура и хелперы для команд ====================================
+const ADMIN_KEYBOARD = {
+  keyboard: [
+    [{ text: '📊 ТОП' },   { text: 'ℹ️ INFO' }],
+    [{ text: '🚫 BAN' },   { text: '✅ UNBAN' }],
+    [{ text: '🎁 GIFT' }],
+  ],
+  resize_keyboard: true,
+  is_persistent: true,
+  selective: true,
+};
+
+function adminForcePrompt(chatId, promptText) {
+  return tgApi('sendMessage', {
+    chat_id: chatId,
+    text: promptText,
+    reply_markup: { force_reply: true, selective: true },
+  }, 5000);
+}
+
+async function resolveAdminTarget(ident) {
+  const raw = String(ident || '').trim();
+  if (!raw) return null;
+  if (/^\d+$/.test(raw)) return Number(raw);
+  try { return await getUserIdByUsername(normalizeUsername(raw)); } catch (_) { return null; }
+}
+
+async function runAdminTop(chatId) {
+  try {
+    const { data: leaders } = await sb
+      .from('users')
+      .select('id,first_name,username,total_deposited')
+      .gt('total_deposited', 0)
+      .order('total_deposited', { ascending: false })
+      .limit(10);
+    if (!leaders || leaders.length === 0) {
+      return tgApi('sendMessage', { chat_id: chatId, text: '📊 Топ пуст.' }, 5000);
+    }
+    const lines = ['📊 ТОП-10 (тапни чтобы убрать):', ''];
+    const buttons = leaders.map((u, i) => {
+      const handle = u.username ? `@${u.username}` : (u.first_name || `user`);
+      const safeHandle = String(handle).slice(0, 22);
+      lines.push(`${i + 1}. ${safeHandle} · id ${u.id} · ${Number(u.total_deposited || 0)}⭐`);
+      return [{
+        text: `${i + 1}. ${safeHandle} (${u.id}) · ${Number(u.total_deposited || 0)}⭐`,
+        callback_data: `tr:${Number(u.id)}`,
+      }];
+    });
+    return tgApi('sendMessage', {
+      chat_id: chatId,
+      text: lines.join('\n'),
+      reply_markup: { inline_keyboard: buttons },
+    }, 5000);
+  } catch (e) {
+    return tgApi('sendMessage', { chat_id: chatId, text: `❌ Ошибка: ${e?.message || e}` }, 5000);
+  }
+}
+
+async function runAdminInfo(chatId, ident) {
+  const targetId = await resolveAdminTarget(ident);
+  if (!targetId) return tgApi('sendMessage', { chat_id: chatId, text: `❌ Юзер «${ident}» не найден.` }, 5000);
+  try {
+    const { data: u } = await sb.from('users')
+      .select('id,first_name,username,balance,total_deposited,banned_at,ban_reason,created_at')
+      .eq('id', targetId)
+      .maybeSingle();
+    if (!u) return tgApi('sendMessage', { chat_id: chatId, text: `❌ Юзер ${targetId} не в базе.` }, 5000);
+
+    let inv = [];
+    try { inv = await getUserInventory(targetId); } catch (_) { inv = []; }
+    const giftCount = inv.length;
+    const giftSum = inv.reduce((s, g) => s + Number(g.price || 0), 0);
+
+    const handle = u.username ? `@${u.username}` : (u.first_name || 'user');
+    const banLine = u.banned_at ? `\n🚫 ЗАБАНЕН: ${u.ban_reason || '—'}` : '';
+    const txt =
+      `👤 ${handle}\n` +
+      `🆔 ID: ${u.id}\n` +
+      `⭐ Баланс: ${Number(u.balance || 0)}\n` +
+      `💰 Пополнено всего: ${Number(u.total_deposited || 0)}⭐\n` +
+      `🎁 Подарков: ${giftCount} на ${giftSum}⭐` +
+      (u.created_at ? `\n📅 Создан: ${String(u.created_at).slice(0, 10)}` : '') +
+      banLine;
+
+    return tgApi('sendMessage', {
+      chat_id: chatId,
+      text: txt,
+      reply_markup: {
+        inline_keyboard: [[
+          { text: `🎁 Инвентарь (${giftCount})`, callback_data: `ig:${targetId}` },
+          { text: '⭐ Списать звёзды',           callback_data: `bs:${targetId}` },
+        ]],
+      },
+    }, 5000);
+  } catch (e) {
+    return tgApi('sendMessage', { chat_id: chatId, text: `❌ Ошибка: ${e?.message || e}` }, 5000);
+  }
+}
+
+async function runAdminBan(chatId, ident, reason) {
+  const targetId = await resolveAdminTarget(ident);
+  if (!targetId) return tgApi('sendMessage', { chat_id: chatId, text: `❌ Юзер «${ident}» не найден.` }, 5000);
+  try {
+    await setUserBan(targetId, reason);
+    return tgApi('sendMessage', {
+      chat_id: chatId,
+      text: `🚫 Юзер ${targetId} забанен навсегда.\nПричина: ${reason}`,
+    }, 5000);
+  } catch (e) {
+    return tgApi('sendMessage', { chat_id: chatId, text: `❌ Ошибка бана: ${e?.message || e}` }, 5000);
+  }
+}
+
+async function runAdminUnban(chatId, ident) {
+  const targetId = await resolveAdminTarget(ident);
+  if (!targetId) return tgApi('sendMessage', { chat_id: chatId, text: `❌ Юзер «${ident}» не найден.` }, 5000);
+  try {
+    await clearUserBan(targetId);
+    return tgApi('sendMessage', { chat_id: chatId, text: `✅ Юзер ${targetId} разбанен.` }, 5000);
+  } catch (e) {
+    return tgApi('sendMessage', { chat_id: chatId, text: `❌ Ошибка разбана: ${e?.message || e}` }, 5000);
+  }
+}
+
+async function runAdminGift(chatId, ident) {
+  const targetUserId = await resolveAdminTarget(ident);
+  if (!targetUserId) return tgApi('sendMessage', { chat_id: chatId, text: `❌ Юзер «${ident}» не найден.` }, 5000);
+  let inv = [];
+  try { inv = await getUserInventory(targetUserId); }
+  catch (e) { return tgApi('sendMessage', { chat_id: chatId, text: `❌ Не удалось получить инвентарь: ${e?.message || e}` }, 5000); }
+  if (!inv.length) return tgApi('sendMessage', { chat_id: chatId, text: `📭 У юзера ${targetUserId} нет подарков.` }, 5000);
+  const buttons = inv.slice(0, 80).map((g) => ([{
+    text: `🗑 ${String(g.name || 'gift').slice(0, 40)} · ${Number(g.price || 0)}⭐`,
+    callback_data: `gd:${targetUserId}:${Number(g.id)}`,
+  }]));
+  const total = inv.reduce((s, g) => s + Number(g.price || 0), 0);
+  return tgApi('sendMessage', {
+    chat_id: chatId,
+    text: `🎁 Инвентарь юзера ${targetUserId} — ${inv.length} шт. на ${total}⭐\nНажми чтобы удалить.`,
+    reply_markup: { inline_keyboard: buttons },
   }, 5000);
 }
 
@@ -668,11 +860,10 @@ async function handleBotCallback(cb) {
       else if (u?.first_name) handle = u.first_name;
     } catch (_) {}
     await tgApi('answerCallbackQuery', { callback_query_id: cb.id }, 5000);
-    return tgApi('editMessageText', {
+    const editResult = await tgApi('editMessageText', {
       chat_id: chatId,
       message_id: msgId,
-      text: `❓ Точно убрать *${handle}* из топа?\n_(total\\_deposited будет обнулён)_`,
-      parse_mode: 'Markdown',
+      text: `❓ Точно убрать ${handle} (id ${targetId}) из топа?\n(total_deposited будет обнулён)`,
       reply_markup: {
         inline_keyboard: [[
           { text: '✅ Да, убрать', callback_data: `tc:${targetId}:1` },
@@ -680,6 +871,20 @@ async function handleBotCallback(cb) {
         ]],
       },
     }, 5000);
+    // Fallback: если редактирование не удалось — шлём отдельным сообщением.
+    if (!editResult || editResult.ok === false) {
+      return tgApi('sendMessage', {
+        chat_id: chatId,
+        text: `❓ Точно убрать ${handle} (id ${targetId}) из топа?`,
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '✅ Да, убрать', callback_data: `tc:${targetId}:1` },
+            { text: '❌ Отмена',     callback_data: `tc:${targetId}:0` },
+          ]],
+        },
+      }, 5000);
+    }
+    return editResult;
   }
 
   // === tc:USERID:0|1 — подтверждение убрать из топа ===
@@ -703,12 +908,15 @@ async function handleBotCallback(cb) {
       return tgApi('answerCallbackQuery', { callback_query_id: cb.id, text: `Ошибка: ${err?.message || err}`, show_alert: true }, 5000);
     }
     await tgApi('answerCallbackQuery', { callback_query_id: cb.id, text: '✅ Убран из топа' }, 5000);
-    return tgApi('editMessageText', {
+    const r2 = await tgApi('editMessageText', {
       chat_id: chatId,
       message_id: msgId,
-      text: `✅ Юзер \`${targetId}\` убран из топа (total\\_deposited = 0).`,
-      parse_mode: 'Markdown',
+      text: `✅ Юзер ${targetId} убран из топа (total_deposited = 0).`,
     }, 5000);
+    if (!r2 || r2.ok === false) {
+      return tgApi('sendMessage', { chat_id: chatId, text: `✅ Юзер ${targetId} убран из топа.` }, 5000);
+    }
+    return r2;
   }
 
   const m = data.match(/^gd:(\d+):(\d+)$/);
@@ -3137,11 +3345,12 @@ async function applyDbPromo(userId, rawCode) {
 
   // СНАЧАЛА фиксируем активацию (атомарно через UNIQUE индекс),
   // и только потом кредитим — иначе race-condition даёт x2 при одновременных запросах.
+  // ВАЖНО: пишем только колонки, которые точно есть в схеме (user_id, code, redeemed_at).
   const rewardStars = promo.reward_gift_id ? 0 : Math.max(0, Math.floor(Number(promo.reward || 0)));
   const { error: insErr } = await sb.from('manual_promo_redemptions').insert({
     user_id: Number(userId),
     code: promo.code,
-    reward: rewardStars || Number(promo.reward || 0),
+    redeemed_at: new Date().toISOString(),
   });
   if (insErr) {
     if (/duplicate key|unique/i.test(insErr.message || '')) {
