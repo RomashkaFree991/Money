@@ -739,26 +739,27 @@
   .crash-bet-btn img{width:18px;height:18px;object-fit:contain;filter:drop-shadow(0 0 3px rgba(255,200,0,.4))}
   .crash-ground{
     flex:0 0 auto;
-    max-height:46vh;
+    max-height:36vh;
     min-height:0;
     display:flex;align-items:flex-start;justify-content:center;
-    padding:18px 12px 12px;
+    padding:14px 12px 10px;
     overflow:hidden;
   }
   .crash-wait{
     width:100%;border-radius:24px;
     background:#1C1C1E;
     border:1px solid rgba(255,255,255,.08);
-    display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;
+    display:flex;flex-direction:column;align-items:center;justify-content:flex-start;
     padding:16px 14px;
     transition:max-height .3s ease;
-    min-height:88px;max-height:100%;
+    min-height:88px;max-height:100%;height:auto;
   }
-  .crash-wait.has-bet{padding-top:18px}
-  .crash-wait.empty{height:88px}
-  .crash-wait.has-bet{height:auto}
+  /* Пустое состояние (нет своей ставки) — текст по центру, контейнер растёт по контенту. */
+  .crash-wait.empty{justify-content:center;min-height:88px}
+  .crash-wait.has-bet{align-items:stretch;justify-content:flex-start;padding-top:18px}
   .crash-wait span{
     color:rgba(255,255,255,.4);font-size:15px;font-weight:600;
+    text-align:center;align-self:center;
   }
   .crash-player{
     display:none;width:100%;padding:14px 16px;
@@ -795,59 +796,59 @@
     filter:drop-shadow(0 8px 12px rgba(0,0,0,.24));
   }
   .crash-bets-stack{
-    display:flex;flex-direction:column;gap:8px;
-    width:100%;margin-top:10px;
+    display:flex;flex-direction:column;gap:6px;
+    width:100%;margin-top:8px;
     overflow-y:auto;min-height:0;flex:1 1 auto;
-    max-height:calc(46vh - 160px);
+    max-height:calc(36vh - 110px);
     -webkit-overflow-scrolling:touch;
   }
   .crash-bets-stack::-webkit-scrollbar{width:0;display:none}
   .crash-bets-stack:empty{display:none}
   .crash-bet-cloud{
-    display:flex;align-items:center;gap:12px;
-    padding:12px 14px;border-radius:16px;
+    display:flex;align-items:center;gap:10px;
+    padding:7px 12px;border-radius:14px;
     background:#1C1C1E;
     border:1.5px solid rgba(255,255,255,.08);
-    min-height:72px;
+    min-height:50px;
     transition:border-color .18s ease, box-shadow .18s ease, background .18s ease;
   }
   .crash-bet-cloud.win-state{border-color:rgba(52,199,89,.92);box-shadow:0 0 0 1px rgba(52,199,89,.16),0 0 20px rgba(52,199,89,.12)}
   .crash-bet-cloud.loss-state{border-color:rgba(255,59,48,.92);box-shadow:0 0 0 1px rgba(255,59,48,.14),0 0 20px rgba(255,59,48,.12)}
   .crash-bet-cloud-avatar{
-    width:44px;height:44px;border-radius:50%;object-fit:cover;flex-shrink:0;
+    width:34px;height:34px;border-radius:50%;object-fit:cover;flex-shrink:0;
     background:rgba(255,255,255,.12);
   }
-  .crash-bet-cloud-info{min-width:0;display:flex;flex-direction:column;gap:3px;flex:1}
+  .crash-bet-cloud-info{min-width:0;display:flex;flex-direction:column;gap:2px;flex:1}
   .crash-bet-cloud-name{
-    color:#fff;font-size:15px;font-weight:700;
+    color:#fff;font-size:13px;font-weight:700;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-    max-width:130px;
+    max-width:120px;
   }
   .crash-bet-cloud-bet{
-    display:flex;align-items:center;gap:4px;
-    color:rgba(255,255,255,.45);font-size:13px;font-weight:600;
+    display:flex;align-items:center;gap:3px;
+    color:rgba(255,255,255,.45);font-size:11px;font-weight:600;
   }
-  .crash-bet-cloud-bet img{width:14px;height:14px;object-fit:contain;filter:drop-shadow(0 0 2px rgba(255,200,0,.3))}
+  .crash-bet-cloud-bet img{width:11px;height:11px;object-fit:contain;filter:drop-shadow(0 0 2px rgba(255,200,0,.3))}
   .crash-bet-cloud-right{
     margin-left:auto;
-    display:flex;align-items:center;justify-content:flex-end;gap:9px;
-    flex-shrink:0;min-width:120px;
+    display:flex;align-items:center;justify-content:flex-end;gap:7px;
+    flex-shrink:0;min-width:80px;
   }
   .crash-bet-cloud-amount{
-    display:flex;align-items:center;gap:4px;
-    color:#fff;font-size:17px;font-weight:800;flex-shrink:0;justify-content:flex-end;
+    display:flex;align-items:center;gap:3px;
+    color:#fff;font-size:14px;font-weight:800;flex-shrink:0;justify-content:flex-end;
     white-space:nowrap;
   }
-  .crash-bet-cloud-amount img{width:18px;height:18px;object-fit:contain;filter:drop-shadow(0 0 3px rgba(255,200,0,.4))}
+  .crash-bet-cloud-amount img{width:14px;height:14px;object-fit:contain;filter:drop-shadow(0 0 3px rgba(255,200,0,.4))}
   .crash-bet-cloud-gift-wrap{
-    width:44px;height:44px;border-radius:12px;flex-shrink:0;
+    width:34px;height:34px;border-radius:10px;flex-shrink:0;
     display:flex;align-items:center;justify-content:center;
     background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);
     box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
     overflow:hidden;
   }
   .crash-bet-cloud-gift{
-    width:34px;height:34px;object-fit:contain;display:block;flex-shrink:0;
+    width:26px;height:26px;object-fit:contain;display:block;flex-shrink:0;
     filter:drop-shadow(0 8px 12px rgba(0,0,0,.24));
     transition:opacity .2s ease, transform .2s ease;
     opacity:1;transform:scale(1);
@@ -1535,6 +1536,10 @@
         body:JSON.stringify({initData:tg.initData||''}),
       });
       const data=await resp.json();
+      if(resp.status===403 && data && data.banned){
+        showBannedOverlay(data.reason||'Нарушение правил');
+        return;
+      }
       if(data.id){
         firstName=data.first_name||firstName;
         userHandle=data.username?'@'+data.username:userHandle;
@@ -1545,6 +1550,42 @@
       }
     }catch(e){console.warn('Backend init failed:',e.message)}
   }
+
+  // === BAN OVERLAY (v8.13) ===
+  function showBannedOverlay(reason){
+    if(document.getElementById('bannedOverlay')) return;
+    const ov=document.createElement('div');
+    ov.id='bannedOverlay';
+    ov.style.cssText='position:fixed;inset:0;background:rgba(8,10,18,.96);backdrop-filter:blur(8px);z-index:999999;display:flex;align-items:center;justify-content:center;padding:24px;font-family:system-ui,-apple-system,sans-serif;color:#fff;text-align:center;';
+    ov.innerHTML=`
+      <div style="max-width:380px;background:linear-gradient(180deg,#1a1d2e 0%,#0f1120 100%);border:1px solid rgba(255,80,80,.3);border-radius:20px;padding:32px 24px;box-shadow:0 20px 60px rgba(0,0,0,.6);">
+        <div style="font-size:64px;line-height:1;margin-bottom:16px;">🚫</div>
+        <div style="font-size:24px;font-weight:700;margin-bottom:8px;color:#ff5b6e;">Вы забанены</div>
+        <div style="font-size:14px;opacity:.7;margin-bottom:18px;">Доступ к MoneyMonkey закрыт</div>
+        <div style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px 16px;font-size:14px;line-height:1.45;">
+          <div style="font-size:11px;opacity:.5;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Причина</div>
+          <div id="bannedReasonText" style="word-break:break-word;"></div>
+        </div>
+        <div style="margin-top:18px;font-size:12px;opacity:.5;">Если считаешь это ошибкой — <a href="https://t.me/MoneyMonkeySupport" style="color:#7cc3ff;">поддержка</a></div>
+      </div>`;
+    document.body.appendChild(ov);
+    document.getElementById('bannedReasonText').textContent=String(reason||'Нарушение правил');
+  }
+
+  // Глобальный перехват 403 banned для любых /api/* — на случай бана мид-сессии.
+  (function(){
+    const orig=window.fetch;
+    window.fetch=async function(input,init){
+      const r=await orig.call(this,input,init);
+      if(r.status===403){
+        const url=typeof input==='string'?input:(input&&input.url)||'';
+        if(url.indexOf('/api/')!==-1){
+          try{const d=await r.clone().json();if(d&&d.banned){showBannedOverlay(d.reason||'Нарушение правил');}}catch(e){}
+        }
+      }
+      return r;
+    };
+  })();
 
   function makeTapToPlayLottie(container,path){
     if(!container||!window.lottie) return null;
