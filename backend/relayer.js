@@ -179,8 +179,13 @@ function normalizeName(s) {
   return String(s || '').replace(/\s*#.*$/, '').trim().toLowerCase();
 }
 
-async function findSavedGift(client, { giftName, giftPrice }) {
-  const targetName = normalizeName(giftName);
+async function findSavedGift(client, { giftId, giftName, giftPrice }) {
+  // v8.22: ищем сначала по giftId (точное совпадение, самый надёжный путь),
+  // потом по названию (фолбэк). По имени допускаем отклонение цены ±50%.
+  const targetId = giftId ? String(giftId).trim() : null;
+  const targetName = giftName ? normalizeName(giftName) : null;
+  if (!targetId && !targetName) return null;
+
   const me = await client.getMe();
   const meInput = await client.getInputEntity(me);
 
@@ -201,19 +206,24 @@ async function findSavedGift(client, { giftName, giftPrice }) {
     for (const sg of gifts) {
       const inner = sg.gift || sg;
       const isUnique = String(inner?.className || '').includes('Unique');
+      const innerId = String(inner?.id || inner?.giftId || '');
       const title = String(inner?.title || inner?.slug || '');
       const slug = String(inner?.slug || '') || null;
       const stars = Number(inner?.stars || sg?.convertStars || 0);
 
       if (!isUnique) continue;
-      if (normalizeName(title) !== targetName) continue;
-      // Если указана цена — допускаем небольшое отклонение
-      if (giftPrice && stars && Math.abs(stars - giftPrice) > Math.max(50, giftPrice * 0.5)) continue;
+
+      if (targetId) {
+        if (innerId !== targetId) continue;
+      } else {
+        if (normalizeName(title) !== targetName) continue;
+        if (giftPrice && stars && Math.abs(stars - giftPrice) > Math.max(50, giftPrice * 0.5)) continue;
+      }
 
       const msgId = Number(sg.msgId || sg.savedId || sg.savedStarGiftId || 0);
       if (!msgId && !slug) continue;
 
-      return { msgId, slug, isUnique, title, stars, raw: sg };
+      return { msgId, slug, isUnique, title, stars, raw: sg, giftId: innerId };
     }
 
     offset = resp?.nextOffset || '';
@@ -249,21 +259,18 @@ async function resolveTargetEntity(client, { username, userId }) {
   throw new Error(NO_USERNAME_MSG);
 }
 
-async function transferGiftToUser(client, { userId, username, giftName, giftPrice }) {
-  if (!giftName) throw new Error('giftName обязателен для поиска подарка');
+async function transferGiftToUser(client, { userId, username, giftId, giftName, giftPrice }) {
+  if (!giftId && !giftName) throw new Error('giftId или giftName обязателен для поиска подарка');
   const target = await resolveTargetEntity(client, { username, userId });
 
-  // Всегда идём от профиля релеера: ищем первый подходящий NFT по имени
-  // (и опционально по цене) в сохранённых подарках, и его передаём.
-  const saved = await findSavedGift(client, { giftName, giftPrice });
+  // Ищем NFT в сохранённых: сначала по giftId, потом по имени.
+  const saved = await findSavedGift(client, { giftId, giftName, giftPrice });
   if (!saved) {
-    throw new Error(`NFT-подарок «${giftName}» не найден в сохранённых на аккаунте релеера`);
+    const ident = giftId ? `id=${giftId}` : `«${giftName}»`;
+    throw new Error(`NFT-подарок ${ident} не найден в сохранённых на аккаунте релеера`);
   }
 
-  // payments.TransferStarGift для уникальных (NFT) подарков.
-  // Используем InputSavedStarGiftSlug если конструктор есть в этой версии gramjs,
-  // иначе fallback на InputSavedStarGiftUser({msgId}) — msgId берём из ответа
-  // payments.GetSavedStarGifts (это тот msgId, который Telegram реально ожидает).
+  // InputSavedStarGift: slug приоритетнее, msgId — фолбэк.
   let stargift;
   if (saved.slug && typeof Api.InputSavedStarGiftSlug === 'function') {
     stargift = new Api.InputSavedStarGiftSlug({ slug: saved.slug });
@@ -273,16 +280,48 @@ async function transferGiftToUser(client, { userId, username, giftName, giftPric
     throw new Error('Версия gramjs не поддерживает InputSavedStarGift*');
   }
 
+  // ════════════════════════════════════════════════════════════════════════
+  // v8.22 — главный фикс PAYMENT_REQUIRED.
+  // Для уникальных (NFT) подарков прямой payments.TransferStarGift возвращает
+  // 400 PAYMENT_REQUIRED, потому что Telegram ожидает оплату звёздами через
+  // payment-form invoice (как платный transfer).
+  // Правильный flow:
+  //   1. inputInvoiceStarGiftTransfer{stargift, to_id}
+  //   2. payments.getPaymentForm(invoice) → formId
+  //   3. payments.sendStarsForm(formId, invoice) → реально снимает 25⭐ и передаёт.
+  // Прямой TransferStarGift оставляем как фолбэк для очень старых раскладок.
+  // ════════════════════════════════════════════════════════════════════════
+  const InputInvoiceCtor = Api.InputInvoiceStarGiftTransfer;
+  if (typeof InputInvoiceCtor === 'function') {
+    try {
+      const invoice = new InputInvoiceCtor({ stargift, toId: target });
+      const form = await client.invoke(new Api.payments.GetPaymentForm({ invoice }));
+      const rawFormId = form?.formId ?? form?.form_id;
+      if (rawFormId === undefined || rawFormId === null) {
+        throw new Error('GetPaymentForm returned no formId');
+      }
+      const formId = typeof rawFormId === 'bigint' ? rawFormId : BigInt(rawFormId);
+      await client.invoke(new Api.payments.SendStarsForm({ formId, invoice }));
+      console.log(`   💸 invoice-flow transfer ok: gift=${saved.giftId} title=«${saved.title}» via=invoice`);
+      return { ok: true, msgId: saved.msgId, slug: saved.slug, title: saved.title, giftId: saved.giftId, via: 'invoice' };
+    } catch (err) {
+      const msg = String(err?.message || err);
+      // Реальные ошибки оплаты (баланс, кулдаун, и т.п.) пробрасываем сразу.
+      // А если конструктор/инвойс не поддержан — пробуем прямой путь как фолбэк.
+      const recoverable = /UNKNOWN|CONSTRUCTOR|MISSING|not (a )?function/i.test(msg);
+      if (!recoverable) {
+        throw new Error('Transfer via invoice failed: ' + msg);
+      }
+      console.warn('   ⚠️ invoice flow unsupported, fallback to direct: ' + msg);
+    }
+  }
+
   try {
-    await client.invoke(new Api.payments.TransferStarGift({
-      stargift,
-      toId: target,
-    }));
+    await client.invoke(new Api.payments.TransferStarGift({ stargift, toId: target }));
   } catch (err) {
     throw new Error('TransferStarGift failed: ' + (err?.message || err));
   }
-
-  return { ok: true, msgId: saved.msgId, slug: saved.slug, title: saved.title };
+  return { ok: true, msgId: saved.msgId, slug: saved.slug, title: saved.title, giftId: saved.giftId, via: 'direct' };
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -390,16 +429,17 @@ function startHttpServer() {
         const userId = Number(body.userId || 0);
         const username = body.username ? String(body.username).replace(/^@/, '').trim() : null;
         const giftName = String(body.giftName || '');
+        const giftId = body.giftId ? String(body.giftId).trim() : '';
         const giftPrice = Number(body.giftPrice || 0);
-        if ((!userId && !username) || !giftName) {
+        if ((!userId && !username) || (!giftId && !giftName)) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: '(userId|username) and giftName required' }));
+          res.end(JSON.stringify({ ok: false, error: '(userId|username) and (giftId|giftName) required' }));
           return;
         }
 
-        console.log(`📤 transfer request: «${giftName}» (${giftPrice}⭐) → @${username || ''}/${userId || '?'}`);
+        console.log(`📤 transfer request: id=${giftId || '-'} «${giftName}» (${giftPrice}⭐) → @${username || ''}/${userId || '?'}`);
         try {
-          const out = await transferGiftToUser(tgClient, { userId, username, giftName, giftPrice });
+          const out = await transferGiftToUser(tgClient, { userId, username, giftId, giftName, giftPrice });
           console.log(`   ✅ sent msgId=${out.msgId}`);
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: true, ...out }));
