@@ -2391,11 +2391,14 @@
   }
 
   function buildReferralLink(){
-    // v8.20: используем ?start= (а не ?startapp=) — ссылка ведёт в чат бота.
-    // Это гарантирует, что приглашённый юзер сначала нажмёт /start у бота,
-    // бот фиксирует реф-связку и шлёт уведомление пригласителю — рефералка работает 100%.
+    // v8.21: возвращаемся к ?startapp= — это единственный надёжный путь.
+    //   ?start=ref_X у Telegram отправляет /start ТОЛЬКО если юзер впервые видит бота.
+    //   Если он уже когда-то открывал чат — клик по ссылке просто откроет окно,
+    //   /start не уйдёт, бот молчит, уведомление не приходит.
+    //   ?startapp= всегда открывает mini app → /api/init ловит startParam,
+    //   applyReferralIfNew пишет связку и notifyReferrer('join') шлёт уведомление.
     const refId=String(referralCode||('ref_'+String(tg?.initDataUnsafe?.user?.id||'guest')));
-    return 'https://t.me/'+REFERRAL_BOT_USERNAME+'?start='+encodeURIComponent(refId);
+    return 'https://t.me/'+REFERRAL_BOT_USERNAME+'?startapp='+encodeURIComponent(refId);
   }
 
   function updateReferralUI(){
