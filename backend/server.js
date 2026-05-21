@@ -35,6 +35,62 @@ const sb = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY);
 
 const paymentReceipts = new Map();
 
+// === Bans (v8.13) =============================================================
+// Кэш ban-статусов: userId -> { banned: boolean, reason: string|null, expiresAt: ms }
+const banCache = new Map();
+const BAN_CACHE_TTL_MS = 10_000;
+
+async function getBanInfo(userId) {
+  const id = Number(userId);
+  if (!Number.isFinite(id)) return null;
+  const now = Date.now();
+  const cached = banCache.get(id);
+  if (cached && cached.expiresAt > now) {
+    return cached.banned ? { reason: cached.reason, bannedAt: cached.bannedAt } : null;
+  }
+  try {
+    const { data } = await sb.from('users').select('banned_at,ban_reason').eq('id', id).maybeSingle();
+    if (data?.banned_at) {
+      const info = { banned: true, reason: data.ban_reason || null, bannedAt: data.banned_at, expiresAt: now + BAN_CACHE_TTL_MS };
+      banCache.set(id, info);
+      return { reason: info.reason, bannedAt: info.bannedAt };
+    }
+  } catch (e) {
+    // Если колонок ещё нет (миграция не прогнана) — просто не баним.
+    if (!/banned_at|ban_reason|column/i.test(e?.message || '')) console.error('getBanInfo error:', e?.message || e);
+  }
+  banCache.set(id, { banned: false, reason: null, bannedAt: null, expiresAt: now + BAN_CACHE_TTL_MS });
+  return null;
+}
+
+function invalidateBanCache(userId) {
+  banCache.delete(Number(userId));
+}
+
+async function setUserBan(userId, reason) {
+  const id = Number(userId);
+  if (!Number.isFinite(id)) throw new Error('bad userId');
+  const { error } = await sb.from('users').update({
+    banned_at: new Date().toISOString(),
+    ban_reason: String(reason || '').slice(0, 500) || 'Нарушение правил',
+    updated_at: new Date().toISOString(),
+  }).eq('id', id);
+  if (error) throw new Error(error.message);
+  invalidateBanCache(id);
+}
+
+async function clearUserBan(userId) {
+  const id = Number(userId);
+  if (!Number.isFinite(id)) throw new Error('bad userId');
+  const { error } = await sb.from('users').update({
+    banned_at: null,
+    ban_reason: null,
+    updated_at: new Date().toISOString(),
+  }).eq('id', id);
+  if (error) throw new Error(error.message);
+  invalidateBanCache(id);
+}
+
 // Withdraw flow: фронт сначала платит 25⭐ комиссию, только потом мы делаем перевод.
 // Промежуточные «intent»-ы храним в памяти: {userId, giftDbId, paid, createdAt}.
 const WITHDRAW_FEE_STARS = Number(process.env.WITHDRAW_FEE_STARS || 30);
@@ -115,6 +171,10 @@ function requireUser(req, res) {
     res.status(401).json({ error: 'Invalid initData' });
     return null;
   }
+  if (req._banInfo) {
+    res.status(403).json({ error: 'banned', banned: true, reason: req._banInfo.reason || 'Нарушение правил', bannedAt: req._banInfo.bannedAt });
+    return null;
+  }
   return user;
 }
 
@@ -124,8 +184,25 @@ function requireUserContext(req, res) {
     res.status(401).json({ error: 'Invalid initData' });
     return null;
   }
+  if (req._banInfo) {
+    res.status(403).json({ error: 'banned', banned: true, reason: req._banInfo.reason || 'Нарушение правил', bannedAt: req._banInfo.bannedAt });
+    return null;
+  }
   return context;
 }
+
+// Middleware: проверяем бан до того как роут что-то сделает.
+app.use('/api', async (req, res, next) => {
+  const init = getReqInitData(req);
+  if (!init) return next();
+  const user = validateInitData(init);
+  if (!user) return next();
+  try {
+    const ban = await getBanInfo(user.id);
+    if (ban) req._banInfo = ban;
+  } catch (_) {}
+  next();
+});
 
 function extractReferralId(startParam) {
   const match = /^ref_(\d+)$/.exec(String(startParam || '').trim());
@@ -283,6 +360,139 @@ async function handleBotMessage(message) {
   const chatId = Number(message?.chat?.id);
   const senderId = Number(message?.from?.id);
 
+  // === Force-reply: списание звёзд ===
+  // Админ нажал «⭐ Списать звёзды» в /info → бот спросил сумму. Ответ ловим тут.
+  const replyTo = message?.reply_to_message?.text || '';
+  const starsPrompt = replyTo.match(/Списание звёзд у юзера\s+(\d+)/);
+  if (starsPrompt && CONFIG.ADMIN_IDS.includes(senderId)) {
+    const targetId = Number(starsPrompt[1]);
+    const amount = Math.floor(Number(String(text).replace(/[^\d-]/g, '')) || 0);
+    if (!amount || amount <= 0) {
+      return tgApi('sendMessage', { chat_id: chatId, text: '❌ Отменено (сумма 0 или некорректна).' }, 5000);
+    }
+    try {
+      const newBal = await spendBalance(targetId, amount);
+      return tgApi('sendMessage', {
+        chat_id: chatId,
+        text: `✅ Списано *${amount}⭐* у юзера \`${targetId}\`.\nОстаток: *${newBal}⭐*`,
+        parse_mode: 'Markdown',
+      }, 5000);
+    } catch (e) {
+      return tgApi('sendMessage', { chat_id: chatId, text: `❌ Не удалось списать: ${e?.message || e}` }, 5000);
+    }
+  }
+
+  // === /ban @username причина — бан навсегда ===
+  const banMatch = text.match(/^\/ban(?:@\w+)?(?:\s+(.+))?$/i);
+  if (banMatch) {
+    if (!CONFIG.ADMIN_IDS.includes(senderId)) {
+      return tgApi('sendMessage', { chat_id: chatId, text: '⛔ Команда только для администраторов.' }, 5000);
+    }
+    const argsRaw = String(banMatch[1] || '').trim();
+    if (!argsRaw) {
+      return tgApi('sendMessage', { chat_id: chatId, text: 'Использование: `/ban @username причина`', parse_mode: 'Markdown' }, 5000);
+    }
+    // первый токен — username/id, остальное — причина
+    const parts = argsRaw.split(/\s+/);
+    const ident = parts.shift();
+    const reason = parts.join(' ').trim() || 'Нарушение правил';
+    let targetId = /^\d+$/.test(ident) ? Number(ident) : null;
+    if (!targetId) {
+      try { targetId = await getUserIdByUsername(normalizeUsername(ident)); } catch (_) { targetId = null; }
+    }
+    if (!targetId) return tgApi('sendMessage', { chat_id: chatId, text: `❌ Юзер «${ident}» не найден.` }, 5000);
+    try {
+      await setUserBan(targetId, reason);
+      return tgApi('sendMessage', {
+        chat_id: chatId,
+        text: `🚫 Юзер \`${targetId}\` забанен навсегда.\nПричина: *${reason}*`,
+        parse_mode: 'Markdown',
+      }, 5000);
+    } catch (e) {
+      return tgApi('sendMessage', { chat_id: chatId, text: `❌ Ошибка бана: ${e?.message || e}` }, 5000);
+    }
+  }
+
+  // === /unban @username — разбан ===
+  const unbanMatch = text.match(/^\/unban(?:@\w+)?(?:\s+(.+))?$/i);
+  if (unbanMatch) {
+    if (!CONFIG.ADMIN_IDS.includes(senderId)) {
+      return tgApi('sendMessage', { chat_id: chatId, text: '⛔ Команда только для администраторов.' }, 5000);
+    }
+    const ident = String(unbanMatch[1] || '').trim();
+    if (!ident) return tgApi('sendMessage', { chat_id: chatId, text: 'Использование: `/unban @username`', parse_mode: 'Markdown' }, 5000);
+    let targetId = /^\d+$/.test(ident) ? Number(ident) : null;
+    if (!targetId) {
+      try { targetId = await getUserIdByUsername(normalizeUsername(ident)); } catch (_) { targetId = null; }
+    }
+    if (!targetId) return tgApi('sendMessage', { chat_id: chatId, text: `❌ Юзер «${ident}» не найден.` }, 5000);
+    try {
+      await clearUserBan(targetId);
+      return tgApi('sendMessage', {
+        chat_id: chatId,
+        text: `✅ Юзер \`${targetId}\` разбанен.`,
+        parse_mode: 'Markdown',
+      }, 5000);
+    } catch (e) {
+      return tgApi('sendMessage', { chat_id: chatId, text: `❌ Ошибка разбана: ${e?.message || e}` }, 5000);
+    }
+  }
+
+  // === /info @username — карточка юзера + кнопки Инвентарь / Звёзды ===
+  const infoMatch = text.match(/^\/info(?:@\w+)?(?:\s+(.+))?$/i);
+  if (infoMatch) {
+    if (!CONFIG.ADMIN_IDS.includes(senderId)) {
+      return tgApi('sendMessage', { chat_id: chatId, text: '⛔ Команда только для администраторов.' }, 5000);
+    }
+    const ident = String(infoMatch[1] || '').trim();
+    if (!ident) return tgApi('sendMessage', { chat_id: chatId, text: 'Использование: `/info @username`', parse_mode: 'Markdown' }, 5000);
+    let targetId = /^\d+$/.test(ident) ? Number(ident) : null;
+    if (!targetId) {
+      try { targetId = await getUserIdByUsername(normalizeUsername(ident)); } catch (_) { targetId = null; }
+    }
+    if (!targetId) return tgApi('sendMessage', { chat_id: chatId, text: `❌ Юзер «${ident}» не найден.` }, 5000);
+
+    try {
+      const { data: u } = await sb.from('users')
+        .select('id,first_name,username,balance,total_deposited,banned_at,ban_reason,created_at')
+        .eq('id', targetId)
+        .maybeSingle();
+      if (!u) return tgApi('sendMessage', { chat_id: chatId, text: `❌ Юзер \`${targetId}\` не в базе.`, parse_mode: 'Markdown' }, 5000);
+
+      let inv = [];
+      try { inv = await getUserInventory(targetId); } catch (_) { inv = []; }
+      const giftCount = inv.length;
+      const giftSum = inv.reduce((s, g) => s + Number(g.price || 0), 0);
+
+      const handle = u.username ? `@${u.username}` : (u.first_name || `id${u.id}`);
+      const banLine = u.banned_at ? `\n🚫 *ЗАБАНЕН*: ${u.ban_reason || '—'}` : '';
+      const lines = [
+        `👤 *${handle}* \`${u.id}\``,
+        `⭐ Баланс: *${Number(u.balance || 0)}*`,
+        `💰 Пополнено всего: *${Number(u.total_deposited || 0)}⭐*`,
+        `🎁 Подарков: *${giftCount}* на *${giftSum}⭐*`,
+        u.created_at ? `📅 Создан: ${String(u.created_at).slice(0, 10)}` : '',
+        banLine,
+      ].filter(Boolean).join('\n');
+
+      return tgApi('sendMessage', {
+        chat_id: chatId,
+        text: lines,
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: `🎁 Инвентарь (${giftCount})`, callback_data: `ig:${targetId}` },
+              { text: '⭐ Списать звёзды',           callback_data: `bs:${targetId}` },
+            ],
+          ],
+        },
+      }, 5000);
+    } catch (e) {
+      return tgApi('sendMessage', { chat_id: chatId, text: `❌ Ошибка: ${e?.message || e}` }, 5000);
+    }
+  }
+
   // === /gift @username|id — админская команда ===
   // Показывает кнопочный список подарков указанного юзера; нажатие = удалить.
   const giftMatch = text.match(/^\/gift(?:@\w+)?(?:\s+(.+))?$/i);
@@ -335,6 +545,39 @@ async function handleBotMessage(message) {
     }, 5000);
   }
 
+  // === /top — админская команда: список топ-10 с кнопками для удаления ===
+  if (/^\/top(?:@\w+)?(?:\s|$)/i.test(text)) {
+    if (!CONFIG.ADMIN_IDS.includes(senderId)) {
+      return tgApi('sendMessage', { chat_id: chatId, text: '⛔ Команда только для администраторов.' }, 5000);
+    }
+    try {
+      const { data: leaders } = await sb
+        .from('users')
+        .select('id,first_name,username,total_deposited')
+        .gt('total_deposited', 0)
+        .order('total_deposited', { ascending: false })
+        .limit(10);
+      if (!leaders || leaders.length === 0) {
+        return tgApi('sendMessage', { chat_id: chatId, text: '📊 Топ пуст.' }, 5000);
+      }
+      const buttons = leaders.map((u, i) => {
+        const handle = u.username ? `@${u.username}` : (u.first_name || `id${u.id}`);
+        return [{
+          text: `${i + 1}. ${String(handle).slice(0, 28)} · ${Number(u.total_deposited || 0)}⭐`,
+          callback_data: `tr:${Number(u.id)}`,
+        }];
+      });
+      return tgApi('sendMessage', {
+        chat_id: chatId,
+        text: `📊 *Топ-10* (нажми чтобы убрать из топа)`,
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: buttons },
+      }, 5000);
+    } catch (e) {
+      return tgApi('sendMessage', { chat_id: chatId, text: `❌ Ошибка: ${e?.message || e}` }, 5000);
+    }
+  }
+
   // === /start — приветствие ===
   if (!/^\/start(?:@\w+)?(?:\s|$)/i.test(text)) return null;
   const startParam = text.replace(/^\/start(?:@\w+)?\s*/i, '').trim();
@@ -369,6 +612,104 @@ async function handleBotCallback(cb) {
   const fromId = Number(cb?.from?.id);
   const chatId = Number(cb?.message?.chat?.id);
   const msgId = Number(cb?.message?.message_id);
+
+  // === ig:USERID — клик «🎁 Инвентарь» в /info: показать список подарков ===
+  const igMatch = data.match(/^ig:(\d+)$/);
+  if (igMatch) {
+    if (!CONFIG.ADMIN_IDS.includes(fromId)) {
+      return tgApi('answerCallbackQuery', { callback_query_id: cb.id, text: 'Только для администраторов', show_alert: true }, 5000);
+    }
+    const targetUserId = Number(igMatch[1]);
+    let inv = [];
+    try { inv = await getUserInventory(targetUserId); } catch (_) { inv = []; }
+    await tgApi('answerCallbackQuery', { callback_query_id: cb.id }, 5000);
+    if (!inv.length) {
+      return tgApi('sendMessage', { chat_id: chatId, text: `📭 У юзера \`${targetUserId}\` нет подарков.`, parse_mode: 'Markdown' }, 5000);
+    }
+    const buttons = inv.slice(0, 80).map((g) => ([{
+      text: `🗑 ${String(g.name || 'gift').slice(0, 40)} · ${Number(g.price || 0)}⭐`,
+      callback_data: `gd:${targetUserId}:${Number(g.id)}`,
+    }]));
+    const total = inv.reduce((s, g) => s + Number(g.price || 0), 0);
+    return tgApi('sendMessage', {
+      chat_id: chatId,
+      text: `🎁 Инвентарь юзера \`${targetUserId}\` — ${inv.length} шт. на ${total}⭐\n_Нажми на подарок чтобы удалить._`,
+      parse_mode: 'Markdown',
+      reply_markup: { inline_keyboard: buttons },
+    }, 5000);
+  }
+
+  // === bs:USERID — клик «⭐ Списать звёзды» в /info: спросить сумму через force_reply ===
+  const bsMatch = data.match(/^bs:(\d+)$/);
+  if (bsMatch) {
+    if (!CONFIG.ADMIN_IDS.includes(fromId)) {
+      return tgApi('answerCallbackQuery', { callback_query_id: cb.id, text: 'Только для администраторов', show_alert: true }, 5000);
+    }
+    const targetId = Number(bsMatch[1]);
+    await tgApi('answerCallbackQuery', { callback_query_id: cb.id }, 5000);
+    return tgApi('sendMessage', {
+      chat_id: chatId,
+      text: `🎯 Списание звёзд у юзера ${targetId}\nОтветь на это сообщение суммой (число).`,
+      reply_markup: { force_reply: true, selective: true },
+    }, 5000);
+  }
+
+  // === tr:USERID — клик по юзеру в /top: показать подтверждение Да/Нет ===
+  const trMatch = data.match(/^tr:(\d+)$/);
+  if (trMatch) {
+    if (!CONFIG.ADMIN_IDS.includes(fromId)) {
+      return tgApi('answerCallbackQuery', { callback_query_id: cb.id, text: 'Только для администраторов', show_alert: true }, 5000);
+    }
+    const targetId = Number(trMatch[1]);
+    let handle = `id${targetId}`;
+    try {
+      const { data: u } = await sb.from('users').select('username,first_name').eq('id', targetId).maybeSingle();
+      if (u?.username) handle = `@${u.username}`;
+      else if (u?.first_name) handle = u.first_name;
+    } catch (_) {}
+    await tgApi('answerCallbackQuery', { callback_query_id: cb.id }, 5000);
+    return tgApi('editMessageText', {
+      chat_id: chatId,
+      message_id: msgId,
+      text: `❓ Точно убрать *${handle}* из топа?\n_(total\\_deposited будет обнулён)_`,
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [[
+          { text: '✅ Да, убрать', callback_data: `tc:${targetId}:1` },
+          { text: '❌ Отмена',     callback_data: `tc:${targetId}:0` },
+        ]],
+      },
+    }, 5000);
+  }
+
+  // === tc:USERID:0|1 — подтверждение убрать из топа ===
+  const tcMatch = data.match(/^tc:(\d+):(0|1)$/);
+  if (tcMatch) {
+    if (!CONFIG.ADMIN_IDS.includes(fromId)) {
+      return tgApi('answerCallbackQuery', { callback_query_id: cb.id, text: 'Только для администраторов', show_alert: true }, 5000);
+    }
+    const targetId = Number(tcMatch[1]);
+    const confirm  = tcMatch[2] === '1';
+    if (!confirm) {
+      await tgApi('answerCallbackQuery', { callback_query_id: cb.id, text: 'Отменено' }, 5000);
+      return tgApi('editMessageText', { chat_id: chatId, message_id: msgId, text: '❌ Отменено.' }, 5000);
+    }
+    try {
+      const { error } = await sb.from('users')
+        .update({ total_deposited: 0, updated_at: new Date().toISOString() })
+        .eq('id', targetId);
+      if (error) throw new Error(error.message);
+    } catch (err) {
+      return tgApi('answerCallbackQuery', { callback_query_id: cb.id, text: `Ошибка: ${err?.message || err}`, show_alert: true }, 5000);
+    }
+    await tgApi('answerCallbackQuery', { callback_query_id: cb.id, text: '✅ Убран из топа' }, 5000);
+    return tgApi('editMessageText', {
+      chat_id: chatId,
+      message_id: msgId,
+      text: `✅ Юзер \`${targetId}\` убран из топа (total\\_deposited = 0).`,
+      parse_mode: 'Markdown',
+    }, 5000);
+  }
 
   const m = data.match(/^gd:(\d+):(\d+)$/);
   if (!m) {
@@ -2794,29 +3135,33 @@ async function applyDbPromo(userId, rawCode) {
     return { ok: false, message: 'Промокод уже активирован' };
   }
 
-  // Кредит сначала, активация после — если кредит упал, не палим активацию.
-  let giftPayload = null;
-  let rewardStars = 0;
-
-  if (promo.reward_gift_id) {
-    const catalogGift = GIFT_CATALOG.find((g) => String(g.id || g.giftId || '') === String(promo.reward_gift_id));
-    if (!catalogGift) return { ok: false, message: 'Подарок промокода не найден в каталоге' };
-    const saved = await addGiftToInventory(userId, normalizeGift(catalogGift));
-    giftPayload = saved || normalizeGift(catalogGift);
-  } else {
-    rewardStars = Math.max(0, Math.floor(Number(promo.reward || 0)));
-    if (rewardStars > 0) {
-      const rpc = await sb.rpc('balance_add', { p_user_id: Number(userId), p_amount: rewardStars });
-      if (rpc.error) throw new Error(rpc.error.message || 'balance_add failed');
-    }
-  }
-
+  // СНАЧАЛА фиксируем активацию (атомарно через UNIQUE индекс),
+  // и только потом кредитим — иначе race-condition даёт x2 при одновременных запросах.
+  const rewardStars = promo.reward_gift_id ? 0 : Math.max(0, Math.floor(Number(promo.reward || 0)));
   const { error: insErr } = await sb.from('manual_promo_redemptions').insert({
-    user_id: userId,
+    user_id: Number(userId),
     code: promo.code,
     reward: rewardStars || Number(promo.reward || 0),
   });
-  if (insErr) console.error('manual_promo_redemptions insert error:', insErr.message);
+  if (insErr) {
+    if (/duplicate key|unique/i.test(insErr.message || '')) {
+      return { ok: false, message: 'Промокод уже активирован' };
+    }
+    console.error('manual_promo_redemptions insert error:', insErr.message);
+    throw new Error(insErr.message || 'Promo insert failed');
+  }
+
+  // Активация записана — теперь начисляем награду.
+  let giftPayload = null;
+  if (promo.reward_gift_id) {
+    const catalogGift = GIFT_CATALOG.find((g) => String(g.id || g.giftId || '') === String(promo.reward_gift_id));
+    if (!catalogGift) return { ok: false, message: 'Подарок промокода не найден в каталоге' };
+    const saved = await addGiftToInventory(Number(userId), normalizeGift(catalogGift));
+    giftPayload = saved || normalizeGift(catalogGift);
+  } else if (rewardStars > 0) {
+    const rpc = await sb.rpc('balance_add', { p_user_id: Number(userId), p_amount: rewardStars });
+    if (rpc.error) throw new Error(rpc.error.message || 'balance_add failed');
+  }
 
   return {
     ok: true,
