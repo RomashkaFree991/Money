@@ -94,6 +94,10 @@ async function clearUserBan(userId) {
 // Withdraw flow: фронт сначала платит 25⭐ комиссию, только потом мы делаем перевод.
 // Промежуточные «intent»-ы храним в памяти: {userId, giftDbId, paid, createdAt}.
 const WITHDRAW_FEE_STARS = Number(process.env.WITHDRAW_FEE_STARS || 30);
+// v8.16: минимальный депозит, необходимый чтобы юзер мог выводить подарки.
+const WITHDRAW_MIN_DEPOSIT_STARS = Number(process.env.WITHDRAW_MIN_DEPOSIT_STARS || 50);
+// v8.16: минимальная ставка в краше.
+const CRASH_MIN_BET = Number(process.env.CRASH_MIN_BET || 1);
 const WITHDRAW_INTENT_TTL_MS = 15 * 60 * 1000;
 const pendingWithdrawIntents = new Map();
 setInterval(() => {
@@ -1663,12 +1667,13 @@ async function sellAllInventoryGifts(userId) {
 
 function sampleCrashTarget() {
   // v8.10: ещё немного смягчили — 45% на самый низ.
+  // v8.16: жёстко зажатый house edge. 90% — под 2.5x, 7x+ почти не выпадает.
   const r = Math.random();
-  if (r < 0.45) return round2(1.01 + Math.random() * 0.49);   // 45% : 1.01–1.50
-  if (r < 0.75) return round2(1.50 + Math.random() * 1.00);   // 30% : 1.50–2.50
-  if (r < 0.90) return round2(2.50 + Math.random() * 2.50);   // 15% : 2.50–5.00
-  if (r < 0.97) return round2(5.00 + Math.random() * 5.00);   // 7%  : 5.00–10.00
-  return round2(10.00 + Math.random() * 10.00);                // 3%  : 10.00–20.00
+  if (r < 0.70) return round2(1.01 + Math.random() * 0.49);   // 70%   : 1.01–1.50
+  if (r < 0.90) return round2(1.50 + Math.random() * 1.00);   // 20%   : 1.50–2.50
+  if (r < 0.97) return round2(2.50 + Math.random() * 1.50);   // 7%    : 2.50–4.00
+  if (r < 0.995) return round2(4.00 + Math.random() * 3.00);  // 2.5%  : 4.00–7.00
+  return round2(7.00 + Math.random() * 8.00);                  // 0.5%  : 7.00–15.00
 }
 
 function sampleCraftMultiplier() {
@@ -1963,6 +1968,23 @@ app.post('/api/inventory/withdraw-invoice', async (req, res) => {
 
   if (!user.username) {
     return res.status(400).json({ error: 'Сделайте @username чтобы получить подарок' });
+  }
+
+  // v8.16: вывод доступен только после депозита от WITHDRAW_MIN_DEPOSIT_STARS звёзд.
+  try {
+    const { data: u } = await sb.from('users')
+      .select('total_deposited')
+      .eq('id', user.id)
+      .maybeSingle();
+    const deposited = Number(u?.total_deposited || 0);
+    if (deposited < WITHDRAW_MIN_DEPOSIT_STARS) {
+      const need = WITHDRAW_MIN_DEPOSIT_STARS - deposited;
+      return res.status(403).json({
+        error: `Для вывода нужно пополнение от ${WITHDRAW_MIN_DEPOSIT_STARS}⭐ (не хватает ${need}⭐).`,
+      });
+    }
+  } catch (e) {
+    req.log?.warn?.({ err: e }, 'withdraw deposit check failed');
   }
 
   // Проверяем, что подарок реально принадлежит юзеру и его можно вывести
@@ -2643,8 +2665,8 @@ app.post('/api/crash/bet', async (req, res) => {
   }
 
   const amount = parseInt(req.body.amount, 10);
-  if (!amount || amount < 1) {
-    return res.status(400).json({ error: 'Bad amount' });
+  if (!amount || amount < CRASH_MIN_BET) {
+    return res.status(400).json({ error: `Минимальная ставка ${CRASH_MIN_BET}⭐` });
   }
 
   if (crashGame.bets.has(String(user.id))) {
