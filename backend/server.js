@@ -238,9 +238,48 @@ async function notifyReferrer(referrerId, referredUserId, kind, amount = 0, rewa
     } else {
       return;
     }
-    await tgApi('sendMessage', { chat_id: Number(referrerId), text }, 5000);
+    const tgRes = await tgApi('sendMessage', { chat_id: Number(referrerId), text }, 5000);
+    if (!tgRes || tgRes.ok === false) {
+      // Самая частая причина: реферер ни разу не запускал бота → Telegram возвращает
+      // 403 "Forbidden: bot can't initiate conversation with a user". Логируем явно,
+      // чтобы при разборе было видно «почему уведомление не дошло».
+      console.warn(
+        `⚠️ notifyReferrer FAILED kind=${kind} referrer=${referrerId} ref=${referredUserId} ` +
+        `err=${tgRes?.error_code || '?'} ${tgRes?.description || 'no description'}`
+      );
+    } else {
+      console.log(`✅ notifyReferrer kind=${kind} referrer=${referrerId} ref=${referredUserId} amount=${amount} reward=${reward}`);
+    }
   } catch (e) {
     console.error('notifyReferrer error:', e?.message || e);
+  }
+}
+
+// v8.19: применить реферальную связку из бот-deep-link или mini app — общий путь.
+// Возвращает true если запись создана (новый реф), чтобы вызывающий мог уведомить.
+async function applyReferralIfNew(userId, referrerId) {
+  if (!userId || !referrerId) return false;
+  if (Number(userId) === Number(referrerId)) {
+    console.log(`↩️ self-referral ignored for user ${userId}`);
+    return false;
+  }
+  try {
+    const linkResult = await sb.rpc('apply_referral_link', {
+      p_user_id: Number(userId),
+      p_referrer_id: Number(referrerId),
+    });
+    if (linkResult.error) {
+      console.error('apply_referral_link error:', linkResult.error);
+      return false;
+    }
+    if (linkResult.data === true) {
+      console.log(`🤝 referral linked: ${userId} ← ${referrerId}`);
+      return true;
+    }
+    return false;
+  } catch (e) {
+    console.error('applyReferralIfNew error:', e?.message || e);
+    return false;
   }
 }
 
@@ -623,6 +662,30 @@ async function handleBotMessage(message) {
   const startParam = text.replace(/^\/start(?:@\w+)?\s*/i, '').trim();
   const baseMiniAppUrl = String(CONFIG.MINI_APP_URL || '').trim().replace(/\/$/, '');
   const appUrl = startParam ? `${baseMiniAppUrl}?startapp=${encodeURIComponent(startParam)}` : baseMiniAppUrl;
+
+  // v8.19: deep-link вида /start ref_NNN — сразу фиксируем реферала,
+  // не дожидаясь пока новый юзер откроет mini app. Это даёт уведомление пригласителю
+  // даже если рефералу пришла обычная бот-ссылка (без app).
+  try {
+    const refId = extractReferralId(startParam);
+    if (refId && senderId) {
+      // Убедимся что юзер есть в БД (init_user идемпотентен).
+      try {
+        const fromUser = message?.from || {};
+        await sb.rpc('init_user', {
+          p_id: Number(senderId),
+          p_first_name: fromUser.first_name || null,
+          p_username: fromUser.username || null,
+          p_photo_url: null,
+        });
+      } catch (e) { console.warn('init_user from /start failed:', e?.message || e); }
+
+      const isNew = await applyReferralIfNew(senderId, refId);
+      if (isNew) notifyReferrer(refId, senderId, 'join').catch(() => null);
+    }
+  } catch (e) {
+    console.error('/start referral handling error:', e?.message || e);
+  }
 
   const welcome =
     '🎰 *MoneyMonkey* — топ-казино для нфт подарков\n\n' +
@@ -1667,13 +1730,13 @@ async function sellAllInventoryGifts(userId) {
 
 function sampleCrashTarget() {
   // v8.10: ещё немного смягчили — 45% на самый низ.
-  // v8.16: жёстко зажатый house edge. 90% — под 2.5x, 7x+ почти не выпадает.
+  // v8.18: 55% на флор, средние диапазоны чуть выше.
   const r = Math.random();
-  if (r < 0.70) return round2(1.01 + Math.random() * 0.49);   // 70%   : 1.01–1.50
-  if (r < 0.90) return round2(1.50 + Math.random() * 1.00);   // 20%   : 1.50–2.50
-  if (r < 0.97) return round2(2.50 + Math.random() * 1.50);   // 7%    : 2.50–4.00
-  if (r < 0.995) return round2(4.00 + Math.random() * 3.00);  // 2.5%  : 4.00–7.00
-  return round2(7.00 + Math.random() * 8.00);                  // 0.5%  : 7.00–15.00
+  if (r < 0.55) return round2(1.01 + Math.random() * 0.49);   // 55%   : 1.01–1.50
+  if (r < 0.85) return round2(1.50 + Math.random() * 1.00);   // 30%   : 1.50–2.50
+  if (r < 0.95) return round2(2.50 + Math.random() * 1.50);   // 10%   : 2.50–4.00
+  if (r < 0.99) return round2(4.00 + Math.random() * 3.00);   // 4%    : 4.00–7.00
+  return round2(7.00 + Math.random() * 8.00);                  // 1%    : 7.00–15.00
 }
 
 function sampleCraftMultiplier() {
@@ -1869,18 +1932,9 @@ app.post('/api/init', async (req, res) => {
   const referrerId = extractReferralId(context.startParam);
   const currentUserId = Number(user.id);
 
-  // Safety: never count a user as their own referral, even if they open their own startapp link.
-  if (referrerId && referrerId === currentUserId) {
-    console.log(`↩️ self-referral ignored for user ${currentUserId}`);
-  } else if (referrerId) {
-    const linkResult = await sb.rpc('apply_referral_link', {
-      p_user_id: user.id,
-      p_referrer_id: referrerId,
-    });
-    if (linkResult.error) {
-      console.error('apply_referral_link error:', linkResult.error);
-    } else if (linkResult.data === true) {
-      // Только при первой регистрации этого юзера по реф-ссылке.
+  if (referrerId) {
+    const isNew = await applyReferralIfNew(currentUserId, referrerId);
+    if (isNew) {
       notifyReferrer(referrerId, user.id, 'join').catch(() => null);
     }
   }
