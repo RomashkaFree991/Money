@@ -206,24 +206,36 @@ async function findSavedGift(client, { giftId, giftName, giftPrice }) {
     for (const sg of gifts) {
       const inner = sg.gift || sg;
       const isUnique = String(inner?.className || '').includes('Unique');
-      const innerId = String(inner?.id || inner?.giftId || '');
+      // У unique-подарка может быть несколько «id»-полей: id (уникальный экземпляр),
+      // giftId (template коллекции). У не-unique — обычно только id (template).
+      // Сравниваем targetId со всеми кандидатами.
+      const candidateIds = [
+        inner?.id, inner?.giftId, inner?.gift_id,
+        sg?.giftId, sg?.gift_id,
+        inner?.gift?.id, inner?.gift?.giftId,
+      ].map((v) => (v === null || v === undefined ? '' : String(v))).filter(Boolean);
       const title = String(inner?.title || inner?.slug || '');
       const slug = String(inner?.slug || '') || null;
       const stars = Number(inner?.stars || sg?.convertStars || 0);
 
       if (!isUnique) continue;
 
-      if (targetId) {
-        if (innerId !== targetId) continue;
-      } else {
-        if (normalizeName(title) !== targetName) continue;
-        if (giftPrice && stars && Math.abs(stars - giftPrice) > Math.max(50, giftPrice * 0.5)) continue;
-      }
+      // v8.23: мягкий match. Подарок подходит если совпало хотя бы что-то одно
+      // (targetId совпал с любым из candidateIds  ИЛИ  имя совпало с targetName).
+      // Это лечит ситуацию, когда фронт шлёт id шаблона коллекции, а у unique
+      // экземпляра id уже другой — name всё равно «Snake Box».
+      const idMatched = targetId && candidateIds.includes(targetId);
+      const nameMatched = targetName && normalizeName(title) === targetName;
+      if (!idMatched && !nameMatched) continue;
+
+      // Цена — только для name-only matches, и только мягко.
+      if (!idMatched && giftPrice && stars && Math.abs(stars - giftPrice) > Math.max(50, giftPrice * 0.5)) continue;
 
       const msgId = Number(sg.msgId || sg.savedId || sg.savedStarGiftId || 0);
       if (!msgId && !slug) continue;
 
-      return { msgId, slug, isUnique, title, stars, raw: sg, giftId: innerId };
+      console.log(`   🔎 matched saved gift: title=«${title}» slug=${slug} ids=[${candidateIds.join(',')}] (by ${idMatched?'id':''}${idMatched&&nameMatched?'+':''}${nameMatched?'name':''})`);
+      return { msgId, slug, isUnique, title, stars, raw: sg, giftId: candidateIds[0] || '' };
     }
 
     offset = resp?.nextOffset || '';
