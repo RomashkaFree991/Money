@@ -11,7 +11,7 @@ const path = require('path');
 const fs = require('fs');
 
 const CONFIG = {
-  BOT_TOKEN: process.env.BOT_TOKEN || '8838459279:AAGagwOSSBK0VPc4HXq7QrKHUofnQNs8Lg0', // test bot token
+  BOT_TOKEN: process.env.BOT_TOKEN || '8638688598:AAHuORvvRCMFf_BDPWgZobFEL3BwXc4gnRI', // test bot token
   SUPABASE_URL: process.env.SUPABASE_URL || 'https://fqpuvmvylevrnunsescf.supabase.co',
   SUPABASE_KEY: process.env.SUPABASE_KEY || 'sb_publishable_er2vwdrEh-XRKLZqxf1FhQ_sR0MncqZ',
   ADMIN_KEY: process.env.ADMIN_KEY || 'GiftPepe_2026',
