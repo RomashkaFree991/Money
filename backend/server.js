@@ -16,7 +16,7 @@ const CONFIG = {
   SUPABASE_KEY: process.env.SUPABASE_KEY || 'sb_publishable_er2vwdrEh-XRKLZqxf1FhQ_sR0MncqZ',
   ADMIN_KEY: process.env.ADMIN_KEY || 'GiftPepe_2026',
   // Список Telegram-айди админов через запятую (без пробелов) — для внутренней админки в мини-аппе.
-  ADMIN_IDS: (process.env.ADMIN_IDS || '5345465097,8667321828').split(',').map((s) => Number(String(s).trim())).filter(Boolean),
+  ADMIN_IDS: (process.env.ADMIN_IDS || '78192270').split(',').map((s) => Number(String(s).trim())).filter(Boolean),
   PORT: process.env.PORT || 3000,
   MINI_APP_URL: process.env.MINI_APP_URL || 'https://moneymonkey.live',
   WEBHOOK_URL: process.env.WEBHOOK_URL || 'https://api.moneymonkey.live/webhook',
