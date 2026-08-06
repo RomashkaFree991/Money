@@ -23,7 +23,7 @@ const CONFIG = {
   PUBLIC_BASE_URL: process.env.PUBLIC_BASE_URL || process.env.BACKEND_PUBLIC_URL || 'https://api.moneymonkey.live',
   // Gift relayer config (used by relayer.js)
   RELAYER_INTERNAL_KEY: process.env.RELAYER_INTERNAL_KEY || 'relayer_dev_secret_change_me',
-  GIFT_RECEIVER_USERNAME: (process.env.GIFT_RECEIVER_USERNAME || 'MoneyMonkeyGift').replace(/^@/, ''),
+  GIFT_RECEIVER_USERNAME: (process.env.GIFT_RECEIVER_USERNAME || 'Gift PepeGift').replace(/^@/, ''),
   RELAYER_URL: process.env.RELAYER_URL || 'http://127.0.0.1:4011',
 };
 
@@ -454,7 +454,7 @@ async function handleBotMessage(message) {
     if (text === '🛠 АДМИН' || /^\/admin(?:@\w+)?(?:\s|$)/i.test(text)) {
       return tgApi('sendMessage', {
         chat_id: chatId,
-        text: '🛠 *Админ-панель MoneyMonkey*\n\nИспользуй кнопки внизу:',
+        text: '🛠 *Админ-панель Gift Pepe*\n\nИспользуй кнопки внизу:',
         parse_mode: 'Markdown',
         reply_markup: ADMIN_KEYBOARD,
       }, 5000);
@@ -688,7 +688,7 @@ async function handleBotMessage(message) {
   }
 
   const welcome =
-    '🎰 *MoneyMonkey* — топ-казино для нфт подарков\n\n' +
+    '🎰 *Gift Pepe* — топ-казино для нфт подарков\n\n' +
     '🎁 Крути краш, апгрейдь подарки и забирай нфт подарки.\n\n' +
     '👇 Жми «Играть», чтобы начать!';
 
@@ -702,8 +702,8 @@ async function handleBotMessage(message) {
       inline_keyboard: [
         [{ text: '🎮 Играть', web_app: { url: appUrl } }],
         [
-          { text: '📣 Канал', url: 'https://t.me/MoneyMonkeyi' },
-          { text: '💬 Поддержка', url: 'https://t.me/MoneyMonkeySupport' },
+          { text: '📣 Канал', url: 'https://t.me/Gift Pepei' },
+          { text: '💬 Поддержка', url: 'https://t.me/Gift PepeSupport' },
         ],
       ],
     },
@@ -2939,7 +2939,7 @@ app.get('/api/webhook-info', async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// GIFT RELAYER — пополнение инвентаря через NFT-подарок на @MoneyMonkeyGift
+// GIFT RELAYER — пополнение инвентаря через NFT-подарок на @Gift PepeGift
 // ══════════════════════════════════════════════════════════════════════════════
 
 function normalizeUsername(value) {
