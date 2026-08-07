@@ -906,10 +906,10 @@
 
 
 
-  /* === CRASH ROUND RESULT SHEET === */
+  /* === CRASH ROUND RESULT SHEET v2: LIVE-CARD MATCH + STALE-MULTIPLIER GUARD === */
   .crash-result-overlay{
     position:fixed;inset:0;z-index:95;
-    background:rgba(0,0,0,.48);
+    background:rgba(0,0,0,.52);
     opacity:0;pointer-events:none;
     transition:opacity .24s ease;
     backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);
@@ -917,48 +917,44 @@
   .crash-result-overlay.open{opacity:1;pointer-events:auto}
   .crash-result-sheet{
     position:absolute;left:0;right:0;bottom:0;
-    max-height:min(78vh,680px);
-    border-radius:32px 32px 0 0;
-    background:#111114;
-    border-top:1px solid rgba(255,255,255,.08);
-    box-shadow:0 -18px 48px rgba(0,0,0,.38);
+    max-height:min(82vh,720px);
+    border-radius:34px 34px 0 0;
+    background:#000 url('assets/background_pepe.png') center top/cover no-repeat;
+    border-top:1px solid rgba(255,255,255,.10);
+    box-shadow:0 -18px 48px rgba(0,0,0,.46);
     transform:translateY(105%);
     transition:transform .34s cubic-bezier(.22,.8,.24,1);
     padding:14px 14px calc(14px + env(safe-area-inset-bottom,0px));
     display:flex;flex-direction:column;gap:12px;
+    overflow:hidden;
   }
+  .crash-result-sheet::before{
+    content:'';position:absolute;inset:0;pointer-events:none;
+    background:linear-gradient(180deg,rgba(0,0,0,.18),rgba(0,0,0,.42));
+  }
+  .crash-result-sheet>*{position:relative;z-index:1}
   .crash-result-overlay.open .crash-result-sheet{transform:translateY(0)}
-  .crash-result-handle{width:38px;height:4px;border-radius:999px;background:rgba(255,255,255,.18);margin:0 auto 2px}
+  .crash-result-handle{width:38px;height:4px;border-radius:999px;background:rgba(255,255,255,.22);margin:0 auto 2px}
   .crash-result-title{color:#fff;text-align:center;font-size:20px;font-weight:800;line-height:1.2}
   .crash-result-prize{display:none;flex-direction:column;align-items:center;gap:7px;padding:2px 0 4px}
   .crash-result-prize.visible{display:flex}
   .crash-result-prize img{width:84px;height:84px;object-fit:contain;filter:drop-shadow(0 12px 18px rgba(0,0,0,.28))}
   .crash-result-prize-name{color:#fff;font-size:15px;font-weight:800;text-align:center}
   .crash-result-list{
-    min-height:58px;max-height:36vh;overflow-y:auto;
-    display:flex;flex-direction:column;gap:7px;
+    min-height:58px;max-height:38vh;overflow-y:auto;
+    display:flex;flex-direction:column;gap:6px;
     -webkit-overflow-scrolling:touch;
   }
   .crash-result-list::-webkit-scrollbar{display:none}
-  .crash-result-player{
-    min-height:52px;padding:8px 10px;border-radius:15px;
-    display:flex;align-items:center;gap:10px;
-    background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.07);
-  }
-  .crash-result-player.me{background:rgba(10,132,255,.09);border-color:rgba(10,132,255,.24)}
-  .crash-result-avatar{width:36px;height:36px;border-radius:50%;object-fit:cover;background:rgba(255,255,255,.1);flex:0 0 auto}
-  .crash-result-player-info{min-width:0;display:flex;flex-direction:column;gap:3px;flex:1}
-  .crash-result-player-name{color:#fff;font-size:13px;font-weight:750;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .crash-result-player-bet{display:flex;align-items:center;gap:4px;color:rgba(255,255,255,.42);font-size:11px;font-weight:650}
-  .crash-result-player-bet img,.crash-result-player-payout img{width:12px;height:12px;object-fit:contain}
-  .crash-result-player-right{display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex:0 0 auto}
-  .crash-result-status{font-size:11px;font-weight:800;white-space:nowrap}
-  .crash-result-status.won{color:#34C759}
-  .crash-result-status.lost{color:#FF453A}
-  .crash-result-player-payout{display:flex;align-items:center;gap:3px;color:rgba(255,255,255,.66);font-size:11px;font-weight:750}
+  /* Result rows intentionally reuse the exact live Crash bet-card classes. */
+  .crash-result-list .crash-bet-cloud{flex:0 0 auto;animation:none}
+  .crash-result-list .crash-bet-cloud-name{max-width:145px}
+  .crash-result-inline-status{margin-left:6px;font-size:10.5px;font-weight:800;white-space:nowrap}
+  .crash-result-inline-status.won{color:#34C759}
+  .crash-result-inline-status.lost{color:#FF453A}
   .crash-result-next{
     display:flex;align-items:center;justify-content:center;gap:9px;
-    color:rgba(255,255,255,.52);font-size:12px;font-weight:650;
+    color:rgba(255,255,255,.58);font-size:12px;font-weight:650;
     padding-top:2px;
   }
   .crash-result-next b{color:#fff;font-size:13px;font-weight:850;min-width:10px;text-align:center}
@@ -2884,11 +2880,20 @@
   }
   function computeCrashMultiplier(state,now=getServerNow()){
     if(!state)return 1;
-    if(state.phase!=='live') return Number(state.lastCrashMultiplier||state.liveMultiplier||1);
+    const snapshot=Math.max(1,Number(state.lastCrashMultiplier||state.liveMultiplier||1));
+    if(state.phase!=='live') return snapshot;
+    const growth=Math.max(1000,Number(state.growthMs||8000));
+    const snapshotAt=Number(state.serverNow||0);
+    if(snapshotAt>0 && Number.isFinite(snapshot)){
+      // The backend gives us a fresh live snapshot every poll. Extrapolate only a
+      // short distance from it. If the API temporarily disappears, freeze instead
+      // of letting exp() run for minutes and render x1e+30.
+      const ahead=Math.max(0,Math.min(1600,now-snapshotAt));
+      return snapshot*Math.exp(ahead/growth);
+    }
     const startAt=Number(state.liveStartAt||state.countdownEndsAt||now);
-    const elapsed=Math.max(0,now-startAt);
-    // Secret crash target is never sent to the browser. Server state polling ends the animation.
-    return Math.exp(elapsed/Number(state.growthMs||8000));
+    const elapsed=Math.max(0,Math.min(30000,now-startAt));
+    return Math.exp(elapsed/growth);
   }
   function stopCrashRocket(){
     crashRocket.classList.remove('visible');
@@ -2982,39 +2987,62 @@
       if(am!==bm)return am?-1:1;
       return Number(a?.placedAt||0)-Number(b?.placedAt||0);
     });
+
     players.forEach(player=>{
+      const isMe=String(player?.userId||'')===String(tgUserId);
       const won=String(player?.status||'')==='won'||!!player?.cashedOut;
+      const betAmount=Math.max(0,Number(player?.amount||player?.betAmount||0));
+      const shownAmount=won
+        ? Math.max(0,Number(player?.payout||player?.displayAmount||betAmount))
+        : betAmount;
+      // Same gift badge as the live Crash card. Winners use the final server preview;
+      // losers keep the preview that was shown for their bet during the round.
+      const gift=normalizeCrashPrizeGift(player?.previewGift||null)
+        || withCrashGiftValue(getCrashPreviewGift(shownAmount)||null,shownAmount);
+
       const row=document.createElement('div');
-      row.className='crash-result-player'+(String(player?.userId||'')===String(tgUserId)?' me':'');
+      row.className='crash-bet-cloud '+(won?'win-state':'loss-state');
+      row.dataset.userId=String(player?.userId||'');
 
       const avatar=document.createElement(player?.photoUrl?'img':'div');
-      avatar.className='crash-result-avatar';
+      avatar.className='crash-bet-cloud-avatar';
       if(player?.photoUrl){avatar.src=String(player.photoUrl);avatar.alt='';}
 
       const info=document.createElement('div');
-      info.className='crash-result-player-info';
+      info.className='crash-bet-cloud-info';
       const name=document.createElement('div');
-      name.className='crash-result-player-name';
-      name.textContent=(String(player?.userId||'')===String(tgUserId)?crashResultText('you')+' · ':'')+String(player?.firstName||'User');
+      name.className='crash-bet-cloud-name';
+      name.textContent=(isMe?crashResultText('you')+' · ':'')+String(player?.firstName||'User');
       const bet=document.createElement('div');
-      bet.className='crash-result-player-bet';
-      bet.append(document.createTextNode(formatStars(Number(player?.amount||player?.betAmount||0))+' '));
-      const betStar=document.createElement('img');betStar.src='assets/star.png';betStar.alt='';bet.appendChild(betStar);
+      bet.className='crash-bet-cloud-bet';
+      bet.append(document.createTextNode(formatStars(betAmount)+' '));
+      const betStar=document.createElement('img');
+      betStar.src='assets/star.png';betStar.alt='';
+      bet.appendChild(betStar);
+      const status=document.createElement('span');
+      status.className='crash-result-inline-status '+(won?'won':'lost');
+      status.textContent='· '+(won?crashResultText('claimed'):crashResultText('notClaimed'));
+      bet.appendChild(status);
       info.append(name,bet);
 
       const right=document.createElement('div');
-      right.className='crash-result-player-right';
-      const status=document.createElement('div');
-      status.className='crash-result-status '+(won?'won':'lost');
-      status.textContent=won?crashResultText('claimed'):crashResultText('notClaimed');
-      right.appendChild(status);
-      if(won){
-        const payout=document.createElement('div');
-        payout.className='crash-result-player-payout';
-        payout.append(document.createTextNode(formatStars(Number(player?.payout||player?.displayAmount||0))+' '));
-        const payoutStar=document.createElement('img');payoutStar.src='assets/star.png';payoutStar.alt='';payout.appendChild(payoutStar);
-        right.appendChild(payout);
+      right.className='crash-bet-cloud-right';
+      const amount=document.createElement('div');
+      amount.className='crash-bet-cloud-amount';
+      amount.append(document.createTextNode(formatStars(shownAmount)+' '));
+      const amountStar=document.createElement('img');
+      amountStar.src='assets/star.png';amountStar.alt='';
+      amount.appendChild(amountStar);
+      right.appendChild(amount);
+      if(gift){
+        right.insertAdjacentHTML('beforeend',buildCrashGiftBadge(gift));
+        const badge=right.querySelector('.crash-bet-cloud-gift-wrap:last-child');
+        if(badge){
+          badge.dataset.giftImage=String(resolveGiftImage(gift)||'');
+          badge.dataset.giftName=String(gift?.name||'Gift');
+        }
       }
+
       row.append(avatar,info,right);
       crashResultPlayers.appendChild(row);
     });
@@ -3661,7 +3689,7 @@
     }catch(e){
       crashStateFailCount+=1;
       console.warn('Crash refresh failed:',e.message);
-      if(crashStateFailCount>=2 && !crashRealtimeState){
+      if(crashStateFailCount>=5 && !crashRealtimeState){
         crashLivePill.textContent='Ошибка Crash';
         crashTimer.style.display='';
         crashTimer.textContent='!';
