@@ -1950,7 +1950,13 @@
   let upgradeDisplayedBlueDeg=0;
   let upgradeBlueDegAnim=0;
 
-  const UPGRADE_BLUE_START_DEG=180;
+  // Upgrade blue sector is always CENTERED at the bottom (180deg).
+  // Its start therefore depends on sector size: 180 - blueDeg/2.
+  const UPGRADE_BLUE_CENTER_DEG=180;
+  function getUpgradeBlueStartDeg(deg=upgradeDisplayedBlueDeg){
+    const value=Math.max(0,Math.min(360,Number(deg||0)));
+    return UPGRADE_BLUE_CENTER_DEG-(value/2);
+  }
   function setUpgradeArrowRotation(rotation=upgradeWheelRotation){
     upgradeWheelRotation=((Number(rotation||0)%360)+360)%360;
     const arrow=upgradeWheelEl?.querySelector('.circle-arrow');
@@ -1960,8 +1966,9 @@
     const value=Math.max(0,Math.min(360,Number(deg||0)));
     upgradeDisplayedBlueDeg=value;
     if(upgradeRingEl){
+      const startDeg=getUpgradeBlueStartDeg(value);
       upgradeRingEl.style.transform='rotate(0deg)';
-      upgradeRingEl.style.background='conic-gradient(from '+UPGRADE_BLUE_START_DEG+'deg, #0A84FF 0deg '+value+'deg, rgba(255,255,255,.12) '+value+'deg 360deg)';
+      upgradeRingEl.style.background='conic-gradient(from '+startDeg+'deg, #0A84FF 0deg '+value+'deg, rgba(255,255,255,.12) '+value+'deg 360deg)';
     }
   }
   function animateUpgradeFill(targetDeg,duration=420){
@@ -1980,11 +1987,15 @@
     requestAnimationFrame(step);
   }
 
+  // TEST MATH MODE: the wheel shows the raw mathematical ratio.
+  // Example: 349 -> 350 = 99.7%, 350 -> 700 = 50%.
+  // The backend intentionally uses a separate test probability (shown - 15pp, max 85%).
   function getUpgradeChance(source=upgradeSourceGift,target=upgradeTargetGift){
     const from=Number(source?.price||0);
     const to=Number(target?.price||0);
     if(!from||!to||to<=0||from>=to) return 0;
-    return Math.max(1,Math.min(75,Math.round((from/to)*75)));
+    const raw=(from/to)*100;
+    return Math.max(0.1,Math.min(99.9,Math.round(raw*10)/10));
   }
   function formatSlotContent(gift,label){
     if(!gift){
@@ -4040,7 +4051,13 @@
     const chance=getUpgradeChance();
     if(!chance) return;
     upgradeSpinBusy=true;
+    // Lock the visible sector BEFORE the request. During the spin it must never shrink/grow.
+    upgradeBlueDegAnim+=1;
+    setUpgradeRingBlue(Math.max(0.36,Math.min(359.64,(chance/100)*360)));
     renderUpgradeUI();
+    // renderUpgradeUI may start a same-target fill animation; cancel it and lock again.
+    upgradeBlueDegAnim+=1;
+    setUpgradeRingBlue(Math.max(0.36,Math.min(359.64,(chance/100)*360)));
     playUpgradeRedo();
     try{
       const resp=await fetch(API_BASE+'/api/upgrade/spin',{
@@ -4053,11 +4070,15 @@
       });
       const data=await readApiJson(resp);
       if(!resp.ok) throw new Error(data.error||'Upgrade failed');
-      const serverChance=Number(data.chance||chance);
+      const serverDisplayChance=Number(data.chance||chance);
       const isWin=!!data.isWin;
       const landingAngle=((Number(data.landingAngle)||0)%360+360)%360;
-      animateUpgradeFill(Math.max(12,Math.min(348,(serverChance/100)*360)),620);
-      const targetAbs=((UPGRADE_BLUE_START_DEG+landingAngle)%360+360)%360;
+      // TEST MATH MODE: keep the VISIBLE mathematical sector unchanged while spinning.
+      // data.actualChance is server-only test probability and must not resize the wheel.
+      const serverBlueDeg=Math.max(0.36,Math.min(359.64,Number(data.blueDeg||((serverDisplayChance/100)*360))));
+      upgradeBlueDegAnim+=1;
+      setUpgradeRingBlue(serverBlueDeg);
+      const targetAbs=((getUpgradeBlueStartDeg(serverBlueDeg)+landingAngle)%360+360)%360;
       const currentMod=((upgradeWheelRotation%360)+360)%360;
       const delta=((targetAbs-currentMod)%360+360)%360;
       const finalRotation=upgradeWheelRotation + 360*8 + delta;
