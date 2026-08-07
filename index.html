@@ -904,6 +904,73 @@
 
 
 
+
+
+  /* === CRASH ROUND RESULT SHEET === */
+  .crash-result-overlay{
+    position:fixed;inset:0;z-index:95;
+    background:rgba(0,0,0,.48);
+    opacity:0;pointer-events:none;
+    transition:opacity .24s ease;
+    backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);
+  }
+  .crash-result-overlay.open{opacity:1;pointer-events:auto}
+  .crash-result-sheet{
+    position:absolute;left:0;right:0;bottom:0;
+    max-height:min(78vh,680px);
+    border-radius:32px 32px 0 0;
+    background:#111114;
+    border-top:1px solid rgba(255,255,255,.08);
+    box-shadow:0 -18px 48px rgba(0,0,0,.38);
+    transform:translateY(105%);
+    transition:transform .34s cubic-bezier(.22,.8,.24,1);
+    padding:14px 14px calc(14px + env(safe-area-inset-bottom,0px));
+    display:flex;flex-direction:column;gap:12px;
+  }
+  .crash-result-overlay.open .crash-result-sheet{transform:translateY(0)}
+  .crash-result-handle{width:38px;height:4px;border-radius:999px;background:rgba(255,255,255,.18);margin:0 auto 2px}
+  .crash-result-title{color:#fff;text-align:center;font-size:20px;font-weight:800;line-height:1.2}
+  .crash-result-prize{display:none;flex-direction:column;align-items:center;gap:7px;padding:2px 0 4px}
+  .crash-result-prize.visible{display:flex}
+  .crash-result-prize img{width:84px;height:84px;object-fit:contain;filter:drop-shadow(0 12px 18px rgba(0,0,0,.28))}
+  .crash-result-prize-name{color:#fff;font-size:15px;font-weight:800;text-align:center}
+  .crash-result-list{
+    min-height:58px;max-height:36vh;overflow-y:auto;
+    display:flex;flex-direction:column;gap:7px;
+    -webkit-overflow-scrolling:touch;
+  }
+  .crash-result-list::-webkit-scrollbar{display:none}
+  .crash-result-player{
+    min-height:52px;padding:8px 10px;border-radius:15px;
+    display:flex;align-items:center;gap:10px;
+    background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.07);
+  }
+  .crash-result-player.me{background:rgba(10,132,255,.09);border-color:rgba(10,132,255,.24)}
+  .crash-result-avatar{width:36px;height:36px;border-radius:50%;object-fit:cover;background:rgba(255,255,255,.1);flex:0 0 auto}
+  .crash-result-player-info{min-width:0;display:flex;flex-direction:column;gap:3px;flex:1}
+  .crash-result-player-name{color:#fff;font-size:13px;font-weight:750;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .crash-result-player-bet{display:flex;align-items:center;gap:4px;color:rgba(255,255,255,.42);font-size:11px;font-weight:650}
+  .crash-result-player-bet img,.crash-result-player-payout img{width:12px;height:12px;object-fit:contain}
+  .crash-result-player-right{display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex:0 0 auto}
+  .crash-result-status{font-size:11px;font-weight:800;white-space:nowrap}
+  .crash-result-status.won{color:#34C759}
+  .crash-result-status.lost{color:#FF453A}
+  .crash-result-player-payout{display:flex;align-items:center;gap:3px;color:rgba(255,255,255,.66);font-size:11px;font-weight:750}
+  .crash-result-next{
+    display:flex;align-items:center;justify-content:center;gap:9px;
+    color:rgba(255,255,255,.52);font-size:12px;font-weight:650;
+    padding-top:2px;
+  }
+  .crash-result-next b{color:#fff;font-size:13px;font-weight:850;min-width:10px;text-align:center}
+  .crash-result-progress{position:relative;width:44px;height:2px;border-radius:999px;background:rgba(255,255,255,.16);overflow:hidden}
+  .crash-result-progress-fill{position:absolute;inset:0 auto 0 0;width:100%;background:#fff;border-radius:inherit;transition:width .1s linear,opacity .1s linear}
+  .crash-result-action{
+    width:100%;height:52px;border:none;border-radius:999px;
+    background:#0A84FF;color:#fff;font-size:15px;font-weight:800;font-family:inherit;
+    cursor:pointer;touch-action:manipulation;
+  }
+  .crash-result-action:disabled{opacity:.45;cursor:default}
+
   .gift-modal-overlay{
     position:fixed;top:0;left:0;right:0;bottom:0;z-index:120;
     background:rgba(0,0,0,.58);display:flex;align-items:center;justify-content:center;
@@ -1359,6 +1426,26 @@
         <button class="crash-prize-sell" id="giftModalSellBtn"></button>
         <button class="crash-prize-claim" id="giftModalClaimBtn">Забрать</button>
       </div>
+    </div>
+  </div>
+
+
+  <!-- CRASH ROUND RESULT SHEET -->
+  <div class="crash-result-overlay" id="crashResultOverlay">
+    <div class="crash-result-sheet" id="crashResultSheet" role="dialog" aria-modal="true" aria-labelledby="crashResultTitle">
+      <div class="crash-result-handle"></div>
+      <div class="crash-result-title" id="crashResultTitle"></div>
+      <div class="crash-result-prize" id="crashResultPrize">
+        <img id="crashResultPrizeImage" src="" alt="">
+        <div class="crash-result-prize-name" id="crashResultPrizeName"></div>
+      </div>
+      <div class="crash-result-list" id="crashResultPlayers"></div>
+      <div class="crash-result-next">
+        <span id="crashResultNextLabel">До следующей ставки</span>
+        <b id="crashResultCountdown">5</b>
+        <span class="crash-result-progress"><span class="crash-result-progress-fill" id="crashResultProgress"></span></span>
+      </div>
+      <button type="button" class="crash-result-action" id="crashResultAction">Закрыть</button>
     </div>
   </div>
 
@@ -2860,6 +2947,168 @@
   const giftModalPrice=document.getElementById('giftModalPrice');
   const giftModalSellBtn=document.getElementById('giftModalSellBtn');
   const giftModalClaimBtn=document.getElementById('giftModalClaimBtn');
+  const crashResultOverlay=document.getElementById('crashResultOverlay');
+  const crashResultTitle=document.getElementById('crashResultTitle');
+  const crashResultPrize=document.getElementById('crashResultPrize');
+  const crashResultPrizeImage=document.getElementById('crashResultPrizeImage');
+  const crashResultPrizeName=document.getElementById('crashResultPrizeName');
+  const crashResultPlayers=document.getElementById('crashResultPlayers');
+  const crashResultNextLabel=document.getElementById('crashResultNextLabel');
+  const crashResultCountdown=document.getElementById('crashResultCountdown');
+  const crashResultProgress=document.getElementById('crashResultProgress');
+  const crashResultAction=document.getElementById('crashResultAction');
+  let crashResultSheetRoundId=0;
+  let crashResultSheetDeadline=0;
+  let crashResultSheetTicker=null;
+  let crashResultSheetWon=false;
+  let crashResultSheetBusy=false;
+
+  function crashResultText(key){
+    const ru={win:'Вы победили',loss:'Вы проиграли',claimed:'Забрал',notClaimed:'Не забрал',next:'До следующей ставки',receive:'Получить',close:'Закрыть',receiving:'Получаем…',you:'Вы'};
+    const en={win:'You won',loss:'You lost',claimed:'Cashed out',notClaimed:'Did not cash out',next:'Next bet in',receive:'Receive',close:'Close',receiving:'Receiving…',you:'You'};
+    return (currentLang==='en'?en:ru)[key]||key;
+  }
+  function closeCrashResultSheet(){
+    if(crashResultSheetTicker){clearInterval(crashResultSheetTicker);crashResultSheetTicker=null;}
+    crashResultOverlay?.classList.remove('open');
+    crashResultSheetDeadline=0;
+  }
+  function renderCrashResultPlayers(list=[]){
+    if(!crashResultPlayers)return;
+    crashResultPlayers.innerHTML='';
+    const players=(Array.isArray(list)?list:[]).slice().sort((a,b)=>{
+      const am=String(a?.userId||'')===String(tgUserId);
+      const bm=String(b?.userId||'')===String(tgUserId);
+      if(am!==bm)return am?-1:1;
+      return Number(a?.placedAt||0)-Number(b?.placedAt||0);
+    });
+    players.forEach(player=>{
+      const won=String(player?.status||'')==='won'||!!player?.cashedOut;
+      const row=document.createElement('div');
+      row.className='crash-result-player'+(String(player?.userId||'')===String(tgUserId)?' me':'');
+
+      const avatar=document.createElement(player?.photoUrl?'img':'div');
+      avatar.className='crash-result-avatar';
+      if(player?.photoUrl){avatar.src=String(player.photoUrl);avatar.alt='';}
+
+      const info=document.createElement('div');
+      info.className='crash-result-player-info';
+      const name=document.createElement('div');
+      name.className='crash-result-player-name';
+      name.textContent=(String(player?.userId||'')===String(tgUserId)?crashResultText('you')+' · ':'')+String(player?.firstName||'User');
+      const bet=document.createElement('div');
+      bet.className='crash-result-player-bet';
+      bet.append(document.createTextNode(formatStars(Number(player?.amount||player?.betAmount||0))+' '));
+      const betStar=document.createElement('img');betStar.src='assets/star.png';betStar.alt='';bet.appendChild(betStar);
+      info.append(name,bet);
+
+      const right=document.createElement('div');
+      right.className='crash-result-player-right';
+      const status=document.createElement('div');
+      status.className='crash-result-status '+(won?'won':'lost');
+      status.textContent=won?crashResultText('claimed'):crashResultText('notClaimed');
+      right.appendChild(status);
+      if(won){
+        const payout=document.createElement('div');
+        payout.className='crash-result-player-payout';
+        payout.append(document.createTextNode(formatStars(Number(player?.payout||player?.displayAmount||0))+' '));
+        const payoutStar=document.createElement('img');payoutStar.src='assets/star.png';payoutStar.alt='';payout.appendChild(payoutStar);
+        right.appendChild(payout);
+      }
+      row.append(avatar,info,right);
+      crashResultPlayers.appendChild(row);
+    });
+  }
+  async function claimCrashResultPrizeAndClose(auto=false){
+    if(crashResultSheetBusy)return;
+    if(!crashPrizePending||!crashPrizeGift){closeCrashResultSheet();return;}
+    crashResultSheetBusy=true;
+    if(crashResultAction){crashResultAction.disabled=true;crashResultAction.textContent=crashResultText('receiving');}
+    try{
+      await resolveCrashPrize('claim');
+      // resolveCrashPrize restores crashPrizePending on failure, so only close when
+      // the DB really moved the gift into inventory.
+      if(!crashPrizePending) closeCrashResultSheet();
+      else if(auto){
+        crashResultSheetDeadline=Date.now()+5000;
+        tickCrashResultSheet();
+        if(crashResultSheetTicker)clearInterval(crashResultSheetTicker);
+        crashResultSheetTicker=setInterval(tickCrashResultSheet,100);
+      }
+    }catch(_){
+      if(auto){
+        crashResultSheetDeadline=Date.now()+5000;
+        if(crashResultSheetTicker)clearInterval(crashResultSheetTicker);
+        crashResultSheetTicker=setInterval(tickCrashResultSheet,100);
+      }
+    }finally{
+      crashResultSheetBusy=false;
+      if(crashResultAction){crashResultAction.disabled=false;crashResultAction.textContent=crashResultText('receive');}
+    }
+  }
+  function tickCrashResultSheet(){
+    if(!crashResultSheetDeadline)return;
+    const left=Math.max(0,crashResultSheetDeadline-Date.now());
+    const sec=Math.max(0,Math.ceil(left/1000));
+    if(crashResultCountdown)crashResultCountdown.textContent=String(sec);
+    if(crashResultProgress){
+      const ratio=Math.max(0,Math.min(1,left/5000));
+      crashResultProgress.style.width=(ratio*100).toFixed(1)+'%';
+      crashResultProgress.style.opacity=String(.28+.72*ratio);
+    }
+    if(left<=0){
+      if(crashResultSheetTicker){clearInterval(crashResultSheetTicker);crashResultSheetTicker=null;}
+      // A pending crash prize would block the next bet in the DB. If the player
+      // does nothing for 5 seconds, receive it to inventory automatically.
+      if(crashResultSheetWon&&crashPrizePending&&crashPrizeGift) claimCrashResultPrizeAndClose(true);
+      else closeCrashResultSheet();
+    }
+  }
+  function maybeOpenCrashResultSheet(state){
+    if(!state||String(state.phase)!=='ended')return;
+    const viewer=state.viewerBet||null;
+    const roundId=Number(state.roundId||0);
+    if(!viewer||!roundId||crashResultSheetRoundId===roundId)return;
+    const won=String(viewer.status||'')==='won'||!!viewer.cashedOut;
+    const lost=String(viewer.status||'')==='lost';
+    if(!won&&!lost)return;
+
+    crashResultSheetRoundId=roundId;
+    crashResultSheetWon=won;
+    crashResultSheetBusy=false;
+    giftModalOverlay?.classList.remove('open');
+    crashResultTitle.textContent=won?crashResultText('win'):crashResultText('loss');
+    crashResultNextLabel.textContent=crashResultText('next');
+    renderCrashResultPlayers(state.activeBets||[]);
+
+    if(won){
+      const gift=normalizeCrashPrizeGift(state.pendingPrize||crashPrizeGift||viewer.previewGift||null);
+      if(gift){
+        const img=resolveGiftImage(gift);
+        if(img){crashResultPrizeImage.src=img;crashResultPrizeImage.alt=gift.name||'Gift';}
+        else{crashResultPrizeImage.removeAttribute('src');crashResultPrizeImage.alt='';}
+        crashResultPrizeName.textContent=String(gift.name||'Gift');
+        crashResultPrize.classList.add('visible');
+      }else{
+        crashResultPrize.classList.remove('visible');
+        crashResultPrizeImage.removeAttribute('src');
+        crashResultPrizeName.textContent='';
+      }
+      crashResultAction.textContent=crashResultText('receive');
+    }else{
+      crashResultPrize.classList.remove('visible');
+      crashResultPrizeImage.removeAttribute('src');
+      crashResultPrizeImage.alt='';
+      crashResultPrizeName.textContent='';
+      crashResultAction.textContent=crashResultText('close');
+    }
+    crashResultAction.disabled=false;
+    crashResultOverlay.classList.add('open');
+    crashResultSheetDeadline=Date.now()+5000;
+    tickCrashResultSheet();
+    if(crashResultSheetTicker)clearInterval(crashResultSheetTicker);
+    crashResultSheetTicker=setInterval(tickCrashResultSheet,100);
+  }
   let crashResultState=null;
   let crashPrizeModalAutoKey='';
   let crashPrizeResolveToken='';
@@ -3015,9 +3264,9 @@
     }
   }
   function openGiftModal(){
-    if(!crashPrizePending||!crashPrizeGift)return;
-    crashPrizeModalAutoKey=getCrashPrizeKey(crashPrizeGift);
-    giftModalOverlay.classList.add('open');
+    // Legacy crash gift popup is intentionally disabled. Crash results are handled
+    // only by the round-result bottom sheet.
+    return;
   }
   function getCrashPrizeKey(gift){
     if(!gift) return '';
@@ -3173,7 +3422,7 @@
         pendingPrize,
         Number(viewerBet?.displayAmount||viewerBet?.payout||crashSettledPayout||0),
         Number(viewerBet?.amount||crashBetAmount||0),
-        { autoOpen: !giftModalOverlay.classList.contains('open') }
+        { autoOpen:false }
       );
       return;
     }
@@ -3404,6 +3653,7 @@
       crashRealtimeState=data;
       applyCrashRoundBoundary(prevState,data);
       syncCrashViewerBet(data);
+      maybeOpenCrashResultSheet(data);
       renderCrashHistoryState(data);
       renderCrashOtherBets(data.activeBets||[]);
       updateCrashWaitLabel(data.betsCount||0);
@@ -3622,7 +3872,7 @@
       crashPrizeResolveToken='';
       if(prevPrizePending&&prevPrizeGift){
         showCrashPrize(prevPrizeGift);
-        maybeAutoOpenGiftModal(prevPrizeGift);
+        // Keep the result bottom sheet as the only crash-prize UI.
         if(prevBetAmount>0){
           renderCrashPlayerCard(prevBetAmount);
           renderCrashPlayerWin(prevSettledPayout||crashSettledPayout||prevBetAmount,null);
@@ -3706,7 +3956,7 @@
       if(finalPrize){
         // A gift cashout must NOT visually credit Stars. The balance only changes
         // after the player explicitly chooses Sell in the prize modal.
-        enterPendingCrashPrize(finalPrize,win,crashBetAmount,{force:true,autoOpen:true});
+        enterPendingCrashPrize(finalPrize,win,crashBetAmount,{force:true,autoOpen:false});
         return;
       }
 
@@ -3759,12 +4009,16 @@
     };
     ['pointerdown','click'].forEach((evt)=>node.addEventListener(evt,wrapped,{passive:false}));
   }
+  bindFastTap(crashResultAction,()=>{
+    if(crashResultSheetWon) claimCrashResultPrizeAndClose(false);
+    else closeCrashResultSheet();
+  });
   bindFastTap(crashPrizeSellBtn,()=>resolveCrashPrize('sell'));
   bindFastTap(crashPrizeClaimBtn,()=>resolveCrashPrize('claim'));
   bindFastTap(giftModalSellBtn,()=>resolveCrashPrize('sell'));
   bindFastTap(giftModalClaimBtn,()=>resolveCrashPrize('claim'));
-  document.querySelector('.crash-player-prize-card')?.addEventListener('click',openGiftModal);
-  document.getElementById('crashPlayer')?.addEventListener('click',()=>{ if(crashPrizePending&&crashPrizeGift) openGiftModal(); });
+  document.querySelector('.crash-player-prize-card')?.addEventListener('click',()=>{});
+  document.getElementById('crashPlayer')?.addEventListener('click',()=>{});
   giftModalOverlay.addEventListener('click',e=>{if(e.target===giftModalOverlay) giftModalOverlay.classList.remove('open')});
 
   function moveIndicator(el,animate){
@@ -4127,7 +4381,7 @@
     if(now<crashBetPressLockUntil)return;
     crashBetPressLockUntil=now+320;
     if(crashBetActive && phase==='live'){cashOut();return}
-    if(crashPrizePending){openGiftModal();return;}
+    if(crashPrizePending){return;}
     if(phase!=='countdown'){
       if(crashRealtimeState) refreshCrashState(true);
       return;
