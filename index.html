@@ -3162,7 +3162,7 @@
         pendingPrize,
         Number(viewerBet?.displayAmount||viewerBet?.payout||crashSettledPayout||0),
         Number(viewerBet?.amount||crashBetAmount||0),
-        { autoOpen: false }
+        { autoOpen: !giftModalOverlay.classList.contains('open') }
       );
       return;
     }
@@ -3594,11 +3594,9 @@
         refreshCrashState(true);
       }
 
-      if(!crashRoundLive&&!crashPrizePending&&crashBetSettled&&crashBetAmount>0){
-        renderCrashPlayerCard(crashBetAmount);
-        renderCrashPlayerWin(crashSettledPayout||crashBetAmount,prize);
-        setCrashPlayerState('win');
-      }
+      // Prize has been resolved (sold or claimed): clear the green settled-bet
+      // card immediately instead of leaving it hanging until the next round.
+      resetCrashPlayer();
     }catch(err){
       updateBalance(prevBalance);
       inventoryItems=prevItems;
@@ -3687,8 +3685,6 @@
       }
 
       const win=Number(data.payout||0);
-      if(Number.isFinite(Number(data.newBalance))) updateBalance(Number(data.newBalance));
-      else updateBalance(prevBalance);
 
       crashCashoutBusy=false;
       crashBetActive=false;
@@ -3697,9 +3693,15 @@
       crashSettledPayout=win;
       const finalPrize=data.pendingPrize||data.awardedGift||null;
       if(finalPrize){
-        enterPendingCrashPrize(finalPrize,win,crashBetAmount,{force:true,autoOpen:false});
+        // A gift cashout must NOT visually credit Stars. The balance only changes
+        // after the player explicitly chooses Sell in the prize modal.
+        enterPendingCrashPrize(finalPrize,win,crashBetAmount,{force:true,autoOpen:true});
         return;
       }
+
+      // Fallback cashout without a gift: use the authoritative server balance.
+      if(Number.isFinite(Number(data.newBalance))) updateBalance(Number(data.newBalance));
+      else updateBalance(prevBalance);
 
       crashPrizeGift=null;
       hideCrashPrize();
