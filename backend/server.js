@@ -291,6 +291,44 @@ async function notifyReferrer(referrerId, referredUserId, kind, amount = 0, rewa
 
 // v8.19: применить реферальную связку из бот-deep-link или mini app — общий путь.
 // Возвращает true если запись создана (новый реф), чтобы вызывающий мог уведомить.
+
+async function getUserLogIdentity(userId) {
+  const id = Number(userId || 0);
+  if (!id) return 'unknown/0';
+  try {
+    const { data } = await sb.from('users').select('username,first_name').eq('id', id).maybeSingle();
+    const handle = data?.username ? `@${data.username}` : (data?.first_name || 'user');
+    return `${handle}/${id}`;
+  } catch (_) {
+    return `user/${id}`;
+  }
+}
+
+async function logReferralJoin(referrerId, referredUserId) {
+  const [inviter, invited] = await Promise.all([
+    getUserLogIdentity(referrerId),
+    getUserLogIdentity(referredUserId),
+  ]);
+  console.log(`🤝 REF JOIN inviter=${inviter} invited=${invited}`);
+}
+
+async function logReferralDeposit(referrerId, referredUserId, amount, reward, source = 'deposit') {
+  const refId = Number(referrerId || 0);
+  const rewardNum = Math.max(0, Math.floor(Number(reward || 0)));
+  if (!refId || rewardNum <= 0) return;
+  const [inviter, depositor] = await Promise.all([
+    getUserLogIdentity(refId),
+    getUserLogIdentity(referredUserId),
+  ]);
+  console.log(`💰 REF DEPOSIT inviter=${inviter} depositor=${depositor} amount=${Math.floor(Number(amount || 0))}⭐ reward=+${rewardNum}⭐ source=${source}`);
+  notifyReferrer(refId, referredUserId, 'deposit', Math.floor(Number(amount || 0)), rewardNum).catch(() => null);
+}
+
+async function logDeposit(userId, amount, source = 'stars') {
+  const who = await getUserLogIdentity(userId);
+  console.log(`💫 DEPOSIT user=${who} amount=${Math.floor(Number(amount || 0))}⭐ source=${source}`);
+}
+
 async function applyReferralIfNew(userId, referrerId) {
   if (!userId || !referrerId) return false;
   if (Number(userId) === Number(referrerId)) {
@@ -298,7 +336,7 @@ async function applyReferralIfNew(userId, referrerId) {
     return false;
   }
   try {
-    const linkResult = await sb.rpc('apply_referral_link', {
+    const linkResult = await sb.rpc('giftpep_apply_referral_link_v2', {
       p_user_id: Number(userId),
       p_referrer_id: Number(referrerId),
     });
@@ -308,6 +346,7 @@ async function applyReferralIfNew(userId, referrerId) {
     }
     if (linkResult.data === true) {
       console.log(`🤝 referral linked: ${userId} ← ${referrerId}`);
+      logReferralJoin(referrerId, userId).catch((e) => console.warn('ref join log failed:', e?.message || e));
       return true;
     }
     return false;
@@ -318,7 +357,7 @@ async function applyReferralIfNew(userId, referrerId) {
 }
 
 async function getReferralSummary(userId) {
-  const { data, error } = await sb.rpc('get_referral_stats', { p_user_id: userId });
+  const { data, error } = await sb.rpc('giftpep_get_referral_stats_v2', { p_user_id: userId });
   if (error) throw new Error(error.message || 'Referral stats failed');
   const row = Array.isArray(data) ? data[0] : data;
   return {
@@ -341,7 +380,7 @@ async function applyDepositCredit(userId, amount) {
 
   let referral = null;
   try {
-    const rewardResult = await sb.rpc('credit_referral_for_deposit', {
+    const rewardResult = await sb.rpc('giftpep_credit_referral_for_deposit_v2', {
       p_user_id: userId,
       p_deposit_amount: numericAmount,
     });
@@ -352,9 +391,7 @@ async function applyDepositCredit(userId, amount) {
       const rewardNum = Number(rewardRow?.reward || 0);
       const refId = Number(rewardRow?.referrer_id || 0);
       if (rewardNum > 0) {
-        console.log(`🤝 referral bonus +${rewardNum}⭐ for ${refId}`);
-        // Уведомляем пригласителя — кто и на сколько пополнил.
-        notifyReferrer(refId, userId, 'deposit', numericAmount, rewardNum).catch(() => null);
+        logReferralDeposit(refId, userId, numericAmount, rewardNum, 'direct').catch(() => null);
       }
     }
     referral = await getReferralSummary(userId).catch(() => null);
@@ -1365,13 +1402,29 @@ async function ensureExactGiftBacking(userId, gift) {
   if (gift.tgIsUnique === false) throw new Error('Вывод доступен только для unique/NFT подарков');
   if (gift.tgMsgId || gift.tgSlug) return gift;
 
-  const response = await fetch(`${CONFIG.RELAYER_URL}/resolve-exact`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-relayer-key': CONFIG.RELAYER_INTERNAL_KEY },
-    body: JSON.stringify({ giftId: gift.giftId, giftName: gift.name, giftPrice: gift.price }),
-  });
+  let response;
+  try {
+    response = await fetch(`${CONFIG.RELAYER_URL}/resolve-exact`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-relayer-key': CONFIG.RELAYER_INTERNAL_KEY },
+      body: JSON.stringify({ giftId: gift.giftId, giftName: gift.name, giftPrice: gift.price }),
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch (cause) {
+    console.warn(`⚠️ withdraw relayer unavailable during reserve: ${cause?.message || cause}`);
+    const error = new Error('Сервис вывода временно недоступен. Попробуйте позже.');
+    error.code = 'RELAYER_UNAVAILABLE';
+    throw error;
+  }
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok || !payload?.ok) throw new Error(payload?.error || 'Relayer inventory lookup failed');
+  if (!response.ok || !payload?.ok) {
+    if (response.status >= 500) {
+      const error = new Error('Сервис вывода временно недоступен. Попробуйте позже.');
+      error.code = 'RELAYER_UNAVAILABLE';
+      throw error;
+    }
+    throw new Error(payload?.error || 'Не удалось найти NFT для вывода');
+  }
   const candidates = Array.isArray(payload.candidates) ? payload.candidates : [];
 
   for (const candidate of candidates) {
@@ -1857,6 +1910,12 @@ app.post('/api/inventory/withdraw-invoice', async (req, res) => {
   try {
     owned = await ensureExactGiftBacking(user.id, owned);
   } catch (error) {
+    if (error?.code === 'RELAYER_UNAVAILABLE') {
+      return res.status(503).json({
+        error: 'Сервис вывода временно недоступен. Попробуйте позже.',
+        code: 'RELAYER_UNAVAILABLE',
+      });
+    }
     return res.status(409).json({ error: error.message || 'Не удалось зарезервировать NFT для вывода' });
   }
 
@@ -2311,6 +2370,11 @@ app.post('/api/ton/topup/credit', async (req, res) => {
       p_intent_id: intentId, p_tx_hash: match.txHash,
     });
     if (applyError) throw new Error(applyError.message || 'TON credit failed');
+    if (applied?.applied) {
+      const creditedAmount = Number(applied?.amount || intent.stars_amount || 0);
+      logDeposit(user.id, creditedAmount, 'ton').catch(() => null);
+      logReferralDeposit(applied?.referrerId, user.id, creditedAmount, applied?.referralReward, 'ton').catch(() => null);
+    }
     return res.json({
       ok: true, txHash: match.txHash, amount: Number(applied?.amount || intent.stars_amount || 0),
       balance: Number(applied?.balance || 0), referral: await getReferralSummary(user.id).catch(() => null),
@@ -2581,6 +2645,10 @@ app.post('/webhook', async (req, res) => {
         p_payload: payload,
       });
       if (error) throw new Error(error.message || 'Payment apply failed');
+      if (data?.applied) {
+        logDeposit(senderId, totalAmount, 'telegram-stars').catch(() => null);
+        logReferralDeposit(data?.referrerId, senderId, totalAmount, data?.referralReward, 'telegram-stars').catch(() => null);
+      }
       console.log(`💫 payment ${data?.applied ? 'applied' : 'duplicate'}: user ${senderId} +${totalAmount}⭐`);
       return res.sendStatus(200);
     }
@@ -2809,6 +2877,8 @@ app.post('/api/relayer/credit-gift', async (req, res) => {
       withdrawAt: row.withdraw_available_at || null, createdAt: row.created_at || null,
     };
     console.log(`🎁 deposit gift +${giftPayload.name} (${giftPayload.price}⭐) → user ${userId} from @${senderUsername || senderTgId}`);
+    logDeposit(userId, giftPayload.price, 'telegram-gift').catch(() => null);
+    logReferralDeposit(credited?.referrerId, userId, giftPayload.price, credited?.referralReward, 'telegram-gift').catch(() => null);
 
     // DM юзеру: подарок добавлен + кнопка «Посмотреть в инвентаре» → мини-апп.
     try {
