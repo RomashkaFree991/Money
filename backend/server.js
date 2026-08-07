@@ -2435,15 +2435,23 @@ app.post('/api/upgrade/spin', async (req, res) => {
       return res.status(400).json({ error: 'Target gift must be more expensive' });
     }
 
-    const chance = Math.max(1, Math.min(60, Math.round((Number(sourceGift.price || 0) / Number(targetGift.price || 1)) * 55)));
-    const blueDeg = Math.max(12, Math.min(348, (chance / 100) * 360));
-    const isWin = secureRandomUnit() * 100 < chance;
-    const safeBlueDeg = Math.max(12, Math.min(348, blueDeg));
-    const winMargin = Math.min(8, Math.max(1, safeBlueDeg / 4));
-    const lossMargin = Math.min(8, Math.max(1, (360 - safeBlueDeg) / 4));
+    // TEST MATH MODE ONLY.
+    // Visible chance = raw mathematical price ratio, e.g. 349/350 => 99.7%.
+    // Actual test chance = visible chance - 15 percentage points, rounded, capped at 85%.
+    // Do not use this mismatch in production without clearly disclosing the actual probability.
+    const sourcePrice = Number(sourceGift.price || 0);
+    const targetPrice = Number(targetGift.price || 1);
+    const chance = Math.max(0.1, Math.min(99.9, Math.round(((sourcePrice / targetPrice) * 100) * 10) / 10));
+    const actualChance = Math.max(1, Math.min(85, Math.round(chance - 15)));
+    const safeBlueDeg = Math.max(0.36, Math.min(359.64, (chance / 100) * 360));
+    const isWin = secureRandomUnit() * 100 < actualChance;
+    const lossDeg = 360 - safeBlueDeg;
+    const winMargin = Math.min(8, Math.max(0.05, safeBlueDeg / 4));
+    const lossMargin = Math.min(8, Math.max(0.05, lossDeg / 4));
     const landingAngle = isWin
       ? winMargin + secureRandomUnit() * Math.max(0.001, safeBlueDeg - winMargin * 2)
-      : safeBlueDeg + lossMargin + secureRandomUnit() * Math.max(0.001, 360 - safeBlueDeg - lossMargin * 2);
+      : safeBlueDeg + lossMargin + secureRandomUnit() * Math.max(0.001, lossDeg - lossMargin * 2);
+    console.log(`🧪 UPGRADE TEST user=${user.id} ${sourcePrice}→${targetPrice} display=${chance}% actual=${actualChance}% result=${isWin ? 'WIN' : 'LOSE'}`);
 
     const { data, error } = await sb.rpc('inventory_upgrade_apply', {
       p_user_id: Number(user.id), p_source_gift_id: sourceGiftId, p_is_win: isWin,
@@ -2459,7 +2467,7 @@ app.post('/api/upgrade/spin', async (req, res) => {
     } : null;
     const items = await getUserInventory(user.id);
     return res.json({
-      ok: true, chance, blueDeg: Number(safeBlueDeg.toFixed(3)), landingAngle: Number(landingAngle.toFixed(3)),
+      ok: true, chance, actualChance, blueDeg: Number(safeBlueDeg.toFixed(3)), landingAngle: Number(landingAngle.toFixed(3)),
       isWin, sourceGift, targetGift, wonGift, items, serverNow: Date.now(),
     });
   } catch (error) {
