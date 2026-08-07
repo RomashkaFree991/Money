@@ -66,7 +66,16 @@ app.set('trust proxy', 1);
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
 app.use(cors({ origin: CONFIG.MINI_APP_URL, methods: ['GET', 'POST'], allowedHeaders: ['Content-Type', 'x-init-data', 'x-admin-key'] }));
 app.use(express.json({ limit: '256kb' }));
-app.use('/api', rateLimit({ windowMs: 60_000, limit: 300, standardHeaders: 'draft-8', legacyHeaders: false }));
+app.use('/api', rateLimit({
+  windowMs: 60_000,
+  limit: 300,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  handler: (_req, res) => res.status(429).json({
+    error: 'Too many requests. Please try again in a moment.',
+    code: 'RATE_LIMITED',
+  }),
+}));
 
 const sb = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
@@ -1136,7 +1145,10 @@ async function addWinBalance(userId, amount) {
 }
 
 function secureRandomUnit() {
-  return crypto.randomInt(0, 281474976710656) / 281474976710656; // 2^48
+  // crypto.randomInt() requires (max - min) <= 2^48 - 1.
+  // Reading 6 random bytes gives an unbiased integer in [0, 2^48),
+  // which we normalize to a cryptographically secure unit interval [0, 1).
+  return crypto.randomBytes(6).readUIntBE(0, 6) / 281474976710656;
 }
 
 function secureRandomIndex(length) {
@@ -2253,7 +2265,15 @@ app.post('/api/ton/topup/intent', async (req, res) => {
     destination_address: CONFIG.TON_DESTINATION_WALLET, amount_nano: baseNano.toString(),
     stars_amount: starsAmount, status: 'created', expires_at: expiresAt,
   });
-  if (error) return res.status(500).json({ error: error.message || 'TON intent create failed' });
+  if (error) {
+    console.error('TON intent create failed:', {
+      code: error.code || null,
+      message: error.message || String(error),
+      details: error.details || null,
+      hint: error.hint || null,
+    });
+    return res.status(500).json({ error: error.message || 'TON intent create failed' });
+  }
   return res.json({
     ok: true, intentId, destination: CONFIG.TON_DESTINATION_WALLET,
     amountNano: baseNano.toString(), payload: buildTonIntentPayload(intentId), starsAmount, expiresAt,
