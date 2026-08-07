@@ -2969,7 +2969,7 @@
   let crashResultSheetBusy=false;
 
   function crashResultText(key){
-    const ru={win:'Вы победили',loss:'Вы проиграли',claimed:'Забрал',notClaimed:'Не забрал',next:'До следующей ставки',receive:'Получить',close:'Закрыть',receiving:'Получаем…',you:'Вы'};
+    const ru={win:'Вы победили',loss:'Вы проиграли',claimed:'Забрал',notClaimed:'Не забрал',next:'До следующей ставки',receive:'Получить',close:'Закрыть',receiving:'Получаем…',you:'Ты'};
     const en={win:'You won',loss:'You lost',claimed:'Cashed out',notClaimed:'Did not cash out',next:'Next bet in',receive:'Receive',close:'Close',receiving:'Receiving…',you:'You'};
     return (currentLang==='en'?en:ru)[key]||key;
   }
@@ -2978,6 +2978,7 @@
     crashResultOverlay?.classList.remove('open');
     crashResultSheetDeadline=0;
   }
+  // CRASH RESULT NAMES FIX: self row is only You/Ты; no cashout/lost text in rows.
   function renderCrashResultPlayers(list=[]){
     if(!crashResultPlayers)return;
     crashResultPlayers.innerHTML='';
@@ -3012,17 +3013,13 @@
       info.className='crash-bet-cloud-info';
       const name=document.createElement('div');
       name.className='crash-bet-cloud-name';
-      name.textContent=(isMe?crashResultText('you')+' · ':'')+String(player?.firstName||'User');
+      name.textContent=isMe?crashResultText('you'):String(player?.firstName||'User');
       const bet=document.createElement('div');
       bet.className='crash-bet-cloud-bet';
       bet.append(document.createTextNode(formatStars(betAmount)+' '));
       const betStar=document.createElement('img');
       betStar.src='assets/star.png';betStar.alt='';
       bet.appendChild(betStar);
-      const status=document.createElement('span');
-      status.className='crash-result-inline-status '+(won?'won':'lost');
-      status.textContent='· '+(won?crashResultText('claimed'):crashResultText('notClaimed'));
-      bet.appendChild(status);
       info.append(name,bet);
 
       const right=document.createElement('div');
