@@ -1328,17 +1328,8 @@ function pickCrashGiftForPayout(payout, selectedGift = null) {
     return normalizeGift({ ...normalizedSelected, price: numericPayout });
   }
 
-  // Crash cashout is gift-based. If the payout is below the current cheapest
-  // catalog price, use the cheapest valid gift as the visual/inventory template
-  // but keep its credited value equal to the actual payout. This prevents the
-  // old null-gift path from crediting payout Stars directly to the balance.
-  if (numericPayout > 0) {
-    const cheapest = [...GIFT_CATALOG]
-      .filter(isCatalogGiftValid)
-      .sort((a, b) => Number(a.price || 0) - Number(b.price || 0))[0] || null;
-    if (cheapest) return normalizeGift({ ...cheapest, price: numericPayout });
-  }
-
+  // Below the cheapest affordable NFT, Crash pays Stars instead.
+  // Never create a fake low-value NFT by re-pricing a more expensive catalog gift.
   return null;
 }
 
@@ -2426,36 +2417,120 @@ app.post('/api/ton/topup/credit', async (req, res) => {
   }
 });
 
-app.get('/api/top', async (req, res) => {
-  res.set('Cache-Control', 'no-store');
-  const { data: leaders, error } = await sb
-    .from('users')
-    .select('id,first_name,photo_url,total_deposited')
-    .gt('total_deposited', 0)
-    .order('total_deposited', { ascending: false })
-    .limit(10);
 
-  if (error) return res.status(500).json({ error: error.message });
+// TOP DUAL LEADERBOARD FIX: deposits + cycle-scoped referrals.
+async function getReferralLeaderboardSnapshot(userId = null, startedAtMs = 0, limit = 10) {
+  const sinceIso = new Date(Number(startedAtMs || 0) || 0).toISOString();
+  const counts = new Map();
+  const batchSize = 1000;
+  let offset = 0;
 
-  let myRank = null;
-  const userId = parseInt(req.query.userId, 10);
-  if (Number.isFinite(userId)) {
-    const { data: me, error: meError } = await sb
-      .from('users')
-      .select('total_deposited')
-      .eq('id', userId)
-      .single();
+  // Supabase/PostgREST has a row cap, so page through the current cycle.
+  while (true) {
+    const { data, error } = await sb
+      .from('giftpep_referral_links_v2')
+      .select('referrer_id,created_at')
+      .gte('created_at', sinceIso)
+      .order('created_at', { ascending: true })
+      .range(offset, offset + batchSize - 1);
 
-    if (!meError && Number(me?.total_deposited || 0) > 0) {
-      const { count } = await sb
-        .from('users')
-        .select('id', { count: 'exact', head: true })
-        .gt('total_deposited', Number(me.total_deposited || 0));
-      myRank = Number(count || 0) + 1;
+    if (error) throw new Error(error.message || 'Referral top unavailable');
+    const rows = data || [];
+    for (const row of rows) {
+      const id = Number(row.referrer_id || 0);
+      if (id > 0) counts.set(id, Number(counts.get(id) || 0) + 1);
     }
+    if (rows.length < batchSize) break;
+    offset += batchSize;
   }
 
-  res.json({ leaders: leaders ?? [], myRank });
+  const ranked = [...counts.entries()]
+    .map(([id, invited_count]) => ({ id: Number(id), invited_count: Number(invited_count) }))
+    .sort((a, b) => b.invited_count - a.invited_count || a.id - b.id);
+
+  const top = ranked.slice(0, Math.max(1, Number(limit || 10)));
+  const ids = [...new Set([
+    ...top.map((x) => Number(x.id)),
+    ...(Number(userId || 0) > 0 ? [Number(userId)] : []),
+  ])];
+
+  let usersById = new Map();
+  if (ids.length) {
+    const { data: users, error: usersError } = await sb
+      .from('users')
+      .select('id,first_name,photo_url')
+      .in('id', ids);
+    if (usersError) throw new Error(usersError.message || 'Referral users unavailable');
+    usersById = new Map((users || []).map((u) => [Number(u.id), u]));
+  }
+
+  const leaders = top.map((row) => {
+    const u = usersById.get(Number(row.id)) || {};
+    return {
+      id: Number(row.id),
+      first_name: String(u.first_name || 'User'),
+      photo_url: u.photo_url || null,
+      invited_count: Number(row.invited_count || 0),
+    };
+  });
+
+  const myRankIndex = Number(userId || 0) > 0
+    ? ranked.findIndex((row) => Number(row.id) === Number(userId))
+    : -1;
+
+  return {
+    leaders,
+    myRank: myRankIndex >= 0 ? myRankIndex + 1 : null,
+    ranked,
+  };
+}
+
+app.get('/api/top', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    await rolloverTopCycleIfDue();
+    const mode = String(req.query.mode || 'deposits') === 'referrals' ? 'referrals' : 'deposits';
+    const userId = parseInt(req.query.userId, 10);
+
+    if (mode === 'referrals') {
+      const startedAt = await getTopCycleStart();
+      const snapshot = await getReferralLeaderboardSnapshot(
+        Number.isFinite(userId) ? userId : null,
+        startedAt,
+        10,
+      );
+      return res.json({ mode, leaders: snapshot.leaders, myRank: snapshot.myRank });
+    }
+
+    const { data: leaders, error } = await sb
+      .from('users')
+      .select('id,first_name,photo_url,total_deposited')
+      .gt('total_deposited', 0)
+      .order('total_deposited', { ascending: false })
+      .limit(10);
+    if (error) throw new Error(error.message);
+
+    let myRank = null;
+    if (Number.isFinite(userId)) {
+      const { data: me, error: meError } = await sb
+        .from('users')
+        .select('total_deposited')
+        .eq('id', userId)
+        .single();
+
+      if (!meError && Number(me?.total_deposited || 0) > 0) {
+        const { count } = await sb
+          .from('users')
+          .select('id', { count: 'exact', head: true })
+          .gt('total_deposited', Number(me.total_deposited || 0));
+        myRank = Number(count || 0) + 1;
+      }
+    }
+
+    return res.json({ mode, leaders: leaders ?? [], myRank });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'Top unavailable' });
+  }
 });
 
 
@@ -2622,9 +2697,6 @@ app.post('/api/crash/cashout', async (req, res) => {
     // Database/network latency after this point must not keep increasing the player's payout.
     const estimatePayout = Math.max(0, Math.floor(Number(betRow.amount || 0) * currentCrashMultiplier(state, requestReceivedAtMs)));
     const awardedGift = pickCrashGiftForPayout(estimatePayout, null);
-    if (!awardedGift) {
-      throw new Error('Crash gift catalog is unavailable');
-    }
     const { data, error } = await sb.rpc('crash_settle_bet_at', {
       p_user_id: Number(user.id),
       p_round_id: roundId,
@@ -2634,13 +2706,15 @@ app.post('/api/crash/cashout', async (req, res) => {
     if (error) throw new Error(error.message || 'Cash out failed');
 
     const pendingPrize = await getPendingPrize(user.id);
-    console.log(`🎁 CRASH CASHOUT user=${user.id} round=${roundId} payout=${Number(data?.payout || 0)} gift=${pendingPrize?.name || awardedGift.name} balance_unchanged=${Number(data?.newBalance || 0)}`);
+    const payoutKind = pendingPrize ? 'gift' : 'stars';
+    console.log(`🎁 CRASH CASHOUT user=${user.id} round=${roundId} payout=${Number(data?.payout || 0)} kind=${payoutKind} gift=${pendingPrize?.name || '-'} balance=${Number(data?.newBalance || 0)}`);
     return res.json({
       ok: true,
       payout: Number(data?.payout || 0),
       newBalance: Number(data?.newBalance || 0),
       pendingPrize,
       awardedGift: pendingPrize,
+      payoutKind,
       state: await serializeCrashState(user.id),
     });
   } catch (error) {
@@ -3004,10 +3078,14 @@ app.post('/api/admin/credit-unrouted', async (req, res) => {
 // ТОП: 7-дневный цикл с авто-выдачей подарков топ-1/2/3 и обнулением.
 // ══════════════════════════════════════════════════════════════════════════════
 const TOP_CYCLE_MS = 7 * 24 * 60 * 60 * 1000;
-const TOP_REWARD_GIFT_NAMES = ['Khabib’s Papakha', 'Crystal Ball', 'Berry Box'];
+const TOP_DEPOSIT_REWARD_GIFT_NAMES = ['Mighty Arm', 'Loot Bag', 'Nail Bracelet'];
+const TOP_REFERRAL_REWARD_GIFT_NAMES = ['Khabib’s Papakha', 'Crystal Ball', 'Berry Box'];
 
-function getTopRewardGifts() {
-  return TOP_REWARD_GIFT_NAMES.map((name) => {
+function getTopRewardGifts(kind = 'deposits') {
+  const names = kind === 'referrals'
+    ? TOP_REFERRAL_REWARD_GIFT_NAMES
+    : TOP_DEPOSIT_REWARD_GIFT_NAMES;
+  return names.map((name) => {
     const g = GIFT_CATALOG.find((x) => String(x?.name || '') === name);
     return g ? normalizeGift(g) : null;
   });
@@ -3043,7 +3121,7 @@ async function rolloverTopCycleIfDue() {
     const endsAt = startedAt + TOP_CYCLE_MS;
     if (Date.now() < endsAt) return { rolled: false, endsAt };
 
-    // 1) Берём текущий топ-3.
+    // 1) Берём топ-3 по депозитам и топ-3 по рефералам этого же 7-дневного цикла.
     const { data: leaders, error: leadersErr } = await sb
       .from('users')
       .select('id,first_name,total_deposited')
@@ -3052,29 +3130,52 @@ async function rolloverTopCycleIfDue() {
       .limit(3);
     if (leadersErr) throw new Error(leadersErr.message);
 
-    // 2) Выдаём подарки топ-1/2/3.
-    const rewards = getTopRewardGifts();
+    const referralSnapshot = await getReferralLeaderboardSnapshot(null, startedAt, 3);
+    const referralLeaders = referralSnapshot.leaders || [];
+
+    // 2) Выдаём отдельные подарки двум топам.
+    const depositRewards = getTopRewardGifts('deposits');
+    const referralRewards = getTopRewardGifts('referrals');
     const awarded = [];
+
     for (let i = 0; i < (leaders || []).length; i++) {
-      const gift = rewards[i];
+      const gift = depositRewards[i];
       const leader = leaders[i];
       if (!gift || !leader) continue;
       try {
         await addGiftToInventory(Number(leader.id), gift);
-        awarded.push({ userId: Number(leader.id), gift: gift.name, place: i + 1 });
-        // DM победителю.
+        awarded.push({ type: 'deposits', userId: Number(leader.id), gift: gift.name, place: i + 1 });
         try {
           await tgApi('sendMessage', {
             chat_id: Number(leader.id),
-            text: `🏆 Поздравляем! Вы заняли ${i + 1} место в топе. Награда «${gift.name}» добавлена в инвентарь.`,
+            text: `🏆 Поздравляем! Вы заняли ${i + 1} место в топе депозитов. Награда «${gift.name}» добавлена в инвентарь.`,
           });
         } catch (e) {}
       } catch (e) {
-        console.warn('top reward award failed:', e?.message || e);
+        console.warn('deposit top reward award failed:', e?.message || e);
       }
     }
 
-    // 3) Обнуляем total_deposited у всех.
+    for (let i = 0; i < referralLeaders.length; i++) {
+      const gift = referralRewards[i];
+      const leader = referralLeaders[i];
+      if (!gift || !leader) continue;
+      try {
+        await addGiftToInventory(Number(leader.id), gift);
+        awarded.push({ type: 'referrals', userId: Number(leader.id), gift: gift.name, place: i + 1 });
+        try {
+          await tgApi('sendMessage', {
+            chat_id: Number(leader.id),
+            text: `🤝 Поздравляем! Вы заняли ${i + 1} место в топе рефералов. Награда «${gift.name}» добавлена в инвентарь.`,
+          });
+        } catch (e) {}
+      } catch (e) {
+        console.warn('referral top reward award failed:', e?.message || e);
+      }
+    }
+
+    // 3) Обнуляем total_deposited у всех. Реферальные связи НЕ удаляем:
+    // новый цикл считает только links.created_at >= нового startedAt.
     await sb.from('users').update({ total_deposited: 0, updated_at: new Date().toISOString() }).gt('total_deposited', 0);
 
     // 4) Стартуем новый 7-дневный цикл.
