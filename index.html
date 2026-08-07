@@ -2789,6 +2789,11 @@
   function renderCrashOtherBets(list=[], state=null){
     if(!crashOthers)return;
     const phase=String(state?.phase||'countdown');
+    const roundId=Number(state?.roundId||0);
+    if(phase==='ended'&&roundId&&roundId===Number(crashResultDismissedRoundId||0)){
+      crashOthers.innerHTML='';
+      return;
+    }
     const others=(Array.isArray(list)?list:[]).filter(player=>String(player.userId)!==String(tgUserId)).slice(0,6);
     const nextIds=new Set(others.map(player=>String(player.userId)));
     Array.from(crashOthers.querySelectorAll('.crash-bet-cloud')).forEach(row=>{
@@ -2913,6 +2918,7 @@
       crashHistory.appendChild(pill);
     });
   }
+  // CRASH PHASE/CASHOUT FIX: global 5s hold, no stale rows, idempotent cashout UI.
   function computeCrashMultiplier(state,now=getServerNow()){
     if(!state)return 1;
     const snapshot=Math.max(1,Number(state.lastCrashMultiplier||state.liveMultiplier||1));
@@ -3014,6 +3020,7 @@
   let crashResultSheetWon=false;
   let crashResultSheetBusy=false;
   let crashResultDismissedRoundId=0;
+  let crashCashoutRequestedRoundId=0;
 
   function crashResultText(key){
     const ru={win:'Вы победили',loss:'Вы проиграли',bets:'Ставки',claimed:'Забрал',notClaimed:'Не забрал',next:'До следующей ставки',receive:'Получить',close:'Закрыть',receiving:'Получаем…',you:'Ты'};
@@ -3026,10 +3033,14 @@
     crashResultSheetDeadline=0;
 
     const currentRoundId=Number(crashRealtimeState?.roundId||0);
-    const viewer=crashRealtimeState?.viewerBet||null;
-    if(currentRoundId&&viewer&&currentRoundId===Number(crashResultSheetRoundId||0)){
+    if(currentRoundId&&currentRoundId===Number(crashResultSheetRoundId||0)){
       crashResultDismissedRoundId=currentRoundId;
+      // During the shared 5-second result hold, the main Crash screen should
+      // show only the red crash multiplier. No old own/other bet rows.
       resetCrashPlayer();
+      if(crashOthers)crashOthers.innerHTML='';
+      crashWaitText.style.display='none';
+      crashWait.className='crash-wait empty';
     }
   }
   // CRASH RESULT NAMES FIX: self row is only You/Ты; no cashout/lost text in rows.
@@ -3203,6 +3214,14 @@
     // Count down to the real DB nextRoundAt, not five seconds from the moment
     // this device happened to receive the result.
     const serverLeft=Math.max(0,Number(state.nextRoundAt||0)-getServerNow());
+    // If network/background recovery discovers an ended round with almost no
+    // global cooldown left, don't flash the sheet for a fraction of a second.
+    if(serverLeft>0&&serverLeft<1200){
+      crashResultDismissedRoundId=roundId;
+      resetCrashPlayer();
+      if(crashOthers)crashOthers.innerHTML='';
+      return;
+    }
     const holdMs=Math.max(250,Math.min(5000,serverLeft||5000));
     crashResultSheetDeadline=Date.now()+holdMs;
     tickCrashResultSheet();
@@ -3240,8 +3259,9 @@
 
   function renderCrashPlayerWin(amount,gift=null){
     const explicitGift=gift?normalizeCrashPrizeGift(gift):null;
-    const shouldHideGift=crashResultState==='loss' && !explicitGift && !crashPrizePending;
-    const sourceGift=shouldHideGift ? null : (explicitGift||(crashPrizePending||crashBetSettled?crashPrizeGift:null)||getCrashPreviewGift(amount));
+    // A red/lost card keeps the same preview NFT that was shown during the round.
+    // If the value is below the cheapest NFT, getCrashPreviewGift() correctly returns null.
+    const sourceGift=explicitGift||(crashPrizePending||crashBetSettled?crashPrizeGift:null)||getCrashPreviewGift(amount);
     const displayGift=withCrashGiftValue(sourceGift,amount);
     crashRenderedWinGift=displayGift?{...displayGift}:null;
     crashRenderedWinAmount=Number(amount||0);
@@ -3630,6 +3650,8 @@
   function applyCrashRoundBoundary(prevState,nextState){
     if(!prevState)return;
     if(prevState.roundId===nextState.roundId)return;
+    crashCashoutRequestedRoundId=0;
+    crashResultDismissedRoundId=0;
     if(!crashPrizePending) crashPrizeModalAutoKey='';
     crashRoundLocked=false;
     crashCountdownIntroUntil=0;
@@ -3746,6 +3768,13 @@
       lossEl.className='crash-loss show';
       lastCrashDisplayState=state.roundId+':ended';
     }
+    if(Number(state.roundId||0)===Number(crashResultDismissedRoundId||0)){
+      resetCrashPlayer();
+      if(crashOthers)crashOthers.innerHTML='';
+      betBtn.classList.add('dim');
+      betBtn.textContent=t('placeBet');
+      return;
+    }
     if(crashBetActive&&!crashPrizePending&&!crashCashoutBusy){
       crashBetActive=false;
       setCrashPlayerState('loss');
@@ -3775,7 +3804,7 @@
     const controller=new AbortController();
     crashStateRequestController=controller;
     crashStateRequestInFlight=true;
-    const timeout=setTimeout(()=>controller.abort(),4500);
+    const timeout=setTimeout(()=>controller.abort(),1200);
 
     try{
       const resp=await fetch(API_BASE+'/api/crash/state?ts='+Date.now(),{
@@ -3797,7 +3826,7 @@
       syncCrashViewerBet(data);
       maybeOpenCrashResultSheet(data);
       renderCrashHistoryState(data);
-      renderCrashOtherBets(data.activeBets||[]);
+      renderCrashOtherBets(data.activeBets||[],data);
       updateCrashWaitLabel(data.betsCount||0);
 
       if(!crashRealtimeFrame&&document.visibilityState==='visible'){
@@ -3850,7 +3879,7 @@
   function runCrashRound(){
     crashRealtimeStarted=true;
     if(!crashRealtimeTimer){
-      crashRealtimeTimer=setInterval(()=>refreshCrashState(true,false),1000);
+      crashRealtimeTimer=setInterval(()=>refreshCrashState(true,false),500);
     }
     if(!crashRealtimeFrame&&document.visibilityState==='visible'){
       crashRealtimeFrame=requestAnimationFrame(renderCrashRealtimeFrame);
@@ -3913,7 +3942,7 @@
         syncCrashViewerBet(data.state);
         maybeOpenCrashResultSheet(data.state);
         renderCrashHistoryState(data.state);
-        renderCrashOtherBets(data.state.activeBets||[]);
+        renderCrashOtherBets(data.state.activeBets||[],data.state);
         updateCrashWaitLabel(data.state.betsCount||0);
       }else{
         await refreshCrashState(true);
@@ -4027,7 +4056,7 @@
         syncCrashViewerBet(data.state);
         maybeOpenCrashResultSheet(data.state);
         renderCrashHistoryState(data.state);
-        renderCrashOtherBets(data.state.activeBets||[]);
+        renderCrashOtherBets(data.state.activeBets||[],data.state);
         updateCrashWaitLabel(data.state.betsCount||0);
       }else{
         refreshCrashState(true);
@@ -4074,7 +4103,21 @@
 
   async function cashOut(){
     const now=getServerNow();
-    if(!crashBetActive||crashCashoutBusy||!crashRoundLive) return;
+    const roundId=Number(crashRealtimeState?.roundId||0);
+    if(!crashBetActive||crashCashoutBusy||!crashRoundLive||!roundId)return;
+    if(Number(crashCashoutRequestedRoundId||0)===roundId)return;
+
+    // Never cash out from a stale "live" snapshot after polling was suspended.
+    const snapshotAge=Math.max(0,Date.now()-Number(crashRealtimeState?.serverNow||0));
+    if(snapshotAge>1100){
+      await refreshCrashState(true,true);
+      const freshRoundId=Number(crashRealtimeState?.roundId||0);
+      if(freshRoundId!==roundId||String(crashRealtimeState?.phase||'')!=='live'){
+        return;
+      }
+    }
+
+    crashCashoutRequestedRoundId=roundId;
     const betBtn=document.getElementById('crashBetBtn');
     const prevBalance=balance;
     const prevPrizePending=crashPrizePending;
@@ -4107,10 +4150,31 @@
       const resp=await fetch(API_BASE+'/api/crash/cashout',{
         method:'POST',
         headers:{'Content-Type':'application/json','x-init-data':tg?.initData||''},
-        body:JSON.stringify({ roundId:crashRealtimeState?.roundId||0 }),
+        body:JSON.stringify({ roundId }),
       });
-      const data=await resp.json().catch(()=>({}));
-      if(!resp.ok) throw new Error(data.error||'Cash out failed');
+      const data=await readApiJson(resp);
+      if(!resp.ok){
+        if(data.code==='CRASH_TOO_LATE'){
+          crashCashoutBusy=false;
+          crashBetActive=false;
+          if(data.state&&!isStaleCrashState(data.state)){
+            markCrashStateApplied(data.state);
+            crashServerOffsetMs=Number(data.state.serverNow||Date.now())-Date.now();
+            const prevState=crashRealtimeState;
+            crashRealtimeState=data.state;
+            applyCrashRoundBoundary(prevState,data.state);
+            syncCrashViewerBet(data.state);
+            maybeOpenCrashResultSheet(data.state);
+            renderCrashHistoryState(data.state);
+            renderCrashOtherBets(data.state.activeBets||[],data.state);
+            updateCrashWaitLabel(data.state.betsCount||0);
+          }else{
+            await refreshCrashState(true,true);
+          }
+          return;
+        }
+        throw new Error(data.error||'Cash out failed');
+      }
 
       if(data.state&&!isStaleCrashState(data.state)){
         markCrashStateApplied(data.state);
@@ -4121,7 +4185,7 @@
         syncCrashViewerBet(data.state);
         maybeOpenCrashResultSheet(data.state);
         renderCrashHistoryState(data.state);
-        renderCrashOtherBets(data.state.activeBets||[]);
+        renderCrashOtherBets(data.state.activeBets||[],data.state);
         updateCrashWaitLabel(data.state.betsCount||0);
       }
 
@@ -4152,6 +4216,9 @@
       betBtn.textContent=t('placeBet');
     }catch(e){
       crashCashoutBusy=false;
+      if(String(crashRealtimeState?.phase||'')==='live'&&Number(crashRealtimeState?.roundId||0)===roundId){
+        crashCashoutRequestedRoundId=0;
+      }
       crashPrizePending=prevPrizePending;
       crashPrizeGift=prevPrizeGift;
       crashBetActive=prevBetActive;
