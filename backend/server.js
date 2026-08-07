@@ -1747,12 +1747,41 @@ async function getCrashBets(roundId) {
   return (data || []).map(mapCrashBetRow).filter(Boolean);
 }
 
+// CRASH BACKGROUND RECOVERY FIX: an old pending prize cannot lock future rounds.
 async function serializeCrashState(userId = null) {
   const state = await getCrashInternalState();
-  const [bets, pendingPrize] = await Promise.all([
+  const [bets, pendingRead] = await Promise.all([
     getCrashBets(state.roundId),
     userId ? getPendingPrize(userId) : Promise.resolve(null),
   ]);
+
+  const viewerRow = userId
+    ? bets.find((bet) => String(bet.userId) === String(userId)) || null
+    : null;
+
+  let pendingPrize = pendingRead;
+
+  // During the same round, keep the prize pending so the 5-second result sheet
+  // can show the Receive button. After crash_sync_state advances to a new round,
+  // that old prize is automatically moved to inventory. This prevents "Gift opened"
+  // from blocking every next bet after the Mini App was backgrounded.
+  if (userId && pendingPrize && !viewerRow) {
+    const { error: claimError } = await sb.rpc('pending_prize_resolve', {
+      p_user_id: Number(userId),
+      p_action: 'claim',
+    });
+
+    if (claimError) {
+      console.error('orphan crash prize auto-claim error:', {
+        userId: Number(userId),
+        message: claimError.message || String(claimError),
+      });
+    } else {
+      console.log(`🧹 CRASH ORPHAN PRIZE auto-claimed user=${Number(userId)} currentRound=${state.roundId}`);
+      pendingPrize = null;
+    }
+  }
+
   const liveMultiplier = currentCrashMultiplier(state);
   const activeBets = bets.map((bet) => buildCrashBetState(bet, {
     viewer: userId ? String(bet.userId) === String(userId) : false,
@@ -1843,10 +1872,12 @@ app.get('/api/inventory', async (req, res) => {
   if (!user) return;
 
   try {
+    await serializeCrashState(user.id);
     const [items, pendingPrize] = await Promise.all([
       getUserInventory(user.id),
       getPendingPrize(user.id),
     ]);
+    res.set('Cache-Control', 'no-store');
     res.json({ items, pendingPrize });
   } catch (error) {
     res.status(500).json({ error: error.message || 'Inventory failed' });
@@ -2529,6 +2560,7 @@ app.post('/api/craft/spin', async (req, res) => {
 app.get('/api/crash/state', async (req, res) => {
   const user = requireUser(req, res);
   if (!user) return;
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   try {
     res.json(await serializeCrashState(user.id));
   } catch (error) {
@@ -2550,6 +2582,10 @@ app.post('/api/crash/bet', async (req, res) => {
     return res.status(400).json({ error: `Минимальная ставка ${CRASH_MIN_BET}⭐` });
   }
   try {
+    // Reconcile any prize orphaned by a backgrounded WebView before the DB
+    // enforces the pending-prize check for this new bet.
+    await serializeCrashState(user.id);
+
     const { data, error } = await sb.rpc('crash_place_bet', {
       p_user_id: Number(user.id),
       p_first_name: user.first_name || user.username || 'User',
