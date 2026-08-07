@@ -95,6 +95,27 @@
   .section-title{color:#fff;font-size:17px;font-weight:700;margin-bottom:10px}
 
   /* === TOP/LEADERBOARD === */
+  .top-mode-cloud{
+    position:relative;width:100%;height:48px;padding:4px;margin:0 0 12px;
+    border-radius:18px;background:#1C1C1E;border:1px solid rgba(255,255,255,.08);
+    display:grid;grid-template-columns:1fr 1fr;overflow:hidden;
+    box-shadow:0 10px 28px rgba(0,0,0,.16);
+  }
+  .top-mode-indicator{
+    position:absolute;left:4px;top:4px;bottom:4px;width:calc(50% - 4px);
+    border-radius:14px;background:#0A84FF;
+    box-shadow:0 6px 18px rgba(10,132,255,.28);
+    transition:transform .28s cubic-bezier(.22,.8,.24,1);
+    pointer-events:none;
+  }
+  .top-mode-cloud.referrals .top-mode-indicator{transform:translateX(100%)}
+  .top-mode-btn{
+    position:relative;z-index:2;border:0;background:transparent;color:rgba(255,255,255,.52);
+    font:700 13px/1 inherit;cursor:pointer;border-radius:14px;
+    transition:color .22s ease;touch-action:manipulation;
+  }
+  .top-mode-btn.active{color:#fff}
+
   .top-timer-cloud{
     background:#007AFF;border-radius:18px;padding:18px 16px;margin:0 0 16px;
     display:flex;align-items:center;justify-content:center;text-align:center;gap:6px;
@@ -1155,6 +1176,11 @@
 
   <!-- TOP -->
   <div class="page" id="topPage">
+    <div class="top-mode-cloud" id="topModeCloud">
+      <span class="top-mode-indicator"></span>
+      <button type="button" class="top-mode-btn active" data-top-mode="deposits" id="topModeDeposits">Депозиты</button>
+      <button type="button" class="top-mode-btn" data-top-mode="referrals" id="topModeReferrals">Рефералы</button>
+    </div>
     <div class="top-trophy-box">
       <div class="top-trophy-lottie" id="trophyLottie"></div>
       <div class="top-place-text">Вы в топе на <b>—</b> месте</div>
@@ -2324,8 +2350,10 @@
   const REFERRAL_BOT_USERNAME='xpepegiftbot';
   const TON_TO_STARS=90;
   const TON_MANIFEST_URL=(window.location?.origin||'https://moneymonkey.live')+'/tonconnect-manifest.json';
-  const TOP_REWARD_GIFT_NAMES=['Khabib’s Papakha','Crystal Ball','Berry Box'];
-  const TOP_REWARD_GIFTS=TOP_REWARD_GIFT_NAMES.map(name=>GIFT_CATALOG.find(gift=>String(gift?.name||'')===name)||null);
+  const TOP_DEPOSIT_REWARD_GIFT_NAMES=['Mighty Arm','Loot Bag','Nail Bracelet'];
+  const TOP_REFERRAL_REWARD_GIFT_NAMES=['Khabib’s Papakha','Crystal Ball','Berry Box'];
+  const TOP_DEPOSIT_REWARD_GIFTS=TOP_DEPOSIT_REWARD_GIFT_NAMES.map(name=>GIFT_CATALOG.find(gift=>String(gift?.name||'')===name)||null);
+  const TOP_REFERRAL_REWARD_GIFTS=TOP_REFERRAL_REWARD_GIFT_NAMES.map(name=>GIFT_CATALOG.find(gift=>String(gift?.name||'')===name)||null);
   let tonConnectUI=null;
   let tonWalletAddress='';
   let tonWalletFriendlyAddress='';
@@ -2551,7 +2579,9 @@
 
   // Balance
   let balance=0;
+  let topMode='deposits';
   let topCache={leaders:[],myRank:null};
+  let referralTopCache={leaders:[],myRank:null};
   function updateBalance(v){
     balance=Number(v||0);
     document.getElementById('balanceText').textContent=formatStars(balance);
@@ -2573,7 +2603,7 @@
     const topLeaders=leaders.slice(0,10);
     const myTopIndex=leaders.findIndex(item=>String(item.id)===String(tgUserId));
     topCache={leaders:topLeaders,myRank:myTopIndex>=0?myTopIndex+1:topCache.myRank};
-    renderTop(topCache.leaders,topCache.myRank);
+    if(topMode==='deposits') renderTop(topCache.leaders,topCache.myRank);
   }
 
   // Nav
@@ -2687,15 +2717,9 @@
     return '';
   }
   function getCrashPreviewGift(stars){
-    const amount=Math.max(0,Math.floor(Number(stars||0)));
-    const affordable=getBestGiftForStars(amount);
-    if(affordable) return affordable;
-    // Keep the same NFT-style row even for a very small payout. This is only
-    // the visual template; the displayed prize value remains the actual payout.
-    const cheapest=[...GIFT_CATALOG]
-      .filter(g=>Number(g?.price||0)>0)
-      .sort((a,b)=>Number(a.price||0)-Number(b.price||0))[0]||null;
-    return cheapest?{...cheapest,price:amount}:null;
+    // If the current value is below the cheapest NFT in the catalog, Crash is
+    // a Stars payout. Do not visually pretend that a 10⭐ win is a 339⭐ NFT.
+    return getBestGiftForStars(Math.max(0,Math.floor(Number(stars||0))))||null;
   }
   function withCrashGiftValue(gift,amount){
     const safe=gift?{...gift}:null;
@@ -2989,6 +3013,7 @@
   let crashResultSheetTicker=null;
   let crashResultSheetWon=false;
   let crashResultSheetBusy=false;
+  let crashResultDismissedRoundId=0;
 
   function crashResultText(key){
     const ru={win:'Вы победили',loss:'Вы проиграли',bets:'Ставки',claimed:'Забрал',notClaimed:'Не забрал',next:'До следующей ставки',receive:'Получить',close:'Закрыть',receiving:'Получаем…',you:'Ты'};
@@ -2999,6 +3024,13 @@
     if(crashResultSheetTicker){clearInterval(crashResultSheetTicker);crashResultSheetTicker=null;}
     crashResultOverlay?.classList.remove('open');
     crashResultSheetDeadline=0;
+
+    const currentRoundId=Number(crashRealtimeState?.roundId||0);
+    const viewer=crashRealtimeState?.viewerBet||null;
+    if(currentRoundId&&viewer&&currentRoundId===Number(crashResultSheetRoundId||0)){
+      crashResultDismissedRoundId=currentRoundId;
+      resetCrashPlayer();
+    }
   }
   // CRASH RESULT NAMES FIX: self row is only You/Ты; no cashout/lost text in rows.
   function renderCrashResultPlayers(list=[]){
@@ -3129,7 +3161,7 @@
     }
 
     crashResultSheetRoundId=roundId;
-    crashResultSheetWon=won;
+    crashResultSheetWon=false;
     crashResultSheetBusy=false;
     giftModalOverlay?.classList.remove('open');
     crashResultTitle.textContent=won
@@ -3141,17 +3173,22 @@
     if(won){
       const gift=normalizeCrashPrizeGift(state.pendingPrize||crashPrizeGift||viewer?.previewGift||null);
       if(gift){
+        crashResultSheetWon=true; // only a real pending NFT needs Receive/auto-claim
         const img=resolveGiftImage(gift);
         if(img){crashResultPrizeImage.src=img;crashResultPrizeImage.alt=gift.name||'Gift';}
         else{crashResultPrizeImage.removeAttribute('src');crashResultPrizeImage.alt='';}
         crashResultPrizeName.textContent=String(gift.name||'Gift');
         crashResultPrize.classList.add('visible');
+        crashResultAction.textContent=crashResultText('receive');
       }else{
-        crashResultPrize.classList.remove('visible');
-        crashResultPrizeImage.removeAttribute('src');
-        crashResultPrizeName.textContent='';
+        // Win below minimum NFT price: backend already credited Stars.
+        const starWin=Math.max(0,Number(viewer?.payout||viewer?.displayAmount||0));
+        crashResultPrizeImage.src='assets/star.png';
+        crashResultPrizeImage.alt='Stars';
+        crashResultPrizeName.textContent='+'+formatStars(starWin)+' ⭐';
+        crashResultPrize.classList.add('visible');
+        crashResultAction.textContent=crashResultText('close');
       }
-      crashResultAction.textContent=crashResultText('receive');
     }else{
       crashResultPrize.classList.remove('visible');
       crashResultPrizeImage.removeAttribute('src');
@@ -3263,6 +3300,7 @@
     document.documentElement.lang=currentLang;
     const q=s=>document.querySelector(s);
     q('#topPage .top-place-text').innerHTML=t('topPlace');
+    syncTopModeUI();
     document.querySelectorAll('#topPage .top-name').forEach(el=>{if(!el.dataset.locked){el.textContent=t('waitingDots')}});
     q('#profilePage .section-title').textContent=t('profile');
     document.querySelectorAll('#profilePage .section-title')[1].textContent=t('promocodes');
@@ -3411,6 +3449,7 @@
     giftModalSellBtn.innerHTML=t('sell')+' '+formatStars(normalizedGift.price)+' <img src="assets/star.png" alt="">';
     giftModalClaimBtn.textContent=t('claim');
   }
+  // CRASH+TOP FIX 2026-08-07: no stale red bet, Stars below NFT minimum, dual leaderboard.
   function resetCrashPlayer(){
     hideCrashPrize();
     crashPrizeGift=null;
@@ -3419,6 +3458,8 @@
     crashCashoutBusy=false;
     crashRoundLocked=false;
     crashLocalBetRoundId=0;
+    crashBetActive=false;
+    crashBetAmount=0;
     crashCashoutBusy=false;
     crashBetSettled=false;
     crashSettledPayout=0;
@@ -3465,6 +3506,14 @@
     const pendingPrize=state?.pendingPrize||null;
     const viewerBet=state?.viewerBet||null;
     const stateRoundId=Number(state?.roundId||0);
+
+    if(stateRoundId&&crashResultDismissedRoundId&&stateRoundId!==crashResultDismissedRoundId){
+      crashResultDismissedRoundId=0;
+    }
+    if(viewerBet&&!pendingPrize&&stateRoundId&&stateRoundId===crashResultDismissedRoundId){
+      return;
+    }
+
     if(viewerBet?.roundId) crashLocalBetRoundId=Number(viewerBet.roundId||stateRoundId||0);
     if(!viewerBet&&!pendingPrize&&crashLocalBetRoundId&&stateRoundId&&stateRoundId!==crashLocalBetRoundId&&!crashCashoutBusy&&!crashPrizeResolveBusy){
       resetCrashPlayer();
@@ -4789,13 +4838,46 @@
 
   async function refreshTop(){
     try{
-      const url=API_BASE+'/api/top'+(tgUserId?'?userId='+tgUserId+'&':'?')+'ts='+Date.now();
-      const resp=await fetch(url,{cache:'no-store'});
-      const {leaders=[],myRank}=await resp.json();
-      topCache={leaders,myRank};
-      renderTop(leaders,myRank);
+      const mode=topMode==='referrals'?'referrals':'deposits';
+      const params=new URLSearchParams({mode,ts:String(Date.now())});
+      if(tgUserId)params.set('userId',String(tgUserId));
+      const resp=await fetch(API_BASE+'/api/top?'+params.toString(),{cache:'no-store'});
+      const data=await readApiJson(resp);
+      if(!resp.ok)throw new Error(data.error||'Top failed');
+      const leaders=Array.isArray(data.leaders)?data.leaders:[];
+      const myRank=data.myRank??null;
+      if(mode==='referrals')referralTopCache={leaders,myRank};
+      else topCache={leaders,myRank};
+      if(mode===topMode)renderTop(leaders,myRank);
     }catch(e){console.warn('Top refresh failed:',e.message)}
   }
+
+  function syncTopModeUI(){
+    const cloud=document.getElementById('topModeCloud');
+    cloud?.classList.toggle('referrals',topMode==='referrals');
+    document.querySelectorAll('[data-top-mode]').forEach(btn=>{
+      btn.classList.toggle('active',btn.dataset.topMode===topMode);
+    });
+    const dep=document.getElementById('topModeDeposits');
+    const ref=document.getElementById('topModeReferrals');
+    if(dep)dep.textContent=currentLang==='en'?'Deposits':'Депозиты';
+    if(ref)ref.textContent=currentLang==='en'?'Referrals':'Рефералы';
+  }
+
+  function setTopMode(mode){
+    const next=mode==='referrals'?'referrals':'deposits';
+    if(topMode===next){refreshTop();return;}
+    topMode=next;
+    syncTopModeUI();
+    const cache=topMode==='referrals'?referralTopCache:topCache;
+    renderTop(cache.leaders||[],cache.myRank??null);
+    refreshTop();
+  }
+
+  document.querySelectorAll('[data-top-mode]').forEach(btn=>{
+    btn.addEventListener('click',()=>setTopMode(btn.dataset.topMode));
+  });
+  syncTopModeUI();
 
   // === Цикл топа: 7 дней, синее облако с обратным отсчётом ===
   let topCycleEndsAt=0;
@@ -4835,11 +4917,22 @@
   refreshTopCycle().then(startTopCycleTicker);
 
   function renderTop(leaders,myRank){
+    leaders=Array.isArray(leaders)?leaders:[];
+    const isRefs=topMode==='referrals';
     const placeText=document.querySelector('#topPage .top-place-text');
     if(placeText) placeText.innerHTML=myRank ? t('topPlaceAt').replace('{rank}',myRank) : t('topNotYet');
+
+    const scoreOf=(entry)=>isRefs?Number(entry?.invited_count||0):Number(entry?.total_deposited||0);
+    const scoreHtml=(value)=>{
+      if(isRefs)return '<span class="top-score-value">'+formatStars(value)+' <span aria-hidden="true">👥</span></span>';
+      return '<span class="top-score-value">'+formatStars(value)+' <img src="assets/star.png" alt=""></span>';
+    };
+    const rewards=isRefs?TOP_REFERRAL_REWARD_GIFTS:TOP_DEPOSIT_REWARD_GIFTS;
+
     const myEntry=leaders.find(l=>String(l.id)===String(tgUserId));
     document.querySelector('.top-my-rank').textContent=myRank||'—';
-    document.querySelector('.top-my-score').innerHTML='<span class="top-score-value">'+(myEntry?formatStars(myEntry.total_deposited):'0')+' <img src="assets/star.png" alt=""></span>'; 
+    document.querySelector('.top-my-score').innerHTML=scoreHtml(myEntry?scoreOf(myEntry):0);
+
     const rankClasses=['gold','silver','bronze'];
     const rows=document.querySelectorAll('#topPage .top-row');
     rows.forEach((row,i)=>{
@@ -4849,19 +4942,25 @@
       rankEl.className='top-rank'+(leader&&rankClasses[i]?' '+rankClasses[i]:'');
       const nameEl=row.querySelector('.top-name');
       row.querySelector('.top-gift-badge-wrap')?.remove();
+
       if(!leader){
         nameEl.textContent='—';
         nameEl.dataset.locked='false';
-        row.querySelector('.top-score').innerHTML='<span class="top-score-value">0 <img src="assets/star.png" alt=""></span>'; 
+        row.querySelector('.top-score').innerHTML=scoreHtml(0);
+        const avatar=row.querySelector('.top-avatar');
+        if(avatar?.tagName==='IMG')avatar.removeAttribute('src');
         return;
       }
+
       nameEl.textContent=leader.first_name||'User';
       nameEl.dataset.locked='true';
-      row.querySelector('.top-score').innerHTML='<span class="top-score-value">'+formatStars(leader.total_deposited)+' <img src="assets/star.png" alt=""></span>'; 
-      const rewardGift=TOP_REWARD_GIFTS[i]||null;
+      row.querySelector('.top-score').innerHTML=scoreHtml(scoreOf(leader));
+
+      const rewardGift=rewards[i]||null;
       if(rewardGift?.image){
         const wrap=document.createElement('div');
         wrap.className='top-gift-badge-wrap';
+        wrap.title=rewardGift.name||'Gift';
         const badge=document.createElement('img');
         badge.className='top-gift-badge';
         badge.src=rewardGift.image;
@@ -4869,6 +4968,7 @@
         wrap.appendChild(badge);
         row.appendChild(wrap);
       }
+
       let avatarEl=row.querySelector('.top-avatar');
       if(leader.photo_url){
         if(avatarEl.tagName==='DIV'){
@@ -4877,6 +4977,8 @@
           avatarEl.replaceWith(img);avatarEl=img;
         }
         avatarEl.src=leader.photo_url;
+      }else if(avatarEl?.tagName==='IMG'){
+        avatarEl.removeAttribute('src');
       }
     });
   }
