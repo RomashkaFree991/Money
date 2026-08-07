@@ -2674,40 +2674,114 @@ app.post('/api/crash/bet', async (req, res) => {
   }
 });
 
+// CRASH CASHOUT IDEMPOTENCY FIX: duplicate/delayed taps cannot double-pay or show false errors.
 app.post('/api/crash/cashout', async (req, res) => {
   const requestReceivedAtMs = Date.now();
   const user = requireUser(req, res);
   if (!user) return;
+
   try {
-    const state = await getCrashInternalState();
     const roundId = Number(req.body?.roundId || 0);
-    if (!roundId || roundId !== state.roundId || !state.liveStartAt || !state.crashAt
-        || requestReceivedAtMs < state.liveStartAt || requestReceivedAtMs >= state.crashAt) {
-      return res.status(400).json({ error: 'Round is not live' });
+    if (!roundId) {
+      return res.status(400).json({ error: 'Bad round', code: 'BAD_ROUND' });
     }
 
+    // Load the bet BEFORE validating the current phase. This makes cashout
+    // idempotent: a delayed duplicate request after a successful cashout returns
+    // the original result instead of "Round is not live".
     const { data: betRow, error: betError } = await sb.from('crash_bets')
-      .select('round_id,user_id,amount,cashed_out')
-      .eq('round_id', roundId).eq('user_id', Number(user.id)).maybeSingle();
-    if (betError) throw new Error(betError.message);
-    if (!betRow) return res.status(400).json({ error: 'No active bet' });
-    if (betRow.cashed_out) return res.status(400).json({ error: 'Already cashed out' });
+      .select('round_id,user_id,amount,cashed_out,payout,awarded_gift,cashed_out_at')
+      .eq('round_id', roundId)
+      .eq('user_id', Number(user.id))
+      .maybeSingle();
 
-    // Freeze the authoritative payout at the moment the HTTP cashout request reached our server.
-    // Database/network latency after this point must not keep increasing the player's payout.
-    const estimatePayout = Math.max(0, Math.floor(Number(betRow.amount || 0) * currentCrashMultiplier(state, requestReceivedAtMs)));
+    if (betError) throw new Error(betError.message);
+    if (!betRow) {
+      return res.status(400).json({ error: 'No active bet', code: 'NO_ACTIVE_BET' });
+    }
+
+    if (betRow.cashed_out) {
+      const [pendingPrize, currentBalance, state] = await Promise.all([
+        getPendingPrize(user.id),
+        getUserBalance(user.id),
+        serializeCrashState(user.id),
+      ]);
+      const awardedGift = betRow.awarded_gift ? normalizeGift(betRow.awarded_gift) : null;
+      return res.json({
+        ok: true,
+        alreadySettled: true,
+        payout: Number(betRow.payout || 0),
+        newBalance: Number(currentBalance || 0),
+        pendingPrize,
+        awardedGift: pendingPrize || awardedGift,
+        payoutKind: awardedGift ? 'gift' : 'stars',
+        state,
+      });
+    }
+
+    const state = await getCrashInternalState();
+    if (roundId !== state.roundId || !state.liveStartAt || !state.crashAt
+        || requestReceivedAtMs < state.liveStartAt || requestReceivedAtMs >= state.crashAt) {
+      return res.status(409).json({
+        error: 'Round is not live',
+        code: 'CRASH_TOO_LATE',
+        state: await serializeCrashState(user.id),
+      });
+    }
+
+    // Freeze payout at the timestamp when this HTTP request reached the backend.
+    const estimatePayout = Math.max(
+      0,
+      Math.floor(Number(betRow.amount || 0) * currentCrashMultiplier(state, requestReceivedAtMs)),
+    );
     const awardedGift = pickCrashGiftForPayout(estimatePayout, null);
+
     const { data, error } = await sb.rpc('crash_settle_bet_at', {
       p_user_id: Number(user.id),
       p_round_id: roundId,
       p_cashout_at: new Date(requestReceivedAtMs).toISOString(),
-      p_awarded_gift: awardedGift ? { id: awardedGift.id, name: awardedGift.name, image: awardedGift.image, price: awardedGift.price } : null,
+      p_awarded_gift: awardedGift
+        ? { id: awardedGift.id, name: awardedGift.name, image: awardedGift.image, price: awardedGift.price }
+        : null,
     });
-    if (error) throw new Error(error.message || 'Cash out failed');
+
+    if (error) {
+      // Another duplicate request may have won the race. Re-read the row and,
+      // if it is now settled, return that authoritative result without a second payout.
+      const { data: after } = await sb.from('crash_bets')
+        .select('amount,cashed_out,payout,awarded_gift,cashed_out_at')
+        .eq('round_id', roundId)
+        .eq('user_id', Number(user.id))
+        .maybeSingle();
+
+      if (after?.cashed_out) {
+        const [pendingPrize, currentBalance, currentState] = await Promise.all([
+          getPendingPrize(user.id),
+          getUserBalance(user.id),
+          serializeCrashState(user.id),
+        ]);
+        const finalGift = after.awarded_gift ? normalizeGift(after.awarded_gift) : null;
+        return res.json({
+          ok: true,
+          alreadySettled: true,
+          payout: Number(after.payout || 0),
+          newBalance: Number(currentBalance || 0),
+          pendingPrize,
+          awardedGift: pendingPrize || finalGift,
+          payoutKind: finalGift ? 'gift' : 'stars',
+          state: currentState,
+        });
+      }
+      throw new Error(error.message || 'Cash out failed');
+    }
 
     const pendingPrize = await getPendingPrize(user.id);
     const payoutKind = pendingPrize ? 'gift' : 'stars';
-    console.log(`🎁 CRASH CASHOUT user=${user.id} round=${roundId} payout=${Number(data?.payout || 0)} kind=${payoutKind} gift=${pendingPrize?.name || '-'} balance=${Number(data?.newBalance || 0)}`);
+    console.log(
+      `🎁 CRASH CASHOUT user=${user.id} round=${roundId} payout=${Number(data?.payout || 0)} `
+      + `kind=${payoutKind} gift=${pendingPrize?.name || '-'} balance=${Number(data?.newBalance || 0)}`
+    );
+
     return res.json({
       ok: true,
       payout: Number(data?.payout || 0),
