@@ -2547,6 +2547,7 @@
   let crashRealtimeTimer=null;
   let crashRealtimeFrame=null;
   let crashRealtimeState=null;
+  let crashStateFailCount=0;
   let crashServerOffsetMs=0;
   let crashRoundLocked=false;
   let crashLocalBetRoundId=0;
@@ -3161,7 +3162,7 @@
         pendingPrize,
         Number(viewerBet?.displayAmount||viewerBet?.payout||crashSettledPayout||0),
         Number(viewerBet?.amount||crashBetAmount||0),
-        { autoOpen: !giftModalOverlay.classList.contains('open') }
+        { autoOpen: false }
       );
       return;
     }
@@ -3252,7 +3253,11 @@
     if(prevState.roundId===nextState.roundId)return;
     if(!crashPrizePending) crashPrizeModalAutoKey='';
     crashRoundLocked=false;
-    crashCountdownIntroUntil=Date.now()+320;
+    crashCountdownIntroUntil=0;
+    if(crashDigitAnimTimeout){clearTimeout(crashDigitAnimTimeout);crashDigitAnimTimeout=null}
+    crashLastCountdownDigit=-1;
+    crashTimer.textContent='';
+    crashTimer.className='crash-timer';
 
     if(crashPrizePending||crashCashoutBusy){
       return;
@@ -3294,21 +3299,14 @@
 
     if(displayPhase==='countdown'){
       const endsAt=Number(state.countdownEndsAt||state.liveStartAt||0);
-      const count=(Date.now()<crashCountdownIntroUntil)?10:Math.min(10,Math.max(1,Math.ceil(Math.max(0,endsAt-now)/1000))); 
+      const count=Math.min(10,Math.max(1,Math.ceil(Math.max(0,endsAt-now)/1000)));
       crashTimer.style.display='';
       if(count!==crashLastCountdownDigit){
         if(crashDigitAnimTimeout){clearTimeout(crashDigitAnimTimeout);crashDigitAnimTimeout=null}
-        if(crashLastCountdownDigit>0){
-          crashTimer.className='crash-timer digit-out';
-          crashDigitAnimTimeout=setTimeout(()=>{
-            crashTimer.textContent=String(count);
-            crashTimer.className='crash-timer digit-in';
-            crashDigitAnimTimeout=null;
-          },350);
-        }else{
-          crashTimer.textContent=String(count);
-          crashTimer.className='crash-timer digit-in';
-        }
+        crashTimer.textContent=String(count);
+        crashTimer.className='crash-timer';
+        void crashTimer.offsetWidth;
+        crashTimer.className='crash-timer digit-in';
         crashLastCountdownDigit=count;
       }
       stopCrashRocket();
@@ -3390,6 +3388,7 @@
       const data=await readApiJson(resp);
       if(!resp.ok) throw new Error(data.error||'Crash sync failed');
       crashServerOffsetMs=Number(data.serverNow||Date.now())-Date.now();
+      crashStateFailCount=0;
       const prevState=crashRealtimeState;
       crashRealtimeState=data;
       applyCrashRoundBoundary(prevState,data);
@@ -3399,7 +3398,18 @@
       updateCrashWaitLabel(data.betsCount||0);
       if(!crashRealtimeFrame) crashRealtimeFrame=requestAnimationFrame(renderCrashRealtimeFrame);
     }catch(e){
-      if(!silent) console.warn('Crash refresh failed:',e.message);
+      crashStateFailCount+=1;
+      console.warn('Crash refresh failed:',e.message);
+      if(crashStateFailCount>=2 && !crashRealtimeState){
+        crashLivePill.textContent='Ошибка Crash';
+        crashTimer.style.display='';
+        crashTimer.textContent='!';
+        crashTimer.className='crash-timer';
+        const btn=document.getElementById('crashBetBtn');
+        btn.classList.add('dim');
+        btn.textContent='Crash недоступен';
+      }
+      if(!silent && tg?.showAlert) tg.showAlert('Crash: '+e.message);
     }
   }
   function runCrashRound(){
@@ -3646,15 +3656,15 @@
     crashBetActive=false;
     crashRoundLocked=true;
     crashLocalBetRoundId=Number(crashRealtimeState?.roundId||crashLocalBetRoundId||0);
-    crashBetSettled=true;
+    crashBetSettled=false;
     crashSettledPayout=livePayout;
-    crashPrizeGift=optimisticGift;
+    crashPrizeGift=null;
     crashPrizePending=false;
     renderCrashPlayerCard(crashBetAmount);
-    renderCrashPlayerWin(livePayout,optimisticGift);
-    setCrashPlayerState('win');
+    renderCrashPlayerWin(livePayout,null);
+    setCrashPlayerState(null);
     betBtn.classList.add('dim');
-    betBtn.textContent=t('giftOpened');
+    betBtn.textContent=t('cashOut')+'…';
 
     try{
       const resp=await fetch(API_BASE+'/api/crash/cashout',{
@@ -3687,7 +3697,7 @@
       crashSettledPayout=win;
       const finalPrize=data.pendingPrize||data.awardedGift||null;
       if(finalPrize){
-        enterPendingCrashPrize(finalPrize,win,crashBetAmount,{force:true,autoOpen:true});
+        enterPendingCrashPrize(finalPrize,win,crashBetAmount,{force:true,autoOpen:false});
         return;
       }
 
@@ -3903,10 +3913,12 @@
       const freeSlots=craftSlots.filter(s=>!s).length;
       if(sheetCraftPendingIds.includes(id)){
         sheetCraftPendingIds=sheetCraftPendingIds.filter(x=>x!==id);
+        card.classList.remove('craft-selected');
       }else if(sheetCraftPendingIds.length<freeSlots){
         sheetCraftPendingIds.push(id);
+        card.classList.add('craft-selected');
       }
-      renderSheetGifts();
+      sheetAddBtn.classList.toggle('visible',sheetCraftPendingIds.length>0);
       return;
     }
     sheetSelectedGiftId=String(card.dataset.id||'');
@@ -3916,6 +3928,7 @@
     if(sheetMode==='craft'){
       if(!sheetCraftPendingIds.length) return;
       const items=getSheetItems();
+      const addedIds=[];
       sheetCraftPendingIds.forEach(pid=>{
         const item=items.find(x=>String(x._sheetId)===pid);
         if(!item) return;
@@ -3926,16 +3939,19 @@
           const slotIndex=craftSlots.findIndex(s=>!s);
           if(slotIndex>=0) craftSlots[slotIndex]=normalized;
           updateCraftSelectedIds();
-          craftAppearingGiftIds=[...new Set([...craftAppearingGiftIds,addedId])];
-          setTimeout(()=>{
-            craftAppearingGiftIds=craftAppearingGiftIds.filter(x=>x!==addedId);
-            renderCraftUI();
-          },380);
+          addedIds.push(addedId);
         }
       });
+      craftAppearingGiftIds=[...new Set(addedIds)];
       sheetCraftPendingIds=[];
       closeSheet();
       renderCraftUI();
+      if(addedIds.length){
+        setTimeout(()=>{
+          craftAppearingGiftIds=[];
+          craftGrid?.querySelectorAll('.craft-cell.entering').forEach(el=>el.classList.remove('entering'));
+        },280);
+      }
       return;
     }
     if(!sheetSelectedGiftId) return;
