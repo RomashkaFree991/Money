@@ -2449,6 +2449,12 @@ app.get('/api/crash/state', async (req, res) => {
   try {
     res.json(await serializeCrashState(user.id));
   } catch (error) {
+    console.error('crash state error:', {
+      message: error?.message || String(error),
+      code: error?.code || null,
+      details: error?.details || null,
+      hint: error?.hint || null,
+    });
     res.status(503).json({ error: error.message || 'Crash unavailable' });
   }
 });
@@ -2475,12 +2481,14 @@ app.post('/api/crash/bet', async (req, res) => {
 });
 
 app.post('/api/crash/cashout', async (req, res) => {
+  const requestReceivedAtMs = Date.now();
   const user = requireUser(req, res);
   if (!user) return;
   try {
     const state = await getCrashInternalState();
     const roundId = Number(req.body?.roundId || 0);
-    if (!roundId || roundId !== state.roundId || state.phase !== 'live' || Date.now() >= state.crashAt) {
+    if (!roundId || roundId !== state.roundId || !state.liveStartAt || !state.crashAt
+        || requestReceivedAtMs < state.liveStartAt || requestReceivedAtMs >= state.crashAt) {
       return res.status(400).json({ error: 'Round is not live' });
     }
 
@@ -2491,11 +2499,14 @@ app.post('/api/crash/cashout', async (req, res) => {
     if (!betRow) return res.status(400).json({ error: 'No active bet' });
     if (betRow.cashed_out) return res.status(400).json({ error: 'Already cashed out' });
 
-    const estimatePayout = Math.max(0, Math.floor(Number(betRow.amount || 0) * currentCrashMultiplier(state)));
+    // Freeze the authoritative payout at the moment the HTTP cashout request reached our server.
+    // Database/network latency after this point must not keep increasing the player's payout.
+    const estimatePayout = Math.max(0, Math.floor(Number(betRow.amount || 0) * currentCrashMultiplier(state, requestReceivedAtMs)));
     const awardedGift = pickCrashGiftForPayout(estimatePayout, null);
-    const { data, error } = await sb.rpc('crash_settle_bet', {
+    const { data, error } = await sb.rpc('crash_settle_bet_at', {
       p_user_id: Number(user.id),
       p_round_id: roundId,
+      p_cashout_at: new Date(requestReceivedAtMs).toISOString(),
       p_awarded_gift: awardedGift ? { id: awardedGift.id, name: awardedGift.name, image: awardedGift.image, price: awardedGift.price } : null,
     });
     if (error) throw new Error(error.message || 'Cash out failed');
@@ -3194,8 +3205,21 @@ app.listen(CONFIG.PORT, async () => {
   // 3) Дальше — раз в сутки.
   setInterval(() => { syncMarketPricesOnce().catch(() => {}); }, 24 * 60 * 60 * 1000).unref?.();
 
-  // 4) Инициализируем 7-дневный цикл топа (если ещё не).
+  // 4) Проверяем/инициализируем persistent Crash state сразу при старте.
+  try {
+    const crashState = await getCrashInternalState();
+    console.log(`✅ Crash DB ready: round=${crashState.roundId} phase=${crashState.phase}`);
+  } catch (error) {
+    console.error('❌ Crash DB init failed:', {
+      message: error?.message || String(error),
+      code: error?.code || null,
+      details: error?.details || null,
+      hint: error?.hint || null,
+    });
+  }
+
+  // 5) Инициализируем 7-дневный цикл топа (если ещё не).
   getTopCycleStart().catch(() => {});
-  // 5) Проверяем — пора ли катить топ — каждую минуту.
+  // 6) Проверяем — пора ли катить топ — каждую минуту.
   setInterval(() => { rolloverTopCycleIfDue().catch(() => {}); }, 60 * 1000).unref?.();
 });
