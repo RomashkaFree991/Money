@@ -1,19 +1,28 @@
 {
-  "name": "giftpepe-backend",
-  "version": "1.1.0",
+  "name": "giftpep-backend",
+  "version": "2.0.0",
+  "private": true,
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js",
-    "relayer": "node relayer.js",
-    "relayer:login": "node login.js"
+    "start": "node --env-file=.env server.js",
+    "dev": "nodemon --exec \"node --env-file=.env\" server.js",
+    "relayer": "node --env-file=.env relayer.js",
+    "relayer:login": "node --env-file=.env login.js",
+    "check": "node --check server.js && node --check relayer.js && node --check login.js"
   },
-  "engines": { "node": ">=18.0.0" },
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "dependencies": {
-    "cors": "^2.8.5",
-    "express": "^4.19.2",
-    "@supabase/supabase-js": "^2.45.0",
-    "telegram": "^2.26.22"
+    "@supabase/supabase-js": "2.110.8",
+    "@ton/core": "0.63.1",
+    "cors": "2.8.6",
+    "express": "4.22.2",
+    "express-rate-limit": "8.6.1",
+    "helmet": "8.3.0",
+    "telegram": "2.26.22"
   },
-  "devDependencies": { "nodemon": "^3.1.4" }
+  "devDependencies": {
+    "nodemon": "3.1.4"
+  }
 }

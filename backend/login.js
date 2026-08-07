@@ -1,17 +1,18 @@
 // ══════════════════════════════════════════════════════════════════════════════
-// Одноразовый скрипт авторизации userbot-аккаунта (например @MoneyMonkeyGift).
+// Одноразовый скрипт авторизации userbot-аккаунта @GiftPepeRelayer.
 // Получает StringSession и печатает её в консоль — сохрани в env TG_USER_SESSION.
 //
 // Запуск:
-//   TG_API_ID=33158474 TG_API_HASH=xxx node login.js
+//   TG_API_ID=... TG_API_HASH=... node login.js
 // ══════════════════════════════════════════════════════════════════════════════
 
 const { TelegramClient } = require('telegram');
 const { StringSession } = require('telegram/sessions');
 const readline = require('readline');
 
-const API_ID = Number(process.env.TG_API_ID || 33158474);
-const API_HASH = process.env.TG_API_HASH || '71410e8b59db496be638b6fc5a9634b1';
+const API_ID = Number(process.env.TG_API_ID || 0);
+const API_HASH = String(process.env.TG_API_HASH || '').trim();
+if (!API_ID || !API_HASH) throw new Error('Set TG_API_ID and TG_API_HASH in environment');
 
 function ask(question, { hidden = false } = {}) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
@@ -43,7 +44,7 @@ function ask(question, { hidden = false } = {}) {
 
   await client.start({
     phoneNumber: () => ask('Phone (+...): '),
-    password: () => ask('2FA password (если включён): '),
+    password: () => ask('2FA password (если включён): ', { hidden: true }),
     phoneCode: () => ask('Code из Telegram: '),
     onError: (err) => console.error('Login error:', err?.message || err),
   });
