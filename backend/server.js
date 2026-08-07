@@ -1328,6 +1328,17 @@ function pickCrashGiftForPayout(payout, selectedGift = null) {
     return normalizeGift({ ...normalizedSelected, price: numericPayout });
   }
 
+  // Crash cashout is gift-based. If the payout is below the current cheapest
+  // catalog price, use the cheapest valid gift as the visual/inventory template
+  // but keep its credited value equal to the actual payout. This prevents the
+  // old null-gift path from crediting payout Stars directly to the balance.
+  if (numericPayout > 0) {
+    const cheapest = [...GIFT_CATALOG]
+      .filter(isCatalogGiftValid)
+      .sort((a, b) => Number(a.price || 0) - Number(b.price || 0))[0] || null;
+    if (cheapest) return normalizeGift({ ...cheapest, price: numericPayout });
+  }
+
   return null;
 }
 
@@ -2575,6 +2586,9 @@ app.post('/api/crash/cashout', async (req, res) => {
     // Database/network latency after this point must not keep increasing the player's payout.
     const estimatePayout = Math.max(0, Math.floor(Number(betRow.amount || 0) * currentCrashMultiplier(state, requestReceivedAtMs)));
     const awardedGift = pickCrashGiftForPayout(estimatePayout, null);
+    if (!awardedGift) {
+      throw new Error('Crash gift catalog is unavailable');
+    }
     const { data, error } = await sb.rpc('crash_settle_bet_at', {
       p_user_id: Number(user.id),
       p_round_id: roundId,
@@ -2584,6 +2598,7 @@ app.post('/api/crash/cashout', async (req, res) => {
     if (error) throw new Error(error.message || 'Cash out failed');
 
     const pendingPrize = await getPendingPrize(user.id);
+    console.log(`🎁 CRASH CASHOUT user=${user.id} round=${roundId} payout=${Number(data?.payout || 0)} gift=${pendingPrize?.name || awardedGift.name} balance_unchanged=${Number(data?.newBalance || 0)}`);
     return res.json({
       ok: true,
       payout: Number(data?.payout || 0),
