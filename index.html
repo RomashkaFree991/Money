@@ -2643,6 +2643,9 @@
   let crashRealtimeState=null;
   let crashStateFailCount=0;
   let crashServerOffsetMs=0;
+  let crashStateRequestController=null;
+  let crashStateRequestToken=0;
+  let crashStateRequestInFlight=false;
   let crashRoundLocked=false;
   let crashLocalBetRoundId=0;
   let crashBetSettled=false;
@@ -3117,6 +3120,13 @@
     const won=!!viewer&&(String(viewer.status||'')==='won'||!!viewer.cashedOut);
     const lost=!!viewer&&String(viewer.status||'')==='lost';
     const spectator=!viewer;
+    const resultPlayers=Array.isArray(state.activeBets)?state.activeBets:[];
+
+    // If nobody bet in this round, there is nothing useful to show to a spectator.
+    if(spectator && resultPlayers.length===0){
+      crashResultSheetRoundId=roundId;
+      return;
+    }
 
     crashResultSheetRoundId=roundId;
     crashResultSheetWon=won;
@@ -3126,7 +3136,7 @@
       ? crashResultText('win')
       : (lost?crashResultText('loss'):crashResultText('bets'));
     crashResultNextLabel.textContent=crashResultText('next');
-    renderCrashResultPlayers(state.activeBets||[]);
+    renderCrashResultPlayers(resultPlayers);
 
     if(won){
       const gift=normalizeCrashPrizeGift(state.pendingPrize||crashPrizeGift||viewer?.previewGift||null);
@@ -3605,6 +3615,10 @@
     resetCrashPlayer();
   }
   function renderCrashRealtimeFrame(){
+    if(document.visibilityState!=='visible'){
+      crashRealtimeFrame=null;
+      return;
+    }
     crashRealtimeFrame=requestAnimationFrame(renderCrashRealtimeFrame);
     const state=crashRealtimeState;
     if(!state)return;
@@ -3700,14 +3714,31 @@
     betBtn.classList.add('dim');
     if(!crashBetActive&&!crashPrizePending) betBtn.textContent=t('placeBet');
   }
-  async function refreshCrashState(silent=false){
+  // CRASH BACKGROUND RECOVERY FIX: abortable polling + forced resync after resume.
+  async function refreshCrashState(silent=false,force=false){
+    if(crashStateRequestInFlight&&!force)return false;
+
+    if(force&&crashStateRequestController){
+      try{crashStateRequestController.abort()}catch(_){}
+    }
+
+    const token=++crashStateRequestToken;
+    const controller=new AbortController();
+    crashStateRequestController=controller;
+    crashStateRequestInFlight=true;
+    const timeout=setTimeout(()=>controller.abort(),4500);
+
     try{
-      const resp=await fetch(API_BASE+'/api/crash/state',{
-        headers:{'x-init-data':tg?.initData||''}
+      const resp=await fetch(API_BASE+'/api/crash/state?ts='+Date.now(),{
+        headers:{'x-init-data':tg?.initData||''},
+        cache:'no-store',
+        signal:controller.signal
       });
       const data=await readApiJson(resp);
-      if(!resp.ok) throw new Error(data.error||'Crash sync failed');
-      if(isStaleCrashState(data)) return;
+      if(token!==crashStateRequestToken)return false;
+      if(!resp.ok)throw new Error(data.error||'Crash sync failed');
+      if(isStaleCrashState(data))return false;
+
       markCrashStateApplied(data);
       crashServerOffsetMs=Number(data.serverNow||Date.now())-Date.now();
       crashStateFailCount=0;
@@ -3719,11 +3750,18 @@
       renderCrashHistoryState(data);
       renderCrashOtherBets(data.activeBets||[]);
       updateCrashWaitLabel(data.betsCount||0);
-      if(!crashRealtimeFrame) crashRealtimeFrame=requestAnimationFrame(renderCrashRealtimeFrame);
+
+      if(!crashRealtimeFrame&&document.visibilityState==='visible'){
+        crashRealtimeFrame=requestAnimationFrame(renderCrashRealtimeFrame);
+      }
+      return true;
     }catch(e){
+      if(token!==crashStateRequestToken)return false;
+      if(e?.name==='AbortError')return false;
+
       crashStateFailCount+=1;
       console.warn('Crash refresh failed:',e.message);
-      if(crashStateFailCount>=5 && !crashRealtimeState){
+      if(crashStateFailCount>=5&&!crashRealtimeState){
         crashLivePill.textContent='Ошибка Crash';
         crashTimer.style.display='';
         crashTimer.textContent='!';
@@ -3732,18 +3770,43 @@
         btn.classList.add('dim');
         btn.textContent='Crash недоступен';
       }
-      if(!silent && tg?.showAlert) tg.showAlert('Crash: '+e.message);
+      if(!silent&&tg?.showAlert)tg.showAlert('Crash: '+e.message);
+      return false;
+    }finally{
+      clearTimeout(timeout);
+      if(token===crashStateRequestToken){
+        crashStateRequestInFlight=false;
+        if(crashStateRequestController===controller)crashStateRequestController=null;
+      }
     }
   }
-  function runCrashRound(){
-    if(!crashRealtimeStarted){
-      crashRealtimeStarted=true;
-      refreshCrashState(true);
-      crashRealtimeTimer=setInterval(()=>refreshCrashState(true),1000);
-      if(!crashRealtimeFrame) crashRealtimeFrame=requestAnimationFrame(renderCrashRealtimeFrame);
-    }else{
-      refreshCrashState(true);
+
+  function pauseCrashRound(){
+    if(crashRealtimeTimer){
+      clearInterval(crashRealtimeTimer);
+      crashRealtimeTimer=null;
     }
+    if(crashRealtimeFrame){
+      cancelAnimationFrame(crashRealtimeFrame);
+      crashRealtimeFrame=null;
+    }
+    if(crashStateRequestController){
+      try{crashStateRequestController.abort()}catch(_){}
+      crashStateRequestController=null;
+    }
+    crashStateRequestInFlight=false;
+    crashStateRequestToken+=1;
+  }
+
+  function runCrashRound(){
+    crashRealtimeStarted=true;
+    if(!crashRealtimeTimer){
+      crashRealtimeTimer=setInterval(()=>refreshCrashState(true,false),1000);
+    }
+    if(!crashRealtimeFrame&&document.visibilityState==='visible'){
+      crashRealtimeFrame=requestAnimationFrame(renderCrashRealtimeFrame);
+    }
+    refreshCrashState(true,true);
   }
   let crashStarted=false;
 
@@ -3792,13 +3855,14 @@
       if(!resp.ok) throw new Error(data.error||'Round already started');
       crashPrizeModalAutoKey='';
       crashPrizeResolveToken='';
-      if(data.state){
-        if(!isStaleCrashState(data.state)) markCrashStateApplied(data.state);
+      if(data.state&&!isStaleCrashState(data.state)){
+        markCrashStateApplied(data.state);
         crashServerOffsetMs=Number(data.state.serverNow||Date.now())-Date.now();
         const prevState=crashRealtimeState;
         crashRealtimeState=data.state;
         applyCrashRoundBoundary(prevState,data.state);
         syncCrashViewerBet(data.state);
+        maybeOpenCrashResultSheet(data.state);
         renderCrashHistoryState(data.state);
         renderCrashOtherBets(data.state.activeBets||[]);
         updateCrashWaitLabel(data.state.betsCount||0);
@@ -3905,13 +3969,14 @@
         renderInventory();
       }
 
-      if(data.state){
-        if(!isStaleCrashState(data.state)) markCrashStateApplied(data.state);
+      if(data.state&&!isStaleCrashState(data.state)){
+        markCrashStateApplied(data.state);
         crashServerOffsetMs=Number(data.state.serverNow||Date.now())-Date.now();
         const prevState=crashRealtimeState;
         crashRealtimeState=data.state;
         applyCrashRoundBoundary(prevState,data.state);
         syncCrashViewerBet(data.state);
+        maybeOpenCrashResultSheet(data.state);
         renderCrashHistoryState(data.state);
         renderCrashOtherBets(data.state.activeBets||[]);
         updateCrashWaitLabel(data.state.betsCount||0);
@@ -3998,13 +4063,14 @@
       const data=await resp.json().catch(()=>({}));
       if(!resp.ok) throw new Error(data.error||'Cash out failed');
 
-      if(data.state){
-        if(!isStaleCrashState(data.state)) markCrashStateApplied(data.state);
+      if(data.state&&!isStaleCrashState(data.state)){
+        markCrashStateApplied(data.state);
         crashServerOffsetMs=Number(data.state.serverNow||Date.now())-Date.now();
         const prevState=crashRealtimeState;
         crashRealtimeState=data.state;
         applyCrashRoundBoundary(prevState,data.state);
         syncCrashViewerBet(data.state);
+        maybeOpenCrashResultSheet(data.state);
         renderCrashHistoryState(data.state);
         renderCrashOtherBets(data.state.activeBets||[]);
         updateCrashWaitLabel(data.state.betsCount||0);
@@ -4106,7 +4172,7 @@
       pages[tab].classList.add('visible');
       currentTab=tab;
     }
-    if(tab==='crash'&&!crashStarted){crashStarted=true;runCrashRound()}
+    if(tab==='crash'){crashStarted=true;runCrashRound()}
     if(tab==='top')refreshTop();
   }
   requestAnimationFrame(()=>{
@@ -4618,18 +4684,22 @@
       if(!craftBusy) clearCraftSelection();
       closeSheet();
       closeCrashResultSheet();
-      // Do not let a completed card from the previous round survive a WebView
-      // hide/show cycle. Pending prizes are preserved and restored from DB.
+      pauseCrashRound();
+
       if(!crashPrizePending&&!crashCashoutBusy&&(crashResultState==='loss'||crashBetSettled)){
         resetCrashPlayer();
       }
       return;
     }
+
+    // Android/Telegram may suspend fetch/timers. Throw away any suspended
+    // request and rebuild Crash from a fresh DB-backed snapshot first.
+    crashStarted=true;
+    runCrashRound();
     refreshBalance();
     refreshTop();
     refreshReferral();
-    refreshInventory();
-    refreshCrashState(true);
+    setTimeout(()=>refreshInventory(),180);
   });
 
   // ─── BACKEND HELPERS ─────────────────────────────────────────────────────────
