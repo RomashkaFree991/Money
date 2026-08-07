@@ -2684,7 +2684,15 @@
     return '';
   }
   function getCrashPreviewGift(stars){
-    return getBestGiftForStars(Number(stars||0))||null;
+    const amount=Math.max(0,Math.floor(Number(stars||0)));
+    const affordable=getBestGiftForStars(amount);
+    if(affordable) return affordable;
+    // Keep the same NFT-style row even for a very small payout. This is only
+    // the visual template; the displayed prize value remains the actual payout.
+    const cheapest=[...GIFT_CATALOG]
+      .filter(g=>Number(g?.price||0)>0)
+      .sort((a,b)=>Number(a.price||0)-Number(b.price||0))[0]||null;
+    return cheapest?{...cheapest,price:amount}:null;
   }
   function withCrashGiftValue(gift,amount){
     const safe=gift?{...gift}:null;
@@ -2910,17 +2918,28 @@
     });
   }
 
+  // CRASH ROUND STATE FIX: spectator sheet + no 1->10 + stale-state guard.
   function deriveCrashDisplayPhase(state, now=getServerNow()){
     if(!state) return 'countdown';
     const phase=String(state.phase||'countdown');
     const countdownEndsAt=Number(state.countdownEndsAt||0);
-    const nextRoundAt=Number(state.nextRoundAt||0);
+    // Never synthesize the next countdown from an old ended round. The old
+    // countdownEndsAt belongs to the previous round and used to render 1 -> 10.
+    // Wait until crash_sync_state returns the real new round with its own timer.
     if(phase==='countdown' && countdownEndsAt && now>=countdownEndsAt) return 'live';
-    if(phase==='ended' && nextRoundAt && now>=nextRoundAt) return 'countdown';
     return phase;
   }
 
   let crashBoundaryRefreshDueAt=0;
+  let crashLastAppliedServerNow=0;
+  function isStaleCrashState(state){
+    const stamp=Number(state?.serverNow||0);
+    return !!(stamp&&crashLastAppliedServerNow&&stamp<crashLastAppliedServerNow);
+  }
+  function markCrashStateApplied(state){
+    const stamp=Number(state?.serverNow||0);
+    if(stamp) crashLastAppliedServerNow=Math.max(crashLastAppliedServerNow,stamp);
+  }
   function maybeRefreshCrashBoundary(state, now=getServerNow()){
     if(!state) return;
     const candidates=[state.countdownEndsAt,state.nextRoundAt].map(v=>Number(v||0)).filter(Boolean);
@@ -2969,8 +2988,8 @@
   let crashResultSheetBusy=false;
 
   function crashResultText(key){
-    const ru={win:'Вы победили',loss:'Вы проиграли',claimed:'Забрал',notClaimed:'Не забрал',next:'До следующей ставки',receive:'Получить',close:'Закрыть',receiving:'Получаем…',you:'Ты'};
-    const en={win:'You won',loss:'You lost',claimed:'Cashed out',notClaimed:'Did not cash out',next:'Next bet in',receive:'Receive',close:'Close',receiving:'Receiving…',you:'You'};
+    const ru={win:'Вы победили',loss:'Вы проиграли',bets:'Ставки',claimed:'Забрал',notClaimed:'Не забрал',next:'До следующей ставки',receive:'Получить',close:'Закрыть',receiving:'Получаем…',you:'Ты'};
+    const en={win:'You won',loss:'You lost',bets:'Bets',claimed:'Cashed out',notClaimed:'Did not cash out',next:'Next bet in',receive:'Receive',close:'Close',receiving:'Receiving…',you:'You'};
     return (currentLang==='en'?en:ru)[key]||key;
   }
   function closeCrashResultSheet(){
@@ -3093,21 +3112,24 @@
     if(!state||String(state.phase)!=='ended')return;
     const viewer=state.viewerBet||null;
     const roundId=Number(state.roundId||0);
-    if(!viewer||!roundId||crashResultSheetRoundId===roundId)return;
-    const won=String(viewer.status||'')==='won'||!!viewer.cashedOut;
-    const lost=String(viewer.status||'')==='lost';
-    if(!won&&!lost)return;
+    if(!roundId||crashResultSheetRoundId===roundId)return;
+
+    const won=!!viewer&&(String(viewer.status||'')==='won'||!!viewer.cashedOut);
+    const lost=!!viewer&&String(viewer.status||'')==='lost';
+    const spectator=!viewer;
 
     crashResultSheetRoundId=roundId;
     crashResultSheetWon=won;
     crashResultSheetBusy=false;
     giftModalOverlay?.classList.remove('open');
-    crashResultTitle.textContent=won?crashResultText('win'):crashResultText('loss');
+    crashResultTitle.textContent=won
+      ? crashResultText('win')
+      : (lost?crashResultText('loss'):crashResultText('bets'));
     crashResultNextLabel.textContent=crashResultText('next');
     renderCrashResultPlayers(state.activeBets||[]);
 
     if(won){
-      const gift=normalizeCrashPrizeGift(state.pendingPrize||crashPrizeGift||viewer.previewGift||null);
+      const gift=normalizeCrashPrizeGift(state.pendingPrize||crashPrizeGift||viewer?.previewGift||null);
       if(gift){
         const img=resolveGiftImage(gift);
         if(img){crashResultPrizeImage.src=img;crashResultPrizeImage.alt=gift.name||'Gift';}
@@ -3127,9 +3149,15 @@
       crashResultPrizeName.textContent='';
       crashResultAction.textContent=crashResultText('close');
     }
+
     crashResultAction.disabled=false;
     crashResultOverlay.classList.add('open');
-    crashResultSheetDeadline=Date.now()+5000;
+
+    // Count down to the real DB nextRoundAt, not five seconds from the moment
+    // this device happened to receive the result.
+    const serverLeft=Math.max(0,Number(state.nextRoundAt||0)-getServerNow());
+    const holdMs=Math.max(250,Math.min(5000,serverLeft||5000));
+    crashResultSheetDeadline=Date.now()+holdMs;
     tickCrashResultSheet();
     if(crashResultSheetTicker)clearInterval(crashResultSheetTicker);
     crashResultSheetTicker=setInterval(tickCrashResultSheet,100);
@@ -3509,6 +3537,13 @@
     // Теперь доверяем ТОЛЬКО серверному status==='lost' — он атомарно ставится
     // на финализации раунда. Гонка с локальным «выиграл» больше не возможна.
     if(viewerBet.status==='lost' && !crashBetSettled){
+      // A stale poll can arrive after the cashout tap but before the cashout
+      // response. Never paint that temporary snapshot red.
+      if(crashCashoutBusy){
+        setCrashPlayerState('win');
+        renderCrashPlayerWin(crashSettledPayout||crashRenderedWinAmount||crashBetAmount,crashPrizeGift||crashRenderedWinGift);
+        return;
+      }
       crashCashoutBusy=false;
       crashBetSyncPending=false;
       crashBetActive=false;
@@ -3672,6 +3707,8 @@
       });
       const data=await readApiJson(resp);
       if(!resp.ok) throw new Error(data.error||'Crash sync failed');
+      if(isStaleCrashState(data)) return;
+      markCrashStateApplied(data);
       crashServerOffsetMs=Number(data.serverNow||Date.now())-Date.now();
       crashStateFailCount=0;
       const prevState=crashRealtimeState;
@@ -3756,6 +3793,7 @@
       crashPrizeModalAutoKey='';
       crashPrizeResolveToken='';
       if(data.state){
+        if(!isStaleCrashState(data.state)) markCrashStateApplied(data.state);
         crashServerOffsetMs=Number(data.state.serverNow||Date.now())-Date.now();
         const prevState=crashRealtimeState;
         crashRealtimeState=data.state;
@@ -3868,6 +3906,7 @@
       }
 
       if(data.state){
+        if(!isStaleCrashState(data.state)) markCrashStateApplied(data.state);
         crashServerOffsetMs=Number(data.state.serverNow||Date.now())-Date.now();
         const prevState=crashRealtimeState;
         crashRealtimeState=data.state;
@@ -3960,6 +3999,7 @@
       if(!resp.ok) throw new Error(data.error||'Cash out failed');
 
       if(data.state){
+        if(!isStaleCrashState(data.state)) markCrashStateApplied(data.state);
         crashServerOffsetMs=Number(data.state.serverNow||Date.now())-Date.now();
         const prevState=crashRealtimeState;
         crashRealtimeState=data.state;
@@ -4577,6 +4617,12 @@
     if(document.visibilityState!=='visible'){
       if(!craftBusy) clearCraftSelection();
       closeSheet();
+      closeCrashResultSheet();
+      // Do not let a completed card from the previous round survive a WebView
+      // hide/show cycle. Pending prizes are preserved and restored from DB.
+      if(!crashPrizePending&&!crashCashoutBusy&&(crashResultState==='loss'||crashBetSettled)){
+        resetCrashPlayer();
+      }
       return;
     }
     refreshBalance();
