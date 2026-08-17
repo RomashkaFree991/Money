@@ -2759,17 +2759,61 @@ app.post('/api/crash/cashout', async (req, res) => {
       });
     }
 
-    // Freeze payout at the timestamp when this HTTP request reached the backend.
-    const estimatePayout = Math.max(
-      0,
-      Math.floor(Number(betRow.amount || 0) * currentCrashMultiplier(state, requestReceivedAtMs)),
+    // The request must still reach the backend before crash_at (checked above).
+    // Within that valid window, honor the payout that was actually rendered at
+    // tap time instead of letting network latency make 968 visually jump to 1127.
+    // A forged larger value cannot help: it is clamped to the server-authoritative
+    // maximum at request arrival. A smaller value only reduces the caller's payout.
+    const betAmount = Math.max(1, Number(betRow.amount || 0));
+    const serverMaxPayout = Math.max(
+      betAmount,
+      Math.floor(betAmount * currentCrashMultiplier(state, requestReceivedAtMs)),
     );
+    const requestedRaw = Number(req.body?.requestedPayout);
+    const requestedPayout = Number.isFinite(requestedRaw)
+      ? Math.max(betAmount, Math.floor(requestedRaw))
+      : serverMaxPayout;
+    let estimatePayout = Math.min(requestedPayout, serverMaxPayout);
+
+    // crash_settle_bet_at settles from a timestamp. Reconstruct a timestamp whose
+    // exponential multiplier floors to the requested payout. Search a few ms around
+    // the analytical midpoint to avoid floating-point / ISO millisecond rounding.
+    let settleAtMs = requestReceivedAtMs;
+    if (estimatePayout < serverMaxPayout) {
+      const growthMs = Math.max(1000, Number(state.growthMs || CRASH.growthMs));
+      const liveStartAt = Number(state.liveStartAt);
+      const targetMultiplier = Math.max(1, (estimatePayout + 0.5) / betAmount);
+      const midpoint = Math.round(liveStartAt + growthMs * Math.log(targetMultiplier));
+      const maxTs = Math.min(requestReceivedAtMs, Number(state.crashAt) - 1);
+      const baseTs = Math.max(liveStartAt, Math.min(maxTs, midpoint));
+      let foundTs = null;
+      for (let delta = 0; delta <= 32 && foundTs === null; delta += 1) {
+        const candidates = delta === 0 ? [baseTs] : [baseTs - delta, baseTs + delta];
+        for (const candidate of candidates) {
+          if (candidate < liveStartAt || candidate > maxTs) continue;
+          const candidatePayout = Math.floor(betAmount * currentCrashMultiplier(state, candidate));
+          if (candidatePayout === estimatePayout) {
+            foundTs = candidate;
+            break;
+          }
+        }
+      }
+      if (foundTs !== null) {
+        settleAtMs = foundTs;
+      } else {
+        // Extremely high payouts can have sub-millisecond integer boundaries.
+        // Fall back to the closest safe server payout rather than trusting input.
+        settleAtMs = baseTs;
+        estimatePayout = Math.floor(betAmount * currentCrashMultiplier(state, settleAtMs));
+      }
+    }
+
     const awardedGift = pickCrashGiftForPayout(estimatePayout, null);
 
     const { data, error } = await sb.rpc('crash_settle_bet_at', {
       p_user_id: Number(user.id),
       p_round_id: roundId,
-      p_cashout_at: new Date(requestReceivedAtMs).toISOString(),
+      p_cashout_at: new Date(settleAtMs).toISOString(),
       p_awarded_gift: awardedGift
         ? { id: awardedGift.id, name: awardedGift.name, image: awardedGift.image, price: awardedGift.price }
         : null,
@@ -2808,7 +2852,8 @@ app.post('/api/crash/cashout', async (req, res) => {
     const pendingPrize = await getPendingPrize(user.id);
     const payoutKind = pendingPrize ? 'gift' : 'stars';
     console.log(
-      `🎁 CRASH CASHOUT user=${user.id} round=${roundId} payout=${Number(data?.payout || 0)} `
+      `🎁 CRASH CASHOUT user=${user.id} round=${roundId} requested=${Number(req.body?.requestedPayout || 0)} `
+      + `max=${serverMaxPayout} settleAt=${settleAtMs} payout=${Number(data?.payout || 0)} `
       + `kind=${payoutKind} gift=${pendingPrize?.name || '-'} balance=${Number(data?.newBalance || 0)}`
     );
 
