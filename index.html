@@ -809,6 +809,8 @@
   .crash-player-bet{display:flex;align-items:center;gap:3px;color:rgba(255,255,255,.45);font-size:11px;font-weight:600}
   .crash-player-bet img{width:11px;height:11px;object-fit:contain;filter:drop-shadow(0 0 2px rgba(255,200,0,.3))}
   .crash-player-win{color:#fff;font-size:14px;font-weight:800;white-space:nowrap;display:flex;align-items:center;gap:7px;flex-shrink:0;margin-left:auto}
+  /* .crash-wait span has a stronger selector and used to make the viewer payout gray. */
+  .crash-wait .crash-player-win .crash-win-value{color:#fff;-webkit-text-fill-color:#fff;opacity:1}
   .crash-player-win .crash-win-value img{width:14px;height:14px;object-fit:contain;filter:drop-shadow(0 0 3px rgba(255,200,0,.4))}
 
   .crash-win-value{display:flex;align-items:center;gap:3px}
@@ -3165,6 +3167,11 @@
     const spectator=!viewer;
     const resultPlayers=Array.isArray(state.activeBets)?state.activeBets:[];
 
+    // An ended-state poll can beat the cashout HTTP response by a few ms.
+    // Never open a loss sheet while that cashout is still unresolved; the
+    // cashout response will either confirm the win or re-apply the real loss.
+    if(crashCashoutBusy&&lost)return;
+
     // If nobody bet in this round, there is nothing useful to show to a spectator.
     if(spectator && resultPlayers.length===0){
       crashResultSheetRoundId=roundId;
@@ -3566,7 +3573,10 @@
         return;
       }
       if((crashCashoutBusy||crashBetSettled)&&crashBetAmount>0){
-        setCrashPlayerState('win');
+        // A cashout request is only a win after the server confirms it.
+        // Keep the card neutral while the request is in flight so a last-millisecond
+        // rejection can never flash green and then turn into a loss.
+        setCrashPlayerState(crashBetSettled?'win':null);
         renderCrashPlayerCard(crashBetAmount);
         renderCrashPlayerWin(crashSettledPayout||crashRenderedWinAmount||crashBetAmount,crashPrizeGift||crashRenderedWinGift);
         return;
@@ -3585,7 +3595,7 @@
 
     if(crashCashoutBusy && viewerBet){
       if(crashBetAmount>0){
-        setCrashPlayerState('win');
+        setCrashPlayerState(null);
         renderCrashPlayerCard(crashBetAmount);
         renderCrashPlayerWin(crashSettledPayout||crashRenderedWinAmount||crashBetAmount,crashPrizeGift||crashRenderedWinGift);
       }
@@ -3619,7 +3629,8 @@
       // A stale poll can arrive after the cashout tap but before the cashout
       // response. Never paint that temporary snapshot red.
       if(crashCashoutBusy){
-        setCrashPlayerState('win');
+        // Stale poll while cashout is pending: stay neutral until HTTP confirmation.
+        setCrashPlayerState(null);
         renderCrashPlayerWin(crashSettledPayout||crashRenderedWinAmount||crashBetAmount,crashPrizeGift||crashRenderedWinGift);
         return;
       }
@@ -3779,7 +3790,12 @@
       crashBetActive=false;
       setCrashPlayerState('loss');
     }
-    if(crashCashoutBusy||crashBetSettled){
+    if(crashCashoutBusy){
+      // The round may already be visually ended while the cashout response is
+      // still on the wire. Do not claim a win before the backend confirms it.
+      setCrashPlayerState(null);
+      renderCrashPlayerWin(crashSettledPayout||crashRenderedWinAmount||crashBetAmount,crashPrizeGift||crashRenderedWinGift);
+    }else if(crashBetSettled){
       setCrashPlayerState('win');
       renderCrashPlayerWin(crashSettledPayout||crashBetAmount,crashPrizeGift);
     }else if(!crashPrizePending && crashBetAmount>0){
@@ -4102,21 +4118,14 @@
   }
 
   async function cashOut(){
-    const now=getServerNow();
     const roundId=Number(crashRealtimeState?.roundId||0);
     if(!crashBetActive||crashCashoutBusy||!crashRoundLive||!roundId)return;
     if(Number(crashCashoutRequestedRoundId||0)===roundId)return;
 
-    // Never cash out from a stale "live" snapshot after polling was suspended.
-    const snapshotAge=Math.max(0,Date.now()-Number(crashRealtimeState?.serverNow||0));
-    if(snapshotAge>1100){
-      await refreshCrashState(true,true);
-      const freshRoundId=Number(crashRealtimeState?.roundId||0);
-      if(freshRoundId!==roundId||String(crashRealtimeState?.phase||'')!=='live'){
-        return;
-      }
-    }
-
+    // IMPORTANT: never block a cashout tap on a pre-flight state refresh.
+    // The backend owns round validation. Waiting for /state here used to add up
+    // to ~1.2s, which both changed the shown payout and could turn a valid
+    // last-second tap into CRASH_TOO_LATE before the cashout request was sent.
     crashCashoutRequestedRoundId=roundId;
     const betBtn=document.getElementById('crashBetBtn');
     const prevBalance=balance;
@@ -4125,8 +4134,12 @@
     const prevBetActive=crashBetActive;
     const prevBetSettled=crashBetSettled;
     const prevSettledPayout=crashSettledPayout;
-    const liveMultiplier=computeCrashMultiplier(crashRealtimeState);
-    const livePayout=Math.max(0,Math.floor(Number(crashBetAmount||0)*liveMultiplier));
+    // Freeze exactly what the player saw on the card at tap time. The server
+    // validates this requested payout against the maximum payout at HTTP arrival,
+    // so the client cannot increase winnings by editing this value.
+    const computedPayout=Math.max(0,Math.floor(Number(crashBetAmount||0)*computeCrashMultiplier(crashRealtimeState)));
+    const renderedPayout=Math.max(0,Math.floor(Number(crashRenderedWinAmount||0)));
+    const livePayout=renderedPayout>=Number(crashBetAmount||0)?renderedPayout:computedPayout;
     const renderedGift=(crashRenderedWinGift&&Math.abs(Number(crashRenderedWinAmount||0)-livePayout)<=Math.max(24,Math.floor(livePayout*0.08))) ? crashRenderedWinGift : null;
     const previewGift=withCrashGiftValue(getCrashPreviewGift(livePayout)||null,livePayout);
     const visualGift=withCrashGiftValue(renderedGift||null,livePayout)||previewGift;
@@ -4150,7 +4163,7 @@
       const resp=await fetch(API_BASE+'/api/crash/cashout',{
         method:'POST',
         headers:{'Content-Type':'application/json','x-init-data':tg?.initData||''},
-        body:JSON.stringify({ roundId }),
+        body:JSON.stringify({ roundId, requestedPayout:livePayout }),
       });
       const data=await readApiJson(resp);
       if(!resp.ok){
