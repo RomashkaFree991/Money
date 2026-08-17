@@ -5163,6 +5163,59 @@
       }
     });
 
+    // ───── TOP ─────
+    const topChoices=overlay?.querySelectorAll('[data-topmode]')||[];
+    const topUid=document.getElementById('adm_topUid');
+    const topAmt=document.getElementById('adm_topAmount');
+    const topMsg=document.getElementById('adm_topMsg');
+    const topAmountLabel=document.getElementById('adm_topAmountLabel');
+    const topHint=document.getElementById('adm_topHint');
+    let topMode='deposits';
+
+    function setTopMode(mode){
+      topMode=mode==='referrals'?'referrals':'deposits';
+      topChoices.forEach(c=>c.classList.toggle('active',c.dataset.topmode===topMode));
+      if(topAmountLabel){
+        topAmountLabel.textContent=topMode==='referrals'
+          ? 'Сколько рефералов добавить в топ'
+          : 'Сколько добавить в депозитный топ';
+      }
+      if(topHint){
+        topHint.textContent=topMode==='referrals'
+          ? 'Рефералы: очки прибавятся к реальным приглашениям в основном TOP и будут учитываться при выдаче наград.'
+          : 'Депозит: значение прибавится прямо к total_deposited пользователя и сразу изменит основной TOP.';
+      }
+      if(topAmt) topAmt.placeholder=topMode==='referrals'?'5':'1000';
+    }
+    topChoices.forEach(c=>c.addEventListener('click',()=>setTopMode(c.dataset.topmode)));
+    setTopMode('deposits');
+
+    document.getElementById('adm_topAdd').addEventListener('click',async()=>{
+      topMsg.classList.remove('err');
+      const userId=Number(topUid.value||0);
+      const amount=Math.floor(Number(topAmt.value||0));
+      if(!userId){ topMsg.classList.add('err'); topMsg.textContent='❌ Введите Telegram User ID'; return; }
+      if(!amount||amount<1){ topMsg.classList.add('err'); topMsg.textContent='❌ Введите количество больше 0'; return; }
+      topMsg.textContent='Добавляем…';
+      try{
+        const r=await fetch(API_BASE+'/api/admin/top/add',{
+          method:'POST',
+          headers:{'Content-Type':'application/json','x-init-data':tg?.initData||''},
+          body:JSON.stringify({userId,mode:topMode,amount}),
+        });
+        const j=await r.json();
+        if(!r.ok) throw new Error(j.error||'fail');
+        const unit=topMode==='referrals'?'реф.':'⭐';
+        const rank=j.rank?` · место #${j.rank}`:'';
+        topMsg.textContent=`✅ ID ${j.userId}: +${j.added} ${unit} → ${j.score} ${unit}${rank}`;
+        topAmt.value='';
+        // Если TOP уже открыт на экране, обновим его без перезапуска Mini App.
+        try{ refreshTop(); }catch{}
+      }catch(e){
+        topMsg.classList.add('err'); topMsg.textContent='❌ '+(e.message||'Ошибка');
+      }
+    });
+
     // ───── WITHDRAW POLICY ─────
     const polChoices=overlay?.querySelectorAll('[data-pol]')||[];
     const polUidRow=document.getElementById('adm_polUidRow');
@@ -5221,6 +5274,7 @@
     <div class="admin-tabs">
       <button class="admin-tab active" data-tab="promo" type="button">Промокод</button>
       <button class="admin-tab" data-tab="bal" type="button">Баланс</button>
+      <button class="admin-tab" data-tab="top" type="button">Топ</button>
       <button class="admin-tab" data-tab="pol" type="button">Вывод</button>
     </div>
 
@@ -5256,6 +5310,22 @@
       <input id="adm_balAmt" type="number" placeholder="1000">
       <button class="admin-submit" id="adm_balGrant" type="button">Выдать / списать</button>
       <div class="admin-msg" id="adm_balMsg"></div>
+    </div>
+
+    <!-- TOP -->
+    <div class="admin-section" id="adminSec_top">
+      <label>Какой топ</label>
+      <div class="admin-row choice">
+        <div class="admin-choice active" data-topmode="deposits">💰 Депозит</div>
+        <div class="admin-choice" data-topmode="referrals">🤝 Рефералы</div>
+      </div>
+      <label>Telegram User ID</label>
+      <input id="adm_topUid" type="number" inputmode="numeric" placeholder="123456789">
+      <label id="adm_topAmountLabel">Сколько добавить в депозитный топ</label>
+      <input id="adm_topAmount" type="number" min="1" inputmode="numeric" placeholder="1000">
+      <div class="admin-hint" id="adm_topHint">Депозит: значение прибавится прямо к total_deposited пользователя и сразу изменит основной TOP.</div>
+      <button class="admin-submit" id="adm_topAdd" type="button">Добавить в топ</button>
+      <div class="admin-msg" id="adm_topMsg"></div>
     </div>
 
     <!-- POLICY -->
