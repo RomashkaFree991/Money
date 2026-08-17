@@ -2444,8 +2444,37 @@ async function getReferralLeaderboardSnapshot(userId = null, startedAtMs = 0, li
     offset += batchSize;
   }
 
+  // Ручные очки, выданные администратором победителям канала.
+  // Они участвуют в ЭТОМ ЖЕ реферальном TOP и в выдаче наград,
+  // но не создают фиктивные referral links и не дают 10% с чужих депозитов.
+  const { data: manualRows, error: manualError } = await sb
+    .from('top_referral_manual_points')
+    .select('user_id,points')
+    .eq('cycle_started_at', Number(startedAtMs || 0));
+  if (manualError) {
+    const msg = String(manualError.message || '');
+    // Позволяет сначала задеплоить сервер, затем применить migration_admin_real_top.sql.
+    if (!/top_referral_manual_points|does not exist|relation/i.test(msg)) {
+      throw new Error(manualError.message || 'Referral manual points unavailable');
+    }
+  }
+  for (const row of manualRows || []) {
+    const id = Number(row.user_id || 0);
+    const points = Math.max(0, Math.floor(Number(row.points || 0)));
+    if (id > 0 && points > 0) counts.set(id, Number(counts.get(id) || 0) + points);
+  }
+
+  const manualByUser = new Map((manualRows || []).map((row) => [
+    Number(row.user_id || 0),
+    Math.max(0, Math.floor(Number(row.points || 0))),
+  ]));
+
   const ranked = [...counts.entries()]
-    .map(([id, invited_count]) => ({ id: Number(id), invited_count: Number(invited_count) }))
+    .map(([id, invited_count]) => ({
+      id: Number(id),
+      invited_count: Number(invited_count),
+      manual_points: Number(manualByUser.get(Number(id)) || 0),
+    }))
     .sort((a, b) => b.invited_count - a.invited_count || a.id - b.id);
 
   const top = ranked.slice(0, Math.max(1, Number(limit || 10)));
@@ -2471,6 +2500,7 @@ async function getReferralLeaderboardSnapshot(userId = null, startedAtMs = 0, li
       first_name: String(u.first_name || 'User'),
       photo_url: u.photo_url || null,
       invited_count: Number(row.invited_count || 0),
+      manual_points: Number(row.manual_points || 0),
     };
   });
 
@@ -3410,6 +3440,84 @@ app.post('/api/admin/balance/grant', async (req, res) => {
     res.json({ ok: true, userId: targetId, granted: amount, balance: Number(balance || 0) });
   } catch (e) {
     res.status(500).json({ error: e.message || 'Grant failed' });
+  }
+});
+
+// Добавить победителю очки в настоящий TOP.
+// deposits: атомарно увеличивает users.total_deposited.
+// referrals: увеличивает cycle-scoped ручные очки, которые суммируются с реальными приглашениями.
+app.post('/api/admin/top/add', async (req, res) => {
+  const admin = requireAdmin(req, res);
+  if (!admin) return;
+
+  const targetId = Number(req.body?.userId || 0);
+  const mode = String(req.body?.mode || '').trim();
+  const amount = Math.floor(Number(req.body?.amount || 0));
+
+  if (!Number.isSafeInteger(targetId) || targetId <= 0) {
+    return res.status(400).json({ error: 'Введите корректный Telegram User ID' });
+  }
+  if (!['deposits', 'referrals'].includes(mode)) {
+    return res.status(400).json({ error: 'Выберите топ: депозит или рефералы' });
+  }
+  if (!Number.isSafeInteger(amount) || amount <= 0 || amount > 1_000_000_000) {
+    return res.status(400).json({ error: 'Количество должно быть от 1 до 1 000 000 000' });
+  }
+
+  try {
+    const startedAt = await getTopCycleStart();
+    const { data: result, error } = await sb.rpc('admin_top_add_points', {
+      p_user_id: targetId,
+      p_mode: mode,
+      p_amount: amount,
+      p_cycle_started_at: startedAt,
+    });
+    if (error) {
+      const msg = String(error.message || 'Top update failed');
+      if (/admin_top_add_points|does not exist|function/i.test(msg)) {
+        throw new Error('Сначала примените migration_admin_real_top.sql в Supabase');
+      }
+      throw new Error(msg);
+    }
+
+    let rank = null;
+    let score = 0;
+    if (mode === 'referrals') {
+      const snapshot = await getReferralLeaderboardSnapshot(targetId, startedAt, 100);
+      const row = (snapshot.ranked || []).find((x) => Number(x.id) === targetId);
+      score = Number(row?.invited_count || 0);
+      rank = snapshot.myRank;
+    } else {
+      const { data: me, error: meError } = await sb
+        .from('users')
+        .select('total_deposited')
+        .eq('id', targetId)
+        .single();
+      if (meError) throw new Error(meError.message || 'Top user lookup failed');
+      score = Number(me?.total_deposited || 0);
+      if (score > 0) {
+        const { count, error: rankError } = await sb
+          .from('users')
+          .select('id', { count: 'exact', head: true })
+          .gt('total_deposited', score);
+        if (rankError) throw new Error(rankError.message || 'Top rank lookup failed');
+        rank = Number(count || 0) + 1;
+      }
+    }
+
+    const payload = result && typeof result === 'object' ? result : {};
+    return res.json({
+      ok: true,
+      mode,
+      userId: targetId,
+      added: amount,
+      score,
+      rank,
+      totalDeposited: mode === 'deposits' ? Number(payload.totalDeposited ?? score) : undefined,
+      manualReferralPoints: mode === 'referrals' ? Number(payload.manualReferralPoints || 0) : undefined,
+    });
+  } catch (e) {
+    return res.status(500).json({ error: e.message || 'Top update failed' });
   }
 });
 
