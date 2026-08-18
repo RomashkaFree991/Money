@@ -2529,7 +2529,15 @@ app.get('/api/top', async (req, res) => {
         startedAt,
         10,
       );
-      return res.json({ mode, leaders: snapshot.leaders, myRank: snapshot.myRank });
+      const myRow = Number.isFinite(userId)
+        ? snapshot.ranked.find((row) => Number(row.id) === Number(userId)) || null
+        : null;
+      return res.json({
+        mode,
+        leaders: snapshot.leaders,
+        myRank: snapshot.myRank,
+        myScore: Number(myRow?.invited_count || 0),
+      });
     }
 
     const { data: leaders, error } = await sb
@@ -2541,6 +2549,7 @@ app.get('/api/top', async (req, res) => {
     if (error) throw new Error(error.message);
 
     let myRank = null;
+    let myScore = 0;
     if (Number.isFinite(userId)) {
       const { data: me, error: meError } = await sb
         .from('users')
@@ -2548,16 +2557,19 @@ app.get('/api/top', async (req, res) => {
         .eq('id', userId)
         .single();
 
-      if (!meError && Number(me?.total_deposited || 0) > 0) {
+      if (!meError) {
+        myScore = Number(me?.total_deposited || 0);
+      }
+      if (!meError && myScore > 0) {
         const { count } = await sb
           .from('users')
           .select('id', { count: 'exact', head: true })
-          .gt('total_deposited', Number(me.total_deposited || 0));
+          .gt('total_deposited', myScore);
         myRank = Number(count || 0) + 1;
       }
     }
 
-    return res.json({ mode, leaders: leaders ?? [], myRank });
+    return res.json({ mode, leaders: leaders ?? [], myRank, myScore });
   } catch (error) {
     return res.status(500).json({ error: error.message || 'Top unavailable' });
   }
