@@ -2582,8 +2582,8 @@
   // Balance
   let balance=0;
   let topMode='deposits';
-  let topCache={leaders:[],myRank:null};
-  let referralTopCache={leaders:[],myRank:null};
+  let topCache={leaders:[],myRank:null,myScore:0};
+  let referralTopCache={leaders:[],myRank:null,myScore:0};
   function updateBalance(v){
     balance=Number(v||0);
     document.getElementById('balanceText').textContent=formatStars(balance);
@@ -2604,8 +2604,8 @@
     leaders.sort((a,b)=>Number(b.total_deposited||0)-Number(a.total_deposited||0));
     const topLeaders=leaders.slice(0,10);
     const myTopIndex=leaders.findIndex(item=>String(item.id)===String(tgUserId));
-    topCache={leaders:topLeaders,myRank:myTopIndex>=0?myTopIndex+1:topCache.myRank};
-    if(topMode==='deposits') renderTop(topCache.leaders,topCache.myRank);
+    topCache={leaders:topLeaders,myRank:myTopIndex>=0?myTopIndex+1:topCache.myRank,myScore:Number(me.total_deposited||0)};
+    if(topMode==='deposits') renderTop(topCache.leaders,topCache.myRank,topCache.myScore);
   }
 
   // Nav
@@ -4769,7 +4769,7 @@
           syncTopupModeUI();
           closeTopup();
           topupSubmit.innerHTML=t('checkingPayment');
-          const applied=await waitForPaymentApply(invoiceId,balanceBefore,starsValue,3200);
+          const applied=await waitForPaymentApply(invoiceId,balanceBefore,starsValue,10000);
           if(applied){
             topupAmount.value='';
             syncTopupModeUI();
@@ -4845,7 +4845,7 @@
     return null;
   }
 
-  async function waitForPaymentApply(invoiceId,previousBalance,starsValue,timeoutMs=3200){
+  async function waitForPaymentApply(invoiceId,previousBalance,starsValue,timeoutMs=10000){
     const started=Date.now();
     while(Date.now()-started<timeoutMs){
       try{
@@ -4926,9 +4926,10 @@
       if(!resp.ok)throw new Error(data.error||'Top failed');
       const leaders=Array.isArray(data.leaders)?data.leaders:[];
       const myRank=data.myRank??null;
-      if(mode==='referrals')referralTopCache={leaders,myRank};
-      else topCache={leaders,myRank};
-      if(mode===topMode)renderTop(leaders,myRank);
+      const myScore=Number(data.myScore||0);
+      if(mode==='referrals')referralTopCache={leaders,myRank,myScore};
+      else topCache={leaders,myRank,myScore};
+      if(mode===topMode)renderTop(leaders,myRank,myScore);
     }catch(e){console.warn('Top refresh failed:',e.message)}
   }
 
@@ -4950,7 +4951,7 @@
     topMode=next;
     syncTopModeUI();
     const cache=topMode==='referrals'?referralTopCache:topCache;
-    renderTop(cache.leaders||[],cache.myRank??null);
+    renderTop(cache.leaders||[],cache.myRank??null,Number(cache.myScore||0));
     refreshTop();
   }
 
@@ -4996,7 +4997,7 @@
   }
   refreshTopCycle().then(startTopCycleTicker);
 
-  function renderTop(leaders,myRank){
+  function renderTop(leaders,myRank,myScore=0){
     leaders=Array.isArray(leaders)?leaders:[];
     const isRefs=topMode==='referrals';
     const placeText=document.querySelector('#topPage .top-place-text');
@@ -5011,7 +5012,7 @@
 
     const myEntry=leaders.find(l=>String(l.id)===String(tgUserId));
     document.querySelector('.top-my-rank').textContent=myRank||'—';
-    document.querySelector('.top-my-score').innerHTML=scoreHtml(myEntry?scoreOf(myEntry):0);
+    document.querySelector('.top-my-score').innerHTML=scoreHtml(myEntry?scoreOf(myEntry):Number(myScore||0));
 
     const rankClasses=['gold','silver','bronze'];
     const rows=document.querySelectorAll('#topPage .top-row');
