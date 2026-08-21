@@ -5188,6 +5188,11 @@
     const statsRefresh=document.getElementById('adm_statsRefresh');
     const peopleExport=document.getElementById('adm_peopleExport');
     const peopleMsg=document.getElementById('adm_peopleMsg');
+    const sendGiftUserId=document.getElementById('adm_sendGiftUserId');
+    const sendGiftId=document.getElementById('adm_sendGiftId');
+    const sendGiftText=document.getElementById('adm_sendGiftText');
+    const sendGiftBtn=document.getElementById('adm_sendGiftBtn');
+    const sendGiftMsg=document.getElementById('adm_sendGiftMsg');
     let statsDays=30;
 
     async function adminJson(url, options={}){
@@ -5253,6 +5258,20 @@
     document.querySelectorAll('[data-statsdays]').forEach(btn=>btn.addEventListener('click',()=>{document.querySelectorAll('[data-statsdays]').forEach(x=>x.classList.remove('active'));btn.classList.add('active');statsDays=Number(btn.dataset.statsdays||30);loadAdminStats()}));
     promoRefresh?.addEventListener('click',loadAdminPromos);statsRefresh?.addEventListener('click',loadAdminStats);
     peopleExport?.addEventListener('click',async()=>{peopleMsg.classList.remove('err');peopleMsg.textContent='Формируем и отправляем TXT…';peopleExport.disabled=true;try{const result=await adminJson('/api/admin/users/export',{method:'POST',body:'{}'});peopleMsg.textContent=`✅ Файл ${result.filename} отправлен в Telegram-бота.`}catch(e){peopleMsg.classList.add('err');peopleMsg.textContent='❌ '+e.message}finally{peopleExport.disabled=false}});
+    sendGiftBtn?.addEventListener('click',async()=>{
+      sendGiftMsg.classList.remove('err');
+      const userId=Number(sendGiftUserId.value||0), giftId=(sendGiftId.value||'').trim(), text=(sendGiftText.value||'').trim();
+      if(!userId){sendGiftMsg.classList.add('err');sendGiftMsg.textContent='❌ Введите Telegram User ID';return}
+      if(!giftId){sendGiftMsg.classList.add('err');sendGiftMsg.textContent='❌ Введите Telegram Gift ID';return}
+      if(text.length>128){sendGiftMsg.classList.add('err');sendGiftMsg.textContent='❌ Описание не длиннее 128 символов';return}
+      sendGiftBtn.disabled=true;sendGiftMsg.textContent='Отправляем подарок…';
+      try{
+        const result=await adminJson('/api/admin/gift/send',{method:'POST',body:JSON.stringify({userId,giftId,text})});
+        sendGiftMsg.textContent=`✅ Подарок ${result.giftId} отправлен пользователю ${result.recipient||result.userId}`;
+        sendGiftId.value='';sendGiftText.value='';
+      }catch(e){sendGiftMsg.classList.add('err');sendGiftMsg.textContent='❌ '+e.message}
+      finally{sendGiftBtn.disabled=false}
+    });
 
     // ───── BALANCE ─────
     const balUid=document.getElementById('adm_balUid');
@@ -5389,6 +5408,7 @@
       <button class="admin-tab" data-tab="top" type="button">Топ</button>
       <button class="admin-tab" data-tab="stats" type="button">Статистика</button>
       <button class="admin-tab" data-tab="people" type="button">Люди</button>
+      <button class="admin-tab" data-tab="sendgift" type="button">Подарок</button>
       <button class="admin-tab" data-tab="pol" type="button">Вывод</button>
     </div>
 
@@ -5440,6 +5460,19 @@
       <div class="admin-muted">Сформирует один TXT-файл со всеми пользователями: ID, username, имя, баланс, депозиты, оба топа, Crash-игры, ставки, выигрыши и полный инвентарь. Файл будет отправлен в личные сообщения Telegram-бота текущему администратору.</div>
       <button class="admin-submit" id="adm_peopleExport" type="button">Люди — выгрузить TXT в бота</button>
       <div class="admin-msg" id="adm_peopleMsg"></div>
+    </div>
+
+    <!-- SEND REGULAR TELEGRAM GIFT -->
+    <div class="admin-section" id="adminSec_sendgift">
+      <div class="admin-muted">Отправляет обычный Telegram-подарок напрямую через Bot API. Это не NFT и не подарок из инвентаря приложения. Получатель должен быть доступен боту Telegram.</div>
+      <label>Telegram User ID получателя</label>
+      <input id="adm_sendGiftUserId" type="number" inputmode="numeric" placeholder="123456789">
+      <label>Telegram Gift ID</label>
+      <input id="adm_sendGiftId" type="text" inputmode="text" placeholder="например: 595..." maxlength="128">
+      <label>Описание в подарке <span class="admin-muted">(до 128 символов)</span></label>
+      <textarea id="adm_sendGiftText" maxlength="128" placeholder="Поздравляем! Подарок от GiftPep" style="width:100%;min-height:82px;resize:vertical;border-radius:10px;background:#1C1C1E;border:1px solid rgba(255,255,255,.08);color:#fff;font-size:14px;padding:10px 12px;outline:none"></textarea>
+      <button class="admin-submit" id="adm_sendGiftBtn" type="button">Отправить подарок</button>
+      <div class="admin-msg" id="adm_sendGiftMsg"></div>
     </div>
 
     <!-- BALANCE -->
