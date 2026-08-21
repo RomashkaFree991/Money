@@ -3747,7 +3747,7 @@ app.get('/api/admin/stats/overview', async (req, res) => {
     const [users, gifts, bets, payments, allTimePayments, referrals] = await Promise.all([
       sb.from('users').select('id,created_at,balance,total_deposited', { count: 'exact' }).limit(100000),
       sb.from('user_gifts').select('id,user_id,gift_price,created_at', { count: 'exact' }).limit(100000),
-      sb.from('crash_bets').select('id,user_id,amount,created_at,cashed_out,payout', { count: 'exact' }).gte('created_at', since).limit(100000),
+      sb.from('crash_bets').select('round_id,user_id,amount,placed_at,cashed_out,payout', { count: 'exact' }).gte('placed_at', since).limit(100000),
       sb.from('payment_receipts').select('user_id,amount,created_at,kind').eq('kind', 'deposit').gte('created_at', since).limit(100000),
       sb.from('payment_receipts').select('user_id,amount,created_at,kind').eq('kind', 'deposit').limit(200000),
       sb.from('giftpep_referral_links_v2').select('referrer_id,created_at').gte('created_at', since).limit(100000),
@@ -3759,7 +3759,7 @@ app.get('/api/admin/stats/overview', async (req, res) => {
     const ensureDay = (date) => { const x = daily.get(date) || { date, users: 0, activity: 0, deposits: 0, depositStars: 0, bets: 0, referrals: 0 }; daily.set(date, x); return x; };
     for (const row of userRows) { const day = String(row.created_at || '').slice(0, 10); if (day >= since.slice(0, 10)) ensureDay(day).users += 1; }
     for (const row of paymentRows) { const d = ensureDay(String(row.created_at || '').slice(0, 10)); d.deposits += 1; d.depositStars += Number(row.amount || 0); }
-    for (const row of betRows) { const d = ensureDay(String(row.created_at || '').slice(0, 10)); d.bets += 1; }
+    for (const row of betRows) { const d = ensureDay(String(row.placed_at || '').slice(0, 10)); d.bets += 1; }
     for (const row of referralRows) { const d = ensureDay(String(row.created_at || '').slice(0, 10)); d.referrals += 1; }
     for (const d of daily.values()) d.activity = d.users + d.deposits + d.bets + d.referrals;
     const allTimeDeposits = userRows.reduce((sum, row) => sum + Number(row.total_deposited || 0), 0);
@@ -3789,7 +3789,7 @@ app.post('/api/admin/users/export', async (req, res) => {
     const [usersResult, giftsResult, betsResult, refsResult] = await Promise.all([
       sb.from('users').select('id,first_name,username,balance,total_deposited,banned_at,ban_reason,created_at').order('id', { ascending: true }).limit(100000),
       sb.from('user_gifts').select('id,user_id,gift_id,gift_name,gift_price,tg_msg_id,tg_slug,tg_is_unique,created_at').order('user_id', { ascending: true }).limit(200000),
-      sb.from('crash_bets').select('user_id,amount,payout,cashed_out,round_id,created_at').order('created_at', { ascending: false }).limit(200000),
+      sb.from('crash_bets').select('user_id,amount,payout,cashed_out,round_id,placed_at').order('placed_at', { ascending: false }).limit(200000),
       sb.from('giftpep_referral_links_v2').select('referrer_id,created_at').limit(200000),
     ]);
     const failure = [usersResult, giftsResult, betsResult, refsResult].find((x) => x.error);
