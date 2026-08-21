@@ -419,6 +419,19 @@ async function tgApi(method, data = {}, timeoutMs = 8000) {
   }
 }
 
+async function tgSendDocument(chatId, filename, text, caption = '') {
+  const form = new FormData();
+  form.append('chat_id', String(chatId));
+  if (caption) form.append('caption', String(caption).slice(0, 1024));
+  form.append('document', new Blob([String(text)], { type: 'text/plain;charset=utf-8' }), filename);
+  const response = await fetch(`https://api.telegram.org/bot${CONFIG.BOT_TOKEN}/sendDocument`, {
+    method: 'POST',
+    body: form,
+    signal: AbortSignal.timeout(30_000),
+  });
+  return response.json();
+}
+
 function inferWebhookUrl(req = null) {
   const explicit = String(CONFIG.WEBHOOK_URL || '').trim();
   if (explicit) {
@@ -3436,6 +3449,22 @@ async function applyDbPromo(userId, rawCode) {
     withdrawAt: giftDb.withdraw_available_at || null, createdAt: giftDb.created_at || null,
   } : null;
   const reward = Number(data?.reward || 0);
+  // Analytics is deliberately best-effort: the financial RPC above already
+  // completed atomically. A missing analytics migration must not roll back a
+  // successful user reward.
+  sb.from('promo_redemptions').insert({
+    promo_code: String(promo.code),
+    user_id: Number(userId),
+    reward_stars: reward,
+    reward_gift_id: gift?.giftId || gift?.id || null,
+    reward_gift_name: gift?.name || null,
+    reward_gift_price: gift ? Number(gift.price || 0) : null,
+  }).then(({ error: analyticsError }) => {
+    if (analyticsError && !/promo_redemptions|does not exist|schema cache/i.test(String(analyticsError.message || ''))) {
+      console.error('Promo analytics insert failed:', analyticsError.message || analyticsError);
+    }
+  }).catch(() => {});
+
   return {
     ok: true, reward, gift,
     message: gift ? `Промокод активирован: подарок «${gift.name}»` : `Промокод активирован: +${reward}⭐`,
@@ -3618,9 +3647,186 @@ app.get('/api/admin/promo/list', async (req, res) => {
     .from('promo_codes')
     .select('code,reward,max_uses_per_user,active,reward_gift_id')
     .order('code', { ascending: true })
-    .limit(200);
+    .limit(500);
   if (error) return res.status(500).json({ error: error.message });
-  res.json({ items: data || [] });
+
+  const items = (data || []).map((row) => ({
+    ...row,
+    reward: Number(row.reward || 0),
+    rewardKind: row.reward_gift_id ? 'gift' : 'stars',
+    gift: row.reward_gift_id ? (() => {
+      const gift = findGiftInCatalog({ id: String(row.reward_gift_id) });
+      return gift ? { id: gift.id, name: gift.name, price: Number(gift.price || 0), image: gift.image } : { id: row.reward_gift_id };
+    })() : null,
+    activations: 0,
+    totalReward: 0,
+    lastActivatedAt: null,
+  }));
+
+  const codes = items.map((item) => String(item.code));
+  if (codes.length) {
+    const { data: redemptions, error: redemptionError } = await sb
+      .from('promo_redemptions')
+      .select('promo_code,user_id,reward_stars,reward_gift_price,created_at')
+      .in('promo_code', codes)
+      .order('created_at', { ascending: false })
+      .limit(100000);
+    if (redemptionError && !/promo_redemptions|does not exist|schema cache/i.test(String(redemptionError.message || ''))) {
+      return res.status(500).json({ error: redemptionError.message });
+    }
+    const stats = new Map();
+    for (const row of redemptions || []) {
+      const key = String(row.promo_code || '').toLowerCase();
+      const item = stats.get(key) || { activations: 0, totalReward: 0, lastActivatedAt: null, users: new Set() };
+      item.activations += 1;
+      item.totalReward += Number(row.reward_stars || row.reward_gift_price || 0);
+      if (row.user_id) item.users.add(String(row.user_id));
+      if (!item.lastActivatedAt || String(row.created_at) > item.lastActivatedAt) item.lastActivatedAt = row.created_at;
+      stats.set(key, item);
+    }
+    for (const item of items) {
+      const stat = stats.get(String(item.code).toLowerCase());
+      if (stat) {
+        item.activations = stat.activations;
+        item.uniqueUsers = stat.users.size;
+        item.totalReward = stat.totalReward;
+        item.lastActivatedAt = stat.lastActivatedAt;
+      } else {
+        item.uniqueUsers = 0;
+      }
+    }
+  }
+  res.json({ items, analyticsReady: true });
+});
+
+app.get('/api/admin/promo/analytics', async (req, res) => {
+  const admin = requireAdmin(req, res);
+  if (!admin) return;
+  const from = String(req.query.from || '').trim();
+  const to = String(req.query.to || '').trim();
+  let query = sb.from('promo_redemptions').select('promo_code,user_id,reward_stars,reward_gift_id,reward_gift_name,reward_gift_price,created_at').order('created_at', { ascending: true }).limit(100000);
+  if (from) query = query.gte('created_at', from);
+  if (to) query = query.lte('created_at', to);
+  const { data, error } = await query;
+  if (error) {
+    if (/promo_redemptions|does not exist|schema cache/i.test(String(error.message || ''))) {
+      return res.json({ ready: false, items: [], daily: [], totalActivations: 0, totalReward: 0 });
+    }
+    return res.status(500).json({ error: error.message });
+  }
+  const byCode = new Map();
+  const byDay = new Map();
+  let totalReward = 0;
+  for (const row of data || []) {
+    const code = String(row.promo_code || '');
+    const reward = Number(row.reward_stars || row.reward_gift_price || 0);
+    const codeStat = byCode.get(code) || { code, activations: 0, totalReward: 0, uniqueUsers: new Set() };
+    codeStat.activations += 1; codeStat.totalReward += reward;
+    if (row.user_id) codeStat.uniqueUsers.add(String(row.user_id));
+    byCode.set(code, codeStat);
+    const day = String(row.created_at || '').slice(0, 10) || 'unknown';
+    const dayStat = byDay.get(day) || { date: day, activations: 0, totalReward: 0 };
+    dayStat.activations += 1; dayStat.totalReward += reward; byDay.set(day, dayStat);
+    totalReward += reward;
+  }
+  res.json({
+    ready: true,
+    totalActivations: (data || []).length,
+    totalReward,
+    items: [...byCode.values()].map((x) => ({ ...x, uniqueUsers: x.uniqueUsers.size })),
+    daily: [...byDay.values()],
+  });
+});
+
+app.get('/api/admin/stats/overview', async (req, res) => {
+  const admin = requireAdmin(req, res);
+  if (!admin) return;
+  const days = Math.max(1, Math.min(90, Math.floor(Number(req.query.days || 30))));
+  const since = new Date(Date.now() - days * 86400000).toISOString();
+  try {
+    const [users, gifts, bets, payments, allTimePayments, referrals] = await Promise.all([
+      sb.from('users').select('id,created_at,balance,total_deposited', { count: 'exact' }).limit(100000),
+      sb.from('user_gifts').select('id,user_id,gift_price,created_at', { count: 'exact' }).limit(100000),
+      sb.from('crash_bets').select('id,user_id,amount,created_at,cashed_out,payout', { count: 'exact' }).gte('created_at', since).limit(100000),
+      sb.from('payment_receipts').select('user_id,amount,created_at,kind').eq('kind', 'deposit').gte('created_at', since).limit(100000),
+      sb.from('payment_receipts').select('user_id,amount,created_at,kind').eq('kind', 'deposit').limit(200000),
+      sb.from('giftpep_referral_links_v2').select('referrer_id,created_at').gte('created_at', since).limit(100000),
+    ]);
+    const firstError = [users, gifts, bets, payments, allTimePayments, referrals].find((x) => x.error);
+    if (firstError) throw new Error(firstError.error.message);
+    const userRows = users.data || [], giftRows = gifts.data || [], betRows = bets.data || [], paymentRows = payments.data || [], allTimePaymentRows = allTimePayments.data || [], referralRows = referrals.data || [];
+    const daily = new Map();
+    const ensureDay = (date) => { const x = daily.get(date) || { date, users: 0, activity: 0, deposits: 0, depositStars: 0, bets: 0, referrals: 0 }; daily.set(date, x); return x; };
+    for (const row of userRows) { const day = String(row.created_at || '').slice(0, 10); if (day >= since.slice(0, 10)) ensureDay(day).users += 1; }
+    for (const row of paymentRows) { const d = ensureDay(String(row.created_at || '').slice(0, 10)); d.deposits += 1; d.depositStars += Number(row.amount || 0); }
+    for (const row of betRows) { const d = ensureDay(String(row.created_at || '').slice(0, 10)); d.bets += 1; }
+    for (const row of referralRows) { const d = ensureDay(String(row.created_at || '').slice(0, 10)); d.referrals += 1; }
+    for (const d of daily.values()) d.activity = d.users + d.deposits + d.bets + d.referrals;
+    const allTimeDeposits = userRows.reduce((sum, row) => sum + Number(row.total_deposited || 0), 0);
+    const allTimeBalance = userRows.reduce((sum, row) => sum + Number(row.balance || 0), 0);
+    res.json({
+      ready: true, days, totals: {
+        users: userRows.length, gifts: giftRows.length, crashBets: betRows.length,
+        deposits: paymentRows.length, depositStars: paymentRows.reduce((s, x) => s + Number(x.amount || 0), 0),
+        referrals: referralRows.length,
+        allTimeDeposits: allTimePaymentRows.reduce((s, x) => s + Number(x.amount || 0), 0),
+        allTimeBalance,
+      }, daily: [...daily.values()].sort((a, b) => a.date.localeCompare(b.date)),
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'Admin stats failed' });
+  }
+});
+
+function formatAdminTxt(value) {
+  return String(value == null ? '' : value).replace(/[\\\r\n]+/g, ' ').trim();
+}
+
+app.post('/api/admin/users/export', async (req, res) => {
+  const admin = requireAdmin(req, res);
+  if (!admin) return;
+  try {
+    const [usersResult, giftsResult, betsResult, refsResult] = await Promise.all([
+      sb.from('users').select('id,first_name,username,balance,total_deposited,banned_at,ban_reason,created_at').order('id', { ascending: true }).limit(100000),
+      sb.from('user_gifts').select('id,user_id,gift_id,gift_name,gift_price,tg_msg_id,tg_slug,tg_is_unique,created_at').order('user_id', { ascending: true }).limit(200000),
+      sb.from('crash_bets').select('user_id,amount,payout,cashed_out,round_id,created_at').order('created_at', { ascending: false }).limit(200000),
+      sb.from('giftpep_referral_links_v2').select('referrer_id,created_at').limit(200000),
+    ]);
+    const failure = [usersResult, giftsResult, betsResult, refsResult].find((x) => x.error);
+    if (failure) throw new Error(failure.error.message);
+    const users = usersResult.data || [], gifts = giftsResult.data || [], bets = betsResult.data || [], refs = refsResult.data || [];
+    const giftsByUser = new Map(), betsByUser = new Map(), refsByUser = new Map();
+    for (const gift of gifts) { const list = giftsByUser.get(Number(gift.user_id)) || []; list.push(gift); giftsByUser.set(Number(gift.user_id), list); }
+    for (const bet of bets) { const list = betsByUser.get(Number(bet.user_id)) || []; list.push(bet); betsByUser.set(Number(bet.user_id), list); }
+    for (const ref of refs) refsByUser.set(Number(ref.referrer_id), Number(refsByUser.get(Number(ref.referrer_id)) || 0) + 1);
+    const lines = ['GiftPep — полный экспорт пользователей', `Сформирован: ${new Date().toISOString()}`, `Пользователей: ${users.length}`, ''];
+    users.forEach((user, index) => {
+      const userGifts = giftsByUser.get(Number(user.id)) || [], userBets = betsByUser.get(Number(user.id)) || [];
+      const wonBets = userBets.filter((x) => x.cashed_out).length;
+      const giftText = userGifts.length ? userGifts.map((g) => `${formatAdminTxt(g.gift_name)} [${Number(g.gift_price || 0)}⭐; db=${g.id}; tg_msg=${g.tg_msg_id || '-'}; slug=${formatAdminTxt(g.tg_slug) || '-'}]`).join('; ') : 'нет';
+      lines.push(`===== USER ${index + 1} =====`);
+      lines.push(`ID: ${user.id}`);
+      lines.push(`Username: ${user.username ? '@' + formatAdminTxt(user.username) : '-'}`);
+      lines.push(`Имя: ${formatAdminTxt(user.first_name) || '-'}`);
+      lines.push(`Баланс: ${Number(user.balance || 0)}⭐`);
+      lines.push(`Всего депозитов: ${Number(user.total_deposited || 0)}⭐`);
+      lines.push(`Топ депозитов: ${Number(user.total_deposited || 0)}⭐`);
+      lines.push(`Топ рефералов: ${Number(refsByUser.get(Number(user.id)) || 0)}`);
+      lines.push(`Игр Crash: ${userBets.length}; выиграно/закэш-аут: ${wonBets}; сумма ставок: ${userBets.reduce((s, x) => s + Number(x.amount || 0), 0)}⭐; payout: ${userBets.reduce((s, x) => s + Number(x.payout || 0), 0)}⭐`);
+      lines.push(`Подарков в инвентаре (${userGifts.length}): ${giftText}`);
+      lines.push(`Заблокирован: ${user.banned_at ? 'да — ' + formatAdminTxt(user.ban_reason) : 'нет'}`);
+      lines.push(`Создан: ${formatAdminTxt(user.created_at) || '-'}`);
+      lines.push('');
+    });
+    const text = lines.join('\n');
+    const filename = `giftpep-users-${new Date().toISOString().slice(0, 10)}.txt`;
+    const caption = `Полный TXT-отчёт пользователей: ${users.length} чел., ${text.length} символов.`;
+    const tgResult = await tgSendDocument(Number(admin.id), filename, text, caption);
+    if (!tgResult?.ok) throw new Error(tgResult?.description || 'Telegram sendDocument failed');
+    res.json({ ok: true, users: users.length, filename });
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'Users export failed' });
+  }
 });
 
 app.post('/api/admin/promo/delete', async (req, res) => {
