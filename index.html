@@ -1146,6 +1146,20 @@
   .admin-msg{margin-top:10px;color:#34C759;font-size:13px;font-weight:600;min-height:18px;word-break:break-word}
   .admin-msg.err{color:#FF3B30}
   .admin-hint{color:rgba(255,255,255,.4);font-size:12px;margin-top:6px}
+  .admin-stats-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:10px 0}
+  .admin-stat-card{background:#1C1C1E;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:10px}
+  .admin-stat-label{color:rgba(255,255,255,.48);font-size:11px;font-weight:600}
+  .admin-stat-value{color:#fff;font-size:18px;font-weight:800;margin-top:3px}
+  .admin-chart-wrap{background:#1C1C1E;border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:10px;margin-top:10px;overflow:hidden}
+  .admin-chart{width:100%;height:150px;display:block}
+  .admin-chart-legend{display:flex;justify-content:space-between;color:rgba(255,255,255,.42);font-size:10px;margin-top:4px}
+  .admin-table-wrap{overflow:auto;background:#1C1C1E;border:1px solid rgba(255,255,255,.08);border-radius:12px;margin-top:10px}
+  .admin-table{width:100%;border-collapse:collapse;min-width:620px;color:#fff;font-size:11px}
+  .admin-table th,.admin-table td{padding:8px;border-bottom:1px solid rgba(255,255,255,.07);text-align:left;vertical-align:top}
+  .admin-table th{color:rgba(255,255,255,.5);font-size:10px;position:sticky;top:0;background:#1C1C1E}
+  .admin-table td button{height:28px;padding:0 8px;border:0;border-radius:8px;background:#FF3B30;color:#fff;font-size:11px;font-weight:700;cursor:pointer}
+  .admin-muted{color:rgba(255,255,255,.42);font-size:12px;line-height:1.4}
+  .admin-toolbar{display:flex;gap:8px;margin-top:10px}.admin-toolbar>*{flex:1}
 </style>
 </head>
 <body>
@@ -5089,6 +5103,8 @@
       overlay.classList.add('open');
       loadPolicy();
       buildGiftSelect();
+      loadAdminPromos();
+      loadAdminStats();
     });
     overlay?.querySelector('.admin-close')?.addEventListener('click',()=>overlay.classList.remove('open'));
     overlay?.addEventListener('click',e=>{ if(e.target===overlay) overlay.classList.remove('open'); });
@@ -5150,11 +5166,86 @@
         const j=await r.json();
         if(!r.ok) throw new Error(j.error||'fail');
         promoMsg.textContent=`✅ Создан промокод ${j.code}` + (j.gift?` (подарок «${j.gift.name}»)`:` (+${j.reward}⭐)`) + `, использований: ${j.maxUses}`;
-        promoCode.value=''; promoStars.value='';
+        promoCode.value=''; promoStars.value=''; loadAdminPromos();
       }catch(e){
         promoMsg.classList.add('err'); promoMsg.textContent='❌ '+(e.message||'Ошибка');
       }
     });
+
+    // ───── ANALYTICS / PEOPLE ─────
+    const promoTable=document.getElementById('adm_promoTable');
+    const promoSummary=document.getElementById('adm_promoSummary');
+    const promoRefresh=document.getElementById('adm_promoRefresh');
+    const statsCards=document.getElementById('adm_statsCards');
+    const statsMsg=document.getElementById('adm_statsMsg');
+    const statsRefresh=document.getElementById('adm_statsRefresh');
+    const peopleExport=document.getElementById('adm_peopleExport');
+    const peopleMsg=document.getElementById('adm_peopleMsg');
+    let statsDays=30;
+
+    async function adminJson(url, options={}){
+      const response=await fetch(API_BASE+url, { ...options, headers:{'Content-Type':'application/json','x-init-data':tg?.initData||'',...(options.headers||{})} });
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok) throw new Error(data.error||'Ошибка запроса');
+      return data;
+    }
+    function formatAdminDate(value){
+      if(!value)return '—';
+      const d=new Date(value); return Number.isNaN(d.getTime())?'—':d.toLocaleString('ru-RU',{dateStyle:'short',timeStyle:'short'});
+    }
+    function loadAdminPromos(){
+      if(!promoTable)return;
+      adminJson('/api/admin/promo/list').then(data=>{
+        promoTable.textContent='';
+        const items=Array.isArray(data.items)?data.items:[];
+        let activations=0,totalReward=0;
+        items.forEach(item=>{
+          activations+=Number(item.activations||0); totalReward+=Number(item.totalReward||0);
+          const tr=document.createElement('tr');
+          const cells=[
+            String(item.code||'—'),
+            item.rewardKind==='gift' ? `🎁 ${item.gift?.name||item.reward_gift_id||'подарок'}` : `⭐ ${Number(item.reward||0)}`,
+            `${Number(item.activations||0)} / ${Number(item.max_uses_per_user||0)} на юзера`,
+            `${Number(item.totalReward||0)}⭐`,
+            formatAdminDate(item.lastActivatedAt),
+          ];
+          cells.forEach(value=>{const td=document.createElement('td');td.textContent=value;tr.appendChild(td)});
+          const action=document.createElement('td');
+          const del=document.createElement('button');del.type='button';del.textContent='Удалить';
+          del.addEventListener('click',async()=>{
+            if(!confirm(`Удалить промокод ${item.code}?`))return;
+            try{await adminJson('/api/admin/promo/delete',{method:'POST',body:JSON.stringify({code:item.code})});loadAdminPromos();}
+            catch(e){promoSummary.textContent='❌ '+e.message}
+          });
+          action.appendChild(del);tr.appendChild(action);promoTable.appendChild(tr);
+        });
+        promoSummary.textContent=`Всего кодов: ${items.length} · активаций: ${activations} · выдано по аналитике: ${totalReward}⭐`;
+      }).catch(e=>{promoSummary.textContent='❌ '+e.message});
+    }
+    function drawAdminChart(rows){
+      const canvas=document.getElementById('adm_activityChart'); if(!canvas)return;
+      const ctx=canvas.getContext('2d'), width=canvas.width, height=canvas.height;
+      ctx.clearRect(0,0,width,height); ctx.strokeStyle='rgba(255,255,255,.12)'; ctx.lineWidth=1;
+      for(let i=1;i<4;i++){const y=(height-20)*i/4;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(width,y);ctx.stroke()}
+      if(!rows.length)return;
+      const max=Math.max(1,...rows.map(x=>Number(x.activity||0))), pad=12, plotH=height-30, step=rows.length>1?(width-pad*2)/(rows.length-1):width;
+      ctx.beginPath(); rows.forEach((row,i)=>{const x=pad+i*step,y=height-12-(Number(row.activity||0)/max)*plotH;i?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.strokeStyle='#0A84FF';ctx.lineWidth=3;ctx.stroke();
+      rows.forEach((row,i)=>{const x=pad+i*step,y=height-12-(Number(row.activity||0)/max)*plotH;ctx.fillStyle='#34C759';ctx.beginPath();ctx.arc(x,y,3,0,Math.PI*2);ctx.fill()});
+      document.getElementById('adm_chartFrom').textContent=rows[0].date||'—';document.getElementById('adm_chartTo').textContent=rows[rows.length-1].date||'—';
+    }
+    function loadAdminStats(){
+      if(!statsCards)return;
+      statsMsg.textContent='Загружаем…';
+      adminJson(`/api/admin/stats/overview?days=${statsDays}`).then(data=>{
+        const t=data.totals||{};
+        const cards=[['Люди всего',t.users||0],['Подарки в инв.',t.gifts||0],['Депозиты за период',t.deposits||0],['Звёзды за период',`${t.depositStars||0}⭐`],['Crash-игры',t.crashBets||0],['Рефералы',t.referrals||0],['Баланс пользователей',`${t.allTimeBalance||0}⭐`],['Депозиты всего в TOP',`${t.allTimeDeposits||0}⭐`]];
+        statsCards.textContent='';cards.forEach(([label,value])=>{const box=document.createElement('div');box.className='admin-stat-card';box.innerHTML=`<div class="admin-stat-label"></div><div class="admin-stat-value"></div>`;box.querySelector('.admin-stat-label').textContent=label;box.querySelector('.admin-stat-value').textContent=String(value);statsCards.appendChild(box)});
+        drawAdminChart(Array.isArray(data.daily)?data.daily:[]);statsMsg.textContent=`Период: ${statsDays} дней. График строится по регистрациям, депозитам, Crash-играм и рефералам.`;
+      }).catch(e=>{statsMsg.textContent='❌ '+e.message});
+    }
+    document.querySelectorAll('[data-statsdays]').forEach(btn=>btn.addEventListener('click',()=>{document.querySelectorAll('[data-statsdays]').forEach(x=>x.classList.remove('active'));btn.classList.add('active');statsDays=Number(btn.dataset.statsdays||30);loadAdminStats()}));
+    promoRefresh?.addEventListener('click',loadAdminPromos);statsRefresh?.addEventListener('click',loadAdminStats);
+    peopleExport?.addEventListener('click',async()=>{peopleMsg.classList.remove('err');peopleMsg.textContent='Формируем и отправляем TXT…';peopleExport.disabled=true;try{const result=await adminJson('/api/admin/users/export',{method:'POST',body:'{}'});peopleMsg.textContent=`✅ Файл ${result.filename} отправлен в Telegram-бота.`}catch(e){peopleMsg.classList.add('err');peopleMsg.textContent='❌ '+e.message}finally{peopleExport.disabled=false}});
 
     // ───── BALANCE ─────
     const balUid=document.getElementById('adm_balUid');
@@ -5289,6 +5380,8 @@
       <button class="admin-tab active" data-tab="promo" type="button">Промокод</button>
       <button class="admin-tab" data-tab="bal" type="button">Баланс</button>
       <button class="admin-tab" data-tab="top" type="button">Топ</button>
+      <button class="admin-tab" data-tab="stats" type="button">Статистика</button>
+      <button class="admin-tab" data-tab="people" type="button">Люди</button>
       <button class="admin-tab" data-tab="pol" type="button">Вывод</button>
     </div>
 
@@ -5314,6 +5407,32 @@
       <div class="admin-hint">Промокод можно использовать любому количеству юзеров — каждый юзер «N раз», где N — число выше.</div>
       <button class="admin-submit" id="adm_promoCreate" type="button">Создать промокод</button>
       <div class="admin-msg" id="adm_promoMsg"></div>
+      <div class="admin-toolbar">
+        <button class="admin-submit" id="adm_promoRefresh" type="button">Обновить аналитику</button>
+      </div>
+      <div class="admin-muted" id="adm_promoSummary">Статистика активаций появится после применения миграции аналитики.</div>
+      <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Код</th><th>Награда</th><th>Активации</th><th>Сумма</th><th>Последняя</th><th></th></tr></thead><tbody id="adm_promoTable"></tbody></table></div>
+    </div>
+
+    <!-- STATS -->
+    <div class="admin-section" id="adminSec_stats">
+      <label>Период активности</label>
+      <div class="admin-row choice">
+        <div class="admin-choice" data-statsdays="7">7 дней</div>
+        <div class="admin-choice active" data-statsdays="30">30 дней</div>
+        <div class="admin-choice" data-statsdays="90">90 дней</div>
+      </div>
+      <button class="admin-submit" id="adm_statsRefresh" type="button">Обновить статистику</button>
+      <div class="admin-stats-grid" id="adm_statsCards"></div>
+      <div class="admin-chart-wrap"><canvas class="admin-chart" id="adm_activityChart" width="480" height="150"></canvas><div class="admin-chart-legend"><span id="adm_chartFrom">—</span><span>Активность: регистрации + депозиты + игры + рефералы</span><span id="adm_chartTo">—</span></div></div>
+      <div class="admin-muted" id="adm_statsMsg"></div>
+    </div>
+
+    <!-- PEOPLE -->
+    <div class="admin-section" id="adminSec_people">
+      <div class="admin-muted">Сформирует один TXT-файл со всеми пользователями: ID, username, имя, баланс, депозиты, оба топа, Crash-игры, ставки, выигрыши и полный инвентарь. Файл будет отправлен в личные сообщения Telegram-бота текущему администратору.</div>
+      <button class="admin-submit" id="adm_peopleExport" type="button">Люди — выгрузить TXT в бота</button>
+      <div class="admin-msg" id="adm_peopleMsg"></div>
     </div>
 
     <!-- BALANCE -->
