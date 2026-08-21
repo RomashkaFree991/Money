@@ -468,7 +468,7 @@ async function ensureTelegramWebhook(req = null) {
   if (!url) return { ok: false, skipped: true, description: 'Webhook URL not configured' };
   return tgApi('setWebhook', {
     url,
-    allowed_updates: ['message', 'pre_checkout_query', 'callback_query'],
+    allowed_updates: ['message', 'pre_checkout_query'],
     drop_pending_updates: false,
     secret_token: CONFIG.TELEGRAM_WEBHOOK_SECRET,
   }, 5000);
@@ -518,6 +518,9 @@ async function handleBotMessage(message) {
   const isAdmin = CONFIG.ADMIN_IDS.includes(senderId);
   const replyTo = message?.reply_to_message?.text || '';
 
+  // Telegram-бот больше не содержит админ-панели. Администрирование выполняется
+  // только внутри Mini App через signed initData и requireAdmin.
+  /*
   // === Force-reply: списание звёзд ===
   const starsPrompt = replyTo.match(/Списание звёзд у юзера\s+(\d+)/);
   if (starsPrompt && isAdmin) {
@@ -769,6 +772,8 @@ async function handleBotMessage(message) {
     }
   }
 
+  */
+
   // === /start — приветствие ===
   if (!/^\/start(?:@\w+)?(?:\s|$)/i.test(text)) return null;
   const startParam = text.replace(/^\/start(?:@\w+)?\s*/i, '').trim();
@@ -833,7 +838,7 @@ async function handleBotMessage(message) {
   return null;
 }
 
-// === Админ-клавиатура и хелперы для команд ====================================
+/* Telegram bot admin keyboard and legacy admin command helpers were retired.
 const ADMIN_KEYBOARD = {
   keyboard: [
     [{ text: '📊 ТОП' },   { text: 'ℹ️ INFO' }],
@@ -1147,6 +1152,8 @@ async function handleBotCallback(cb) {
     reply_markup: { inline_keyboard: buttons },
   }, 5000);
 }
+
+*/
 
 async function getUserBalance(userId) {
   const numericUserId = Number(userId);
@@ -2962,13 +2969,9 @@ app.post('/webhook', async (req, res) => {
     }
 
     // Для финансовых событий ошибка должна дать Telegram 5xx, чтобы update повторился.
-    // Обычные callbacks/messages обрабатываем best-effort и всегда подтверждаем 200,
-    // иначе частично выполненный обработчик может повторить побочный эффект.
-    if (u.callback_query) {
-      try { await handleBotCallback(u.callback_query); }
-      catch (error) { console.error('bot callback error:', error?.message || error); }
-      return res.sendStatus(200);
-    }
+      // Обычные messages обрабатываем best-effort и всегда подтверждаем 200.
+
+
     if (u.message?.text) {
       try { await handleBotMessage(u.message); }
       catch (error) { console.error('bot message error:', error?.message || error); }
@@ -2988,7 +2991,7 @@ app.post('/api/set-webhook', async (req, res) => {
   }
   res.json(await tgApi('setWebhook', {
     url: req.body.url,
-    allowed_updates: ['message', 'pre_checkout_query', 'callback_query'],
+    allowed_updates: ['message', 'pre_checkout_query'],
     secret_token: CONFIG.TELEGRAM_WEBHOOK_SECRET,
   }));
 });
@@ -3644,6 +3647,54 @@ app.post('/api/admin/top/add', async (req, res) => {
     });
   } catch (e) {
     return res.status(500).json({ error: e.message || 'Top update failed' });
+  }
+});
+
+app.post('/api/admin/gift/send', async (req, res) => {
+  const admin = requireAdmin(req, res);
+  if (!admin) return;
+
+  const userId = Number(req.body?.userId || 0);
+  const giftId = String(req.body?.giftId || '').trim();
+  const text = String(req.body?.text || '').trim();
+  if (!Number.isSafeInteger(userId) || userId <= 0) {
+    return res.status(400).json({ error: 'Введите корректный Telegram User ID' });
+  }
+  if (!giftId || giftId.length > 128) {
+    return res.status(400).json({ error: 'Введите корректный Telegram Gift ID' });
+  }
+  if (text.length > 128) {
+    return res.status(400).json({ error: 'Описание должно быть не длиннее 128 символов' });
+  }
+
+  try {
+    const { data: target, error: targetError } = await sb
+      .from('users')
+      .select('id,username,first_name')
+      .eq('id', userId)
+      .maybeSingle();
+    if (targetError) throw new Error(targetError.message || 'Получатель не найден');
+    if (!target) return res.status(404).json({ error: 'Пользователь не найден в базе приложения' });
+
+    // This is the Bot API sendGift flow. It sends a regular Telegram gift,
+    // not an NFT and not through the MTProto relayer.
+    const result = await tgApi('sendGift', {
+      user_id: userId,
+      gift_id: giftId,
+      ...(text ? { text } : {}),
+    }, 15_000);
+    if (!result?.ok) {
+      return res.status(502).json({ error: result?.description || 'Telegram не принял подарок' });
+    }
+    res.json({
+      ok: true,
+      userId,
+      giftId,
+      text,
+      recipient: target.username ? `@${target.username}` : (target.first_name || String(target.id)),
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'Не удалось отправить подарок' });
   }
 });
 
