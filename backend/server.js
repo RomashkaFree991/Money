@@ -2500,7 +2500,7 @@ async function getReferralLeaderboardSnapshot(userId = null, startedAtMs = 0, li
   if (ids.length) {
     const { data: users, error: usersError } = await sb
       .from('users')
-      .select('id,first_name,photo_url')
+      .select('id,first_name,username,photo_url')
       .in('id', ids);
     if (usersError) throw new Error(usersError.message || 'Referral users unavailable');
     usersById = new Map((users || []).map((u) => [Number(u.id), u]));
@@ -2511,6 +2511,7 @@ async function getReferralLeaderboardSnapshot(userId = null, startedAtMs = 0, li
     return {
       id: Number(row.id),
       first_name: String(u.first_name || 'User'),
+      username: u.username ? String(u.username) : null,
       photo_url: u.photo_url || null,
       invited_count: Number(row.invited_count || 0),
       manual_points: Number(row.manual_points || 0),
@@ -3287,6 +3288,44 @@ async function setTopCycleStart(ms) {
 }
 
 let topRolloverBusy = false;
+
+async function notifyAdminsTopRollover({ previousStartedAt, newStartedAt, awarded }) {
+  const admins = [...new Set((CONFIG.ADMIN_IDS || []).map(Number).filter(Boolean))];
+  if (!admins.length) return;
+  const lines = [
+    '🏁 Топ завершён — результаты прошлого 7-дневного цикла',
+    `Период: ${new Date(Number(previousStartedAt)).toLocaleString('ru-RU')} — ${new Date(Number(newStartedAt)).toLocaleString('ru-RU')}`,
+    '',
+  ];
+  const groups = [
+    ['deposits', '💰 Депозитный топ'],
+    ['referrals', '🤝 Реферальный топ'],
+  ];
+  for (const [type, title] of groups) {
+    const rows = (awarded || []).filter((row) => row.type === type).sort((a, b) => Number(a.place) - Number(b.place));
+    lines.push(title);
+    if (!rows.length) {
+      lines.push('— призы не выданы');
+      continue;
+    }
+    for (const row of rows) {
+      const handle = row.username ? `@${String(row.username).replace(/^@/, '')}` : (row.firstName || 'без username');
+      const scoreLabel = type === 'deposits' ? `${Number(row.score || 0)}⭐` : `${Number(row.score || 0)} реф.`;
+      lines.push(`${row.place}. ${handle} · ID ${row.userId} · результат: ${scoreLabel} · подарок: «${row.gift}»${row.giftPrice ? ` (${row.giftPrice}⭐)` : ''}`);
+    }
+    lines.push('');
+  }
+  const text = lines.join('\\n').slice(0, 4096);
+  await Promise.all(admins.map(async (adminId) => {
+    try {
+      const result = await tgApi('sendMessage', { chat_id: adminId, text }, 8000);
+      if (!result?.ok) console.warn(`Top rollover admin notification failed for ${adminId}: ${result?.description || 'unknown error'}`);
+    } catch (error) {
+      console.warn(`Top rollover admin notification error for ${adminId}:`, error?.message || error);
+    }
+  }));
+}
+
 async function rolloverTopCycleIfDue() {
   if (topRolloverBusy) return { rolled: false, reason: 'busy' };
   topRolloverBusy = true;
@@ -3298,7 +3337,7 @@ async function rolloverTopCycleIfDue() {
     // 1) Берём топ-3 по депозитам и топ-3 по рефералам этого же 7-дневного цикла.
     const { data: leaders, error: leadersErr } = await sb
       .from('users')
-      .select('id,first_name,total_deposited')
+      .select('id,first_name,username,total_deposited')
       .gt('total_deposited', 0)
       .order('total_deposited', { ascending: false })
       .limit(3);
@@ -3318,7 +3357,7 @@ async function rolloverTopCycleIfDue() {
       if (!gift || !leader) continue;
       try {
         await addGiftToInventory(Number(leader.id), gift);
-        awarded.push({ type: 'deposits', userId: Number(leader.id), gift: gift.name, place: i + 1 });
+        awarded.push({ type: 'deposits', userId: Number(leader.id), username: leader.username ? String(leader.username) : null, firstName: leader.first_name ? String(leader.first_name) : null, score: Number(leader.total_deposited || 0), gift: gift.name, giftPrice: Number(gift.price || 0), place: i + 1 });
         try {
           await tgApi('sendMessage', {
             chat_id: Number(leader.id),
@@ -3336,7 +3375,7 @@ async function rolloverTopCycleIfDue() {
       if (!gift || !leader) continue;
       try {
         await addGiftToInventory(Number(leader.id), gift);
-        awarded.push({ type: 'referrals', userId: Number(leader.id), gift: gift.name, place: i + 1 });
+        awarded.push({ type: 'referrals', userId: Number(leader.id), username: leader.username ? String(leader.username) : null, firstName: leader.first_name ? String(leader.first_name) : null, score: Number(leader.invited_count || 0), gift: gift.name, giftPrice: Number(gift.price || 0), place: i + 1 });
         try {
           await tgApi('sendMessage', {
             chat_id: Number(leader.id),
@@ -3355,6 +3394,7 @@ async function rolloverTopCycleIfDue() {
     // 4) Стартуем новый 7-дневный цикл.
     const newStart = Date.now();
     await setTopCycleStart(newStart);
+    await notifyAdminsTopRollover({ previousStartedAt: startedAt, newStartedAt: newStart, awarded });
     console.log(`🏁 top cycle rolled over. awarded=${JSON.stringify(awarded)} newCycleEndsAt=${new Date(newStart + TOP_CYCLE_MS).toISOString()}`);
     return { rolled: true, awarded, endsAt: newStart + TOP_CYCLE_MS };
   } catch (e) {
