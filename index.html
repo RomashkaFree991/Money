@@ -1685,11 +1685,11 @@
         const row=document.createElement('div');row.className='task-row'+(task.claimed?' claimed':'');row.tabIndex=0;
         let avatar=document.createElement('div');avatar.className='task-avatar';
         if(task.avatarUrl){const img=document.createElement('img');img.src=task.avatarUrl.startsWith('http')?task.avatarUrl:API_BASE+task.avatarUrl;img.alt='';img.className='task-avatar';avatar=img}else avatar.textContent=(task.title||'З').trim().charAt(0).toUpperCase();
-        const info=document.createElement('div');info.className='task-info';const name=document.createElement('div');name.className='task-name';name.textContent=task.title||'Задание';const meta=document.createElement('div');meta.className='task-meta';meta.textContent=task.kind==='referrals'?`Приглашено ${task.invitedCount||0} / ${task.requiredReferrals||0}`:'Подписаться';info.append(name,meta);row.append(avatar,info);
+        const info=document.createElement('div');info.className='task-info';const name=document.createElement('div');name.className='task-name';name.textContent=task.title||'Задание';const meta=document.createElement('div');meta.className='task-meta';meta.textContent=task.requiredReferrals>0?`Подписка + рефералы: ${task.invitedCount||0} / ${task.requiredReferrals}`:(task.kind==='referrals'?`Приглашено ${task.invitedCount||0} / ${task.requiredReferrals||0}`:'Подписаться');info.append(name,meta);row.append(avatar,info);
         row.addEventListener('click',()=>{if(task.kind==='channel'&&task.url){try{tg?.openTelegramLink?tg.openTelegramLink(task.url):window.open(task.url,'_blank')}catch{window.open(task.url,'_blank')}}selectTask(task,row)});
         list.appendChild(row);
       });
-      if(claimBtn){claimBtn.style.display='block';claimBtn.disabled=true;claimBtn.textContent='Забрать';claimBtn.classList.remove('ready');claimBtn.onclick=async()=>{if(!selected||selected.claimed)return;claimBtn.disabled=true;claimBtn.textContent='Проверяем…';try{const r=await fetch(API_BASE+'/api/tasks/claim',{method:'POST',headers:{'Content-Type':'application/json','x-init-data':tg?.initData||''},body:JSON.stringify({taskId:selected.id})});const result=await readApiJson(r);if(!r.ok)throw new Error(result.error||'Не удалось забрать награду');updateBalance(Number(result.balance||0));claimBtn.classList.add('ready');claimBtn.textContent=`Получено ${result.reward||selected.rewardStars||0} ⭐`;await loadTasks()}catch(e){claimBtn.disabled=false;claimBtn.classList.remove('ready');claimBtn.classList.add('pending');claimBtn.textContent=`Забрать ${selected?.rewardStars||0} ⭐`;}}}
+      if(claimBtn){claimBtn.style.display='block';claimBtn.disabled=true;claimBtn.textContent='Забрать';claimBtn.classList.remove('ready');claimBtn.onclick=async()=>{if(!selected||selected.claimed)return;claimBtn.disabled=true;claimBtn.textContent='Проверяем…';try{const r=await fetch(API_BASE+'/api/tasks/claim',{method:'POST',headers:{'Content-Type':'application/json','x-init-data':tg?.initData||''},body:JSON.stringify({taskId:selected.id})});const result=await readApiJson(r);if(!r.ok)throw new Error(result.error||'Не удалось забрать награду');updateBalance(Number(result.balance||0));claimBtn.classList.add('ready');claimBtn.textContent=`Получено ${result.reward||selected.rewardStars||0} ⭐`;await loadTasks()}catch(e){claimBtn.disabled=false;claimBtn.classList.remove('ready');claimBtn.classList.add('pending');claimBtn.textContent=`Забрать ${selected?.rewardStars||0} ⭐`;tg?.showAlert?.(e.message||'Сначала выполните все условия');}}}
     }catch(e){list.innerHTML='<div class="tasks-empty">Не удалось загрузить задания</div>';console.warn('Tasks load failed:',e.message)}
   }
 
@@ -5318,7 +5318,7 @@
     const taskReferralFields=document.getElementById('adm_taskReferralFields');
     const taskTitle=document.getElementById('adm_taskTitle'), taskChatId=document.getElementById('adm_taskChatId'), taskUrl=document.getElementById('adm_taskUrl'), taskAvatar=document.getElementById('adm_taskAvatar'), taskRefs=document.getElementById('adm_taskRefs'), taskReward=document.getElementById('adm_taskReward'), taskCreate=document.getElementById('adm_taskCreate'), taskMsg=document.getElementById('adm_taskMsg'), taskTable=document.getElementById('adm_taskTable');
     let taskKind='channel';
-    function setTaskKind(kind){taskKind=kind==='referrals'?'referrals':'channel';taskKindBtns.forEach(b=>b.classList.toggle('active',b.dataset.taskkind===taskKind));if(taskChannelFields)taskChannelFields.style.display=taskKind==='channel'?'block':'none';if(taskReferralFields)taskReferralFields.style.display=taskKind==='referrals'?'block':'none'}
+    function setTaskKind(kind){taskKind=kind==='referrals'?'referrals':'channel';taskKindBtns.forEach(b=>b.classList.toggle('active',b.dataset.taskkind===taskKind));if(taskChannelFields)taskChannelFields.style.display=taskKind==='channel'?'block':'none';if(taskReferralFields)taskReferralFields.style.display='block'}
     taskKindBtns.forEach(b=>b.addEventListener('click',()=>setTaskKind(b.dataset.taskkind)));setTaskKind('channel');
     async function loadAdminTasks(){
       if(!taskTable)return;
@@ -5562,9 +5562,9 @@
         <label>URL аватарки (необязательно)</label>
         <input id="adm_taskAvatar" type="url" placeholder="https://...">
       </div>
-      <div id="adm_taskReferralFields" style="display:none">
-        <label>Сколько рефералов нужно пригласить</label>
-        <input id="adm_taskRefs" type="number" min="1" value="2" placeholder="2">
+      <div id="adm_taskReferralFields">
+        <label>Сколько рефералов нужно пригласить (необязательно)</label>
+        <input id="adm_taskRefs" type="number" min="0" value="0" placeholder="0">
       </div>
       <label>Награда в ⭐</label>
       <input id="adm_taskReward" type="number" min="1" value="50" placeholder="50">
