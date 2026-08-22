@@ -2071,7 +2071,8 @@ app.get('/api/tasks/:taskId/avatar', async (req, res) => {
   try {
     const { data: task, error } = await sb.from('app_tasks').select('kind,chat_id,chat_username').eq('id', taskId).maybeSingle();
     if (error || !task || task.kind !== 'channel') return res.sendStatus(404);
-    const chat = await tgApi('getChat', { chat_id: task.chat_id || task.chat_username });
+    const requestedChat = String(req.query?.chat || '').trim();
+    const chat = await tgApi('getChat', { chat_id: requestedChat || task.chat_id || task.chat_username });
     const fileId = chat?.result?.photo?.big_file_id || chat?.result?.photo?.small_file_id;
     if (!chat?.ok || !fileId) return res.sendStatus(404);
     const file = await tgApi('getFile', { file_id: fileId });
@@ -2206,26 +2207,42 @@ app.post('/api/admin/tasks', async (req, res) => {
   const title = String(req.body?.title || '').trim().slice(0, 120);
   const rewardStars = Math.floor(Number(req.body?.rewardStars || 0));
   const requiredReferrals = Math.floor(Number(req.body?.requiredReferrals || 0));
-  const chatId = String(req.body?.chatId || '').trim().slice(0, 120) || null;
-  const chatUsername = String(req.body?.chatUsername || '').trim().replace(/^@/, '').slice(0, 64) || null;
-  const url = String(req.body?.url || '').trim().slice(0, 512) || (chatUsername ? `https://t.me/${chatUsername}` : null);
-  const avatarUrl = String(req.body?.avatarUrl || '').trim().slice(0, 512) || null;
+  let selectedChannels = Array.isArray(req.body?.channels) ? req.body.channels.slice(0, 20).map((item) => ({ chatId: String(item?.chatId || '').trim().slice(0, 120), chatUsername: String(item?.chatUsername || '').trim().replace(/^@/, '').slice(0, 64), title: String(item?.title || '').trim().slice(0, 120), url: String(item?.url || '').trim().slice(0, 512) })).filter((item) => item.chatId || item.chatUsername) : [];
+  if (!selectedChannels.length) {
+    const legacyChatId = String(req.body?.chatId || '').trim().slice(0, 120);
+    const legacyUsername = String(req.body?.chatUsername || legacyChatId.replace(/^@/, '') || '').trim().replace(/^@/, '').slice(0, 64);
+    if (legacyChatId || legacyUsername) selectedChannels = [{ chatId: legacyChatId, chatUsername: legacyUsername, title: '', url: String(req.body?.url || '').trim().slice(0, 512) }];
+  }
+  const chatId = selectedChannels[0]?.chatId || null;
+  const chatUsername = selectedChannels[0]?.chatUsername || null;
+  const url = selectedChannels[0]?.url || (chatUsername ? `https://t.me/${chatUsername}` : null);
+  const avatarUrl = null;
   const sortOrder = Math.floor(Number(req.body?.sortOrder || 0));
   if (!title) return res.status(400).json({ error: 'Введите название задания' });
   if (!Number.isSafeInteger(rewardStars) || rewardStars <= 0 || rewardStars > 1_000_000) return res.status(400).json({ error: 'Награда должна быть от 1 до 1 000 000 ⭐' });
-  if (kind === 'channel' && !chatId && !chatUsername) return res.status(400).json({ error: 'Для задания подписки укажите chat ID или username' });
+  if (kind === 'channel' && !selectedChannels.length) return res.status(400).json({ error: 'Выберите хотя бы один канал или чат' });
   if (kind === 'referrals' && (!Number.isSafeInteger(requiredReferrals) || requiredReferrals <= 0)) return res.status(400).json({ error: 'Укажите количество рефералов больше 0' });
   try {
     let resolvedTitle = title;
     let resolvedUsername = chatUsername;
+    const verifiedChannels = [];
     if (kind === 'channel') {
-      const chat = await tgApi('getChat', { chat_id: chatId || `@${chatUsername}` }, 8000);
-      if (!chat?.ok) return res.status(400).json({ error: chat?.description || 'Бот не видит этот канал или чат' });
-      resolvedTitle = title || chat.result?.title || chat.result?.first_name || resolvedTitle;
-      resolvedUsername = resolvedUsername || chat.result?.username || null;
+      for (const selected of selectedChannels) {
+        const chat = await tgApi('getChat', { chat_id: selected.chatId || `@${selected.chatUsername}` }, 8000);
+        if (!chat?.ok) return res.status(400).json({ error: `Бот не видит канал ${selected.title || selected.chatUsername || selected.chatId}` });
+        const username = chat.result?.username || selected.chatUsername || null;
+        const chatIdResolved = String(chat.result?.id || selected.chatId);
+        verifiedChannels.push({ chat_id: chatIdResolved, chat_username: username, title: chat.result?.title || selected.title || 'Канал', url: selected.url || (username ? `https://t.me/${username}` : null), avatar_url: null });
+      }
+      resolvedTitle = title || verifiedChannels.map((item) => item.title).join(' + ');
+      resolvedUsername = verifiedChannels[0]?.chat_username || null;
     }
     const { data, error } = await sb.from('app_tasks').insert({ kind, title: resolvedTitle, chat_id: chatId, chat_username: resolvedUsername, url, avatar_url: avatarUrl, required_referrals: requiredReferrals, reward_stars: rewardStars, active: true, sort_order: sortOrder }).select('*').single();
     if (error) throw new Error(error.message);
+    if (kind === 'channel' && verifiedChannels.length) {
+      const { error: channelError } = await sb.from('app_task_channels').insert(verifiedChannels.map((item) => ({ ...item, task_id: data.id })));
+      if (channelError) { await sb.from('app_tasks').delete().eq('id', data.id); throw new Error(channelError.message); }
+    }
     res.json({ ok: true, item: data });
   } catch (error) {
     res.status(500).json({ error: error.message || 'Task create failed' });
