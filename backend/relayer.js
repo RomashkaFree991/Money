@@ -13,6 +13,8 @@
 //   2. Боевой:   node relayer.js
 // ══════════════════════════════════════════════════════════════════════════════
 
+const fs = require('fs');
+const path = require('path');
 const http = require('http');
 const crypto = require('crypto');
 const { TelegramClient } = require('telegram');
@@ -35,7 +37,8 @@ function safeSecretEqual(a, b) {
 const CONFIG = {
   API_ID: Number(requireEnv('TG_API_ID')),
   API_HASH: requireEnv('TG_API_HASH'),
-  SESSION: requireEnv('TG_USER_SESSION'),
+  SESSION: String(process.env.TG_USER_SESSION || '').trim(),
+  SESSION_FILE: path.resolve(process.env.TG_SESSION_FILE || path.join(process.cwd(), 'tg-user.session')),
   BACKEND_URL: process.env.BACKEND_URL || 'http://localhost:3000',
   RELAYER_INTERNAL_KEY: requireEnv('RELAYER_INTERNAL_KEY'),
   RECEIVER_USERNAME: (process.env.GIFT_RECEIVER_USERNAME || 'GiftPepeReleyer').replace(/^@/, ''),
@@ -49,7 +52,10 @@ if (CONFIG.RELAYER_INTERNAL_KEY.length < 24) {
 if (!Number.isSafeInteger(CONFIG.API_ID) || CONFIG.API_ID <= 0) throw new Error('TG_API_ID is invalid');
 
 if (!CONFIG.SESSION) {
-  console.error('❌ TG_USER_SESSION не задан. Сначала запусти: node login.js');
+  try { CONFIG.SESSION = fs.readFileSync(CONFIG.SESSION_FILE, 'utf8').trim(); } catch {}
+}
+if (!CONFIG.SESSION) {
+  console.error(`❌ Сессия не найдена. Сначала запусти: node login.js (файл: ${CONFIG.SESSION_FILE})`);
   process.exit(1);
 }
 

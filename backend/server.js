@@ -141,7 +141,7 @@ async function clearUserBan(userId) {
 // Withdrawal intents/receipts и transfer-снимки хранятся в PostgreSQL.
 const WITHDRAW_FEE_STARS = Number(process.env.WITHDRAW_FEE_STARS || 30);
 // v8.16: минимальный депозит, необходимый чтобы юзер мог выводить подарки.
-const WITHDRAW_MIN_DEPOSIT_STARS = Number(process.env.WITHDRAW_MIN_DEPOSIT_STARS || 50);
+const WITHDRAW_MIN_DEPOSIT_STARS = Math.max(50, Number(process.env.WITHDRAW_MIN_DEPOSIT_STARS || 50));
 // v8.16: минимальная ставка в краше.
 const CRASH_MIN_BET = Number(process.env.CRASH_MIN_BET || 1);
 const WITHDRAW_INTENT_TTL_MS = 15 * 60 * 1000;
