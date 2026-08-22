@@ -432,7 +432,7 @@ async function tgSendDocument(chatId, filename, text, caption = '') {
   return response.json();
 }
 
-async function tgSendVideo(chatId, filePath, caption = '', replyMarkup = null) {
+async function tgSendAnimation(chatId, filePath, caption = '', replyMarkup = null) {
   if (!fs.existsSync(filePath)) throw new Error(`Video file not found: ${filePath}`);
   const form = new FormData();
   form.append('chat_id', String(chatId));
@@ -441,8 +441,8 @@ async function tgSendVideo(chatId, filePath, caption = '', replyMarkup = null) {
     form.append('parse_mode', 'Markdown');
   }
   if (replyMarkup) form.append('reply_markup', JSON.stringify(replyMarkup));
-  form.append('video', new Blob([fs.readFileSync(filePath)], { type: 'video/mp4' }), path.basename(filePath));
-  const response = await fetch(`https://api.telegram.org/bot${CONFIG.BOT_TOKEN}/sendVideo`, {
+  form.append('animation', new Blob([fs.readFileSync(filePath)], { type: 'video/mp4' }), path.basename(filePath));
+  const response = await fetch(`https://api.telegram.org/bot${CONFIG.BOT_TOKEN}/sendAnimation`, {
     method: 'POST',
     body: form,
     signal: AbortSignal.timeout(60_000),
@@ -840,8 +840,8 @@ async function handleBotMessage(message) {
   // оставляем безопасный текстовый fallback, чтобы /start всё равно работал.
   const videoPath = path.join(__dirname, 'GiftPepe.mp4');
   try {
-    const videoResult = await tgSendVideo(chatId, videoPath, welcome, startReplyMarkup);
-    if (!videoResult?.ok) throw new Error(videoResult?.description || 'sendVideo failed');
+    const animationResult = await tgSendAnimation(chatId, videoPath, welcome, startReplyMarkup);
+    if (!animationResult?.ok) throw new Error(animationResult?.description || 'sendAnimation failed');
   } catch (error) {
     console.warn('start video send failed:', error?.message || error);
     await tgApi('sendMessage', {
