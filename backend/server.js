@@ -2099,10 +2099,14 @@ app.get('/api/tasks', async (req, res) => {
     if (taskError) throw new Error(taskError.message || 'Tasks unavailable');
     if (claimError) throw new Error(claimError.message || 'Task claims unavailable');
     const claimed = new Map((claims || []).map((row) => [String(row.task_id), row]));
+    let channelRows = [];
+    try { const channelResult = await sb.from('app_task_channels').select('task_id,chat_id,chat_username,title,url,avatar_url').in('task_id', (tasks || []).map((t) => Number(t.id))); if (!channelResult.error) channelRows = channelResult.data || []; } catch (_) {}
+    const channelsByTask = new Map(); channelRows.forEach((row) => { const key = String(row.task_id); if (!channelsByTask.has(key)) channelsByTask.set(key, []); channelsByTask.get(key).push({ chatId: row.chat_id, chatUsername: row.chat_username, title: row.title, url: row.url || taskChatLink(row), avatarUrl: row.avatar_url || `/api/tasks/${Number(row.task_id)}/avatar?chat=${encodeURIComponent(row.chat_id)}` }); });
     const items = (tasks || []).map((task) => ({
       id: Number(task.id), kind: task.kind, title: task.title,
       chatId: task.chat_id, chatUsername: task.chat_username,
       url: taskChatLink(task), avatarUrl: task.avatar_url || (task.kind === 'channel' ? `/api/tasks/${Number(task.id)}/avatar` : ''),
+      channels: channelsByTask.get(String(task.id)) || [],
       requiredReferrals: Number(task.required_referrals || 0),
       rewardStars: Number(task.reward_stars || 0),
       invitedCount: Number(referral?.invitedCount || 0),
@@ -2127,12 +2131,18 @@ app.post('/api/tasks/claim', async (req, res) => {
     if (!task) return res.status(404).json({ error: 'Задание недоступно' });
 
     if (task.kind === 'channel') {
-      const chat = task.chat_id || task.chat_username;
-      if (!chat) return res.status(400).json({ error: 'У задания не настроен чат' });
-      const membership = await tgApi('getChatMember', { chat_id: chat, user_id: Number(user.id) }, 8000);
-      const status = membership?.result?.status;
-      const isMember = ['member', 'administrator', 'creator'].includes(status) || (status === 'restricted' && membership?.result?.is_member === true);
-      if (!membership?.ok || !isMember) return res.status(400).json({ error: 'Сначала подпишитесь на канал или вступите в чат' });
+      let channelRows = [];
+      try { const result = await sb.from('app_task_channels').select('chat_id,chat_username').eq('task_id', taskId); if (!result.error) channelRows = result.data || []; } catch (_) {}
+      const requiredChats = channelRows.length ? channelRows : [{ chat_id: task.chat_id, chat_username: task.chat_username }];
+      if (!requiredChats.length) return res.status(400).json({ error: 'У задания не настроен чат' });
+      for (const requiredChat of requiredChats) {
+        const chat = requiredChat.chat_id || requiredChat.chat_username;
+        if (!chat) return res.status(400).json({ error: 'У задания не настроен чат' });
+        const membership = await tgApi('getChatMember', { chat_id: chat, user_id: Number(user.id) }, 8000);
+        const status = membership?.result?.status;
+        const isMember = ['member', 'administrator', 'creator'].includes(status) || (status === 'restricted' && membership?.result?.is_member === true);
+        if (!membership?.ok || !isMember) return res.status(400).json({ error: 'Сначала подпишитесь на все каналы и вступите во все чаты задания' });
+      }
     }
     if (Number(task.required_referrals || 0) > 0) {
       const referral = await getReferralSummary(Number(user.id));
@@ -2153,6 +2163,32 @@ app.post('/api/tasks/claim', async (req, res) => {
   } catch (error) {
     res.status(400).json({ error: error.message || 'Не удалось забрать награду' });
   }
+});
+
+app.get('/api/admin/task-chats', async (req, res) => {
+  const admin = requireAdmin(req, res);
+  if (!admin) return;
+  try {
+    const { data: rows, error } = await sb.from('app_tasks').select('chat_id,chat_username,title').eq('kind', 'channel').limit(200);
+    if (error) throw new Error(error.message);
+    const candidates = new Map();
+    [CONFIG.CHANNEL_USERNAME, CONFIG.SUPPORT_USERNAME].forEach((value) => { if (value) candidates.set(`@${String(value).replace(/^@/, '')}`, { chat: `@${String(value).replace(/^@/, '')}` }); });
+    (rows || []).forEach((row) => { const chat = row.chat_id || (row.chat_username ? `@${row.chat_username}` : ''); if (chat) candidates.set(String(chat), { chat, title: row.title }); });
+    const me = await tgApi('getMe', {}, 8000);
+    const botId = Number(me?.result?.id || 0);
+    const items = [];
+    for (const candidate of candidates.values()) {
+      try {
+        const chat = await tgApi('getChat', { chat_id: candidate.chat }, 8000);
+        if (!chat?.ok) continue;
+        const member = botId ? await tgApi('getChatMember', { chat_id: chat.result.id, user_id: botId }, 8000) : null;
+        if (!member?.ok || !['administrator', 'creator'].includes(member.result?.status)) continue;
+        const username = chat.result.username || String(candidate.chat).replace(/^@/, '');
+        items.push({ chatId: String(chat.result.id), chatUsername: username || null, title: chat.result.title || chat.result.first_name || candidate.title || 'Канал / чат', url: username ? `https://t.me/${username}` : null, avatarUrl: null });
+      } catch (_) {}
+    }
+    res.json({ items });
+  } catch (error) { res.status(500).json({ error: error.message || 'Не удалось получить список каналов' }); }
 });
 
 app.get('/api/admin/tasks', async (req, res) => {
