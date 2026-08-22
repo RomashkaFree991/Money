@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════════════════════════════════════
-// GiftPep Relayer — MTProto userbot для @GiftPepeRelayer
+// GiftPep Relayer — MTProto userbot для @GiftPepeReleyer
 //
 // Что умеет:
 //   1. Слушать входящие NFT-подарки на свой аккаунт и слать /api/relayer/credit-gift
@@ -38,7 +38,7 @@ const CONFIG = {
   SESSION: requireEnv('TG_USER_SESSION'),
   BACKEND_URL: process.env.BACKEND_URL || 'http://localhost:3000',
   RELAYER_INTERNAL_KEY: requireEnv('RELAYER_INTERNAL_KEY'),
-  RECEIVER_USERNAME: (process.env.GIFT_RECEIVER_USERNAME || 'GiftPepeRelayer').replace(/^@/, ''),
+  RECEIVER_USERNAME: (process.env.GIFT_RECEIVER_USERNAME || 'GiftPepeReleyer').replace(/^@/, ''),
   HTTP_PORT: Number(process.env.RELAYER_HTTP_PORT || 4011),
   HTTP_HOST: process.env.RELAYER_HTTP_HOST || '127.0.0.1',
 };

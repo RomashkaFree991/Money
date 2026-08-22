@@ -38,7 +38,7 @@ const CONFIG = {
   WEBHOOK_URL: process.env.WEBHOOK_URL || 'https://api.moneymonkey.live/webhook',
   PUBLIC_BASE_URL: process.env.PUBLIC_BASE_URL || process.env.BACKEND_PUBLIC_URL || 'https://api.moneymonkey.live',
   RELAYER_INTERNAL_KEY: requireEnv('RELAYER_INTERNAL_KEY'),
-  GIFT_RECEIVER_USERNAME: (process.env.GIFT_RECEIVER_USERNAME || 'GiftPepeRelayer').replace(/^@/, ''),
+  GIFT_RECEIVER_USERNAME: (process.env.GIFT_RECEIVER_USERNAME || 'GiftPepeReleyer').replace(/^@/, ''),
   CHANNEL_USERNAME: (process.env.CHANNEL_USERNAME || 'GiftPep').replace(/^@/, ''),
   SUPPORT_USERNAME: (process.env.SUPPORT_USERNAME || 'GiftPepeSupport').replace(/^@/, ''),
   RELAYER_URL: process.env.RELAYER_URL || 'http://127.0.0.1:4011',
@@ -1493,7 +1493,7 @@ async function ensureExactGiftBacking(userId, gift) {
       };
     }
   }
-  throw new Error('Нет свободного физического NFT этой коллекции на аккаунте @GiftPepeRelayer');
+  throw new Error('Нет свободного физического NFT этой коллекции на аккаунте @GiftPepeReleyer');
 }
 
 async function addGiftToInventory(userId, gift, opts = {}) {
@@ -2062,6 +2062,134 @@ app.post('/api/inventory/sell-all', async (req, res) => {
   } catch (error) {
     res.status(400).json({ error: error.message || 'Sell all failed' });
   }
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Configurable onboarding tasks.
+// ──────────────────────────────────────────────────────────────────────────────
+function taskChatLink(task) {
+  if (task.url) return String(task.url);
+  if (task.chat_username) return `https://t.me/${String(task.chat_username).replace(/^@/, '')}`;
+  return '';
+}
+
+app.get('/api/tasks', async (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  try {
+    const [{ data: tasks, error: taskError }, { data: claims, error: claimError }, referral] = await Promise.all([
+      sb.from('app_tasks').select('id,kind,title,chat_id,chat_username,url,avatar_url,required_referrals,reward_stars,sort_order').eq('active', true).order('sort_order', { ascending: true }).order('id', { ascending: true }).limit(100),
+      sb.from('user_task_claims').select('task_id,claimed_at,reward_stars').eq('user_id', Number(user.id)).limit(500),
+      getReferralSummary(Number(user.id)).catch(() => ({ invitedCount: 0, earned: 0 })),
+    ]);
+    if (taskError) throw new Error(taskError.message || 'Tasks unavailable');
+    if (claimError) throw new Error(claimError.message || 'Task claims unavailable');
+    const claimed = new Map((claims || []).map((row) => [String(row.task_id), row]));
+    const items = (tasks || []).map((task) => ({
+      id: Number(task.id), kind: task.kind, title: task.title,
+      chatId: task.chat_id, chatUsername: task.chat_username,
+      url: taskChatLink(task), avatarUrl: task.avatar_url || '',
+      requiredReferrals: Number(task.required_referrals || 0),
+      rewardStars: Number(task.reward_stars || 0),
+      invitedCount: Number(referral?.invitedCount || 0),
+      claimed: claimed.has(String(task.id)),
+      claimedAt: claimed.get(String(task.id))?.claimed_at || null,
+    }));
+    res.set('Cache-Control', 'no-store');
+    res.json({ items });
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'Tasks unavailable' });
+  }
+});
+
+app.post('/api/tasks/claim', async (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const taskId = Number(req.body?.taskId || 0);
+  if (!Number.isSafeInteger(taskId) || taskId <= 0) return res.status(400).json({ error: 'Некорректное задание' });
+  try {
+    const { data: task, error: taskError } = await sb.from('app_tasks').select('id,kind,title,chat_id,chat_username,required_referrals,reward_stars,active').eq('id', taskId).eq('active', true).maybeSingle();
+    if (taskError) throw new Error(taskError.message);
+    if (!task) return res.status(404).json({ error: 'Задание недоступно' });
+
+    if (task.kind === 'channel') {
+      const chat = task.chat_id || task.chat_username;
+      if (!chat) return res.status(400).json({ error: 'У задания не настроен чат' });
+      const membership = await tgApi('getChatMember', { chat_id: chat, user_id: Number(user.id) }, 8000);
+      const status = membership?.result?.status;
+      if (!membership?.ok || !['member', 'administrator', 'creator'].includes(status)) {
+        return res.status(400).json({ error: 'Сначала подпишитесь на канал или вступите в чат' });
+      }
+    } else if (task.kind === 'referrals') {
+      const referral = await getReferralSummary(Number(user.id));
+      if (Number(referral.invitedCount || 0) < Number(task.required_referrals || 0)) {
+        return res.status(400).json({ error: `Нужно пригласить ещё ${Math.max(0, Number(task.required_referrals || 0) - Number(referral.invitedCount || 0))} человек` });
+      }
+    }
+
+    const { data, error } = await sb.rpc('claim_task_atomic', {
+      p_task_id: taskId,
+      p_user_id: Number(user.id),
+      p_reward_stars: Number(task.reward_stars || 0),
+    });
+    if (error) throw new Error(error.message || 'Task claim failed');
+    if (!data?.ok && data?.reason === 'already_claimed') return res.status(400).json({ error: 'Награда за это задание уже получена', claimed: true });
+    if (!data?.ok) throw new Error('Награда не выдана');
+    res.json({ ok: true, taskId, reward: Number(data.reward || task.reward_stars || 0), balance: Number(data.balance || 0) });
+  } catch (error) {
+    res.status(400).json({ error: error.message || 'Не удалось забрать награду' });
+  }
+});
+
+app.get('/api/admin/tasks', async (req, res) => {
+  const admin = requireAdmin(req, res);
+  if (!admin) return;
+  const { data, error } = await sb.from('app_tasks').select('*').order('sort_order', { ascending: true }).order('id', { ascending: true }).limit(500);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ items: data || [] });
+});
+
+app.post('/api/admin/tasks', async (req, res) => {
+  const admin = requireAdmin(req, res);
+  if (!admin) return;
+  const kind = String(req.body?.kind || '').trim() === 'referrals' ? 'referrals' : 'channel';
+  const title = String(req.body?.title || '').trim().slice(0, 120);
+  const rewardStars = Math.floor(Number(req.body?.rewardStars || 0));
+  const requiredReferrals = Math.floor(Number(req.body?.requiredReferrals || 0));
+  const chatId = String(req.body?.chatId || '').trim().slice(0, 120) || null;
+  const chatUsername = String(req.body?.chatUsername || '').trim().replace(/^@/, '').slice(0, 64) || null;
+  const url = String(req.body?.url || '').trim().slice(0, 512) || (chatUsername ? `https://t.me/${chatUsername}` : null);
+  const avatarUrl = String(req.body?.avatarUrl || '').trim().slice(0, 512) || null;
+  const sortOrder = Math.floor(Number(req.body?.sortOrder || 0));
+  if (!title) return res.status(400).json({ error: 'Введите название задания' });
+  if (!Number.isSafeInteger(rewardStars) || rewardStars <= 0 || rewardStars > 1_000_000) return res.status(400).json({ error: 'Награда должна быть от 1 до 1 000 000 ⭐' });
+  if (kind === 'channel' && !chatId && !chatUsername) return res.status(400).json({ error: 'Для задания подписки укажите chat ID или username' });
+  if (kind === 'referrals' && (!Number.isSafeInteger(requiredReferrals) || requiredReferrals <= 0)) return res.status(400).json({ error: 'Укажите количество рефералов больше 0' });
+  try {
+    let resolvedTitle = title;
+    let resolvedUsername = chatUsername;
+    if (kind === 'channel') {
+      const chat = await tgApi('getChat', { chat_id: chatId || `@${chatUsername}` }, 8000);
+      if (!chat?.ok) return res.status(400).json({ error: chat?.description || 'Бот не видит этот канал или чат' });
+      resolvedTitle = title || chat.result?.title || chat.result?.first_name || resolvedTitle;
+      resolvedUsername = resolvedUsername || chat.result?.username || null;
+    }
+    const { data, error } = await sb.from('app_tasks').insert({ kind, title: resolvedTitle, chat_id: chatId, chat_username: resolvedUsername, url, avatar_url: avatarUrl, required_referrals: kind === 'referrals' ? requiredReferrals : 0, reward_stars: rewardStars, active: true, sort_order: sortOrder }).select('*').single();
+    if (error) throw new Error(error.message);
+    res.json({ ok: true, item: data });
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'Task create failed' });
+  }
+});
+
+app.post('/api/admin/tasks/delete', async (req, res) => {
+  const admin = requireAdmin(req, res);
+  if (!admin) return;
+  const taskId = Number(req.body?.taskId || 0);
+  if (!Number.isSafeInteger(taskId) || taskId <= 0) return res.status(400).json({ error: 'Некорректное задание' });
+  const { error } = await sb.from('app_tasks').delete().eq('id', taskId);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
 });
 
 // Промокоды существуют только в БД. Публичные hardcoded-коды удалены из исходников.
@@ -3012,7 +3140,7 @@ app.get('/api/webhook-info', async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// GIFT RELAYER — пополнение инвентаря через NFT-подарок на @GiftPepeRelayer
+// GIFT RELAYER — пополнение инвентаря через NFT-подарок на @GiftPepeReleyer
 // ══════════════════════════════════════════════════════════════════════════════
 
 function normalizeUsername(value) {
@@ -3474,14 +3602,19 @@ async function applyDbPromo(userId, rawCode) {
     rewardGift = { id: g.id, name: g.name, price: g.price, image: g.image };
   }
 
-  const { data, error } = await sb.rpc('promo_redeem_atomic', {
+  const { data, error } = await sb.rpc('promo_redeem_global_atomic', {
     p_user_id: Number(userId),
     p_code: String(promo.code),
     p_reward_gift: rewardGift,
   });
   if (error) {
     const msg = String(error.message || 'Promo redeem failed');
-    if (/already activated|limit/i.test(msg)) return { ok: false, message: 'Промокод уже активирован' };
+    if (/PROMO_GLOBAL_LIMIT_REACHED|global limit|лимит активаций/i.test(msg)) {
+      return { ok: false, message: 'Лимит активаций промокода исчерпан' };
+    }
+    if (/PROMO_ALREADY_ACTIVATED|already activated|duplicate/i.test(msg)) {
+      return { ok: false, message: 'Вы уже активировали этот промокод' };
+    }
     throw new Error(msg);
   }
 
@@ -3492,22 +3625,6 @@ async function applyDbPromo(userId, rawCode) {
     withdrawAt: giftDb.withdraw_available_at || null, createdAt: giftDb.created_at || null,
   } : null;
   const reward = Number(data?.reward || 0);
-  // Analytics is deliberately best-effort: the financial RPC above already
-  // completed atomically. A missing analytics migration must not roll back a
-  // successful user reward.
-  sb.from('promo_redemptions').insert({
-    promo_code: String(promo.code),
-    user_id: Number(userId),
-    reward_stars: reward,
-    reward_gift_id: gift?.giftId || gift?.id || null,
-    reward_gift_name: gift?.name || null,
-    reward_gift_price: gift ? Number(gift.price || 0) : null,
-  }).then(({ error: analyticsError }) => {
-    if (analyticsError && !/promo_redemptions|does not exist|schema cache/i.test(String(analyticsError.message || ''))) {
-      console.error('Promo analytics insert failed:', analyticsError.message || analyticsError);
-    }
-  }).catch(() => {});
-
   return {
     ok: true, reward, gift,
     message: gift ? `Промокод активирован: подарок «${gift.name}»` : `Промокод активирован: +${reward}⭐`,
@@ -3703,6 +3820,7 @@ app.post('/api/admin/promo/create', async (req, res) => {
   if (!admin) return;
   const code = String(req.body?.code || '').trim();
   if (!code) return res.status(400).json({ error: 'Введите код' });
+  // The limit is global: maximum successful activations across all users.
   const maxUses = Math.max(1, Math.floor(Number(req.body?.maxUses || 1)));
   const giftId = req.body?.giftId ? String(req.body.giftId).trim() : null;
 
