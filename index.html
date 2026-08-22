@@ -1682,12 +1682,14 @@
       let selected=null;
       const selectTask=(task,row)=>{selected=task;list.querySelectorAll('.task-row').forEach(x=>x.classList.remove('selected'));row.classList.add('selected');if(claimBtn){claimBtn.style.display='block';claimBtn.disabled=!!task.claimed;claimBtn.textContent=task.claimed?'Получено':`Забрать ${task.rewardStars||0} ⭐`;claimBtn.classList.remove('ready','pending')}};
       items.forEach(task=>{
-        const row=document.createElement('div');row.className='task-row'+(task.claimed?' claimed':'');row.tabIndex=0;
-        let avatar=document.createElement('div');avatar.className='task-avatar';
-        if(task.avatarUrl){const img=document.createElement('img');img.src=task.avatarUrl.startsWith('http')?task.avatarUrl:API_BASE+task.avatarUrl;img.alt='';img.className='task-avatar';avatar=img}else avatar.textContent=(task.title||'З').trim().charAt(0).toUpperCase();
-        const info=document.createElement('div');info.className='task-info';const name=document.createElement('div');name.className='task-name';name.textContent=task.title||'Задание';const meta=document.createElement('div');meta.className='task-meta';meta.textContent=task.requiredReferrals>0?`Подписка + рефералы: ${task.invitedCount||0} / ${task.requiredReferrals}`:(task.kind==='referrals'?`Приглашено ${task.invitedCount||0} / ${task.requiredReferrals||0}`:'Подписаться');info.append(name,meta);row.append(avatar,info);
-        row.addEventListener('click',()=>{if(task.kind==='channel'&&task.url){try{tg?.openTelegramLink?tg.openTelegramLink(task.url):window.open(task.url,'_blank')}catch{window.open(task.url,'_blank')}}selectTask(task,row)});
-        list.appendChild(row);
+        const channels=task.kind==='channel'&&Array.isArray(task.channels)&&task.channels.length?task.channels:[task.kind==='channel'?{title:task.title,url:task.url,avatarUrl:task.avatarUrl}:null].filter(Boolean);
+        const rows=channels.length?channels:[null];
+        rows.forEach(channel=>{
+          const row=document.createElement('div');row.className='task-row'+(task.claimed?' claimed':'');row.tabIndex=0;
+          if(channel){let avatar=document.createElement('div');avatar.className='task-avatar';if(channel.avatarUrl){const img=document.createElement('img');img.src=channel.avatarUrl.startsWith('http')?channel.avatarUrl:API_BASE+channel.avatarUrl;img.alt='';img.className='task-avatar';avatar=img}else avatar.textContent=(channel.title||task.title||'К').trim().charAt(0).toUpperCase();row.append(avatar)}
+          const info=document.createElement('div');info.className='task-info';const name=document.createElement('div');name.className='task-name';name.textContent=channel?.title||task.title||'Задание';const meta=document.createElement('div');meta.className='task-meta';meta.textContent=task.requiredReferrals>0?`Подписка + рефералы: ${task.invitedCount||0} / ${task.requiredReferrals}`:(task.kind==='referrals'?`Приглашено ${task.invitedCount||0} / ${task.requiredReferrals||0}`:'Подписаться');info.append(name,meta);row.append(info);
+          row.addEventListener('click',()=>{if(channel?.url){try{tg?.openTelegramLink?tg.openTelegramLink(channel.url):window.open(channel.url,'_blank')}catch{window.open(channel.url,'_blank')}}selectTask(task,row)});list.appendChild(row);
+        });
       });
       if(claimBtn){claimBtn.style.display='block';claimBtn.disabled=true;claimBtn.textContent='Забрать';claimBtn.classList.remove('ready');claimBtn.onclick=async()=>{if(!selected||selected.claimed)return;claimBtn.disabled=true;claimBtn.textContent='Проверяем…';try{const r=await fetch(API_BASE+'/api/tasks/claim',{method:'POST',headers:{'Content-Type':'application/json','x-init-data':tg?.initData||''},body:JSON.stringify({taskId:selected.id})});const result=await readApiJson(r);if(!r.ok)throw new Error(result.error||'Не удалось забрать награду');updateBalance(Number(result.balance||0));claimBtn.classList.add('ready');claimBtn.textContent=`Получено ${result.reward||selected.rewardStars||0} ⭐`;await loadTasks()}catch(e){claimBtn.disabled=false;claimBtn.classList.remove('ready');claimBtn.classList.add('pending');claimBtn.textContent=`Забрать ${selected?.rewardStars||0} ⭐`;tg?.showAlert?.(e.message||'Сначала выполните все условия');}}}
     }catch(e){list.innerHTML='<div class="tasks-empty">Не удалось загрузить задания</div>';console.warn('Tasks load failed:',e.message)}
@@ -5316,10 +5318,12 @@
     const taskKindBtns=overlay?.querySelectorAll('[data-taskkind]')||[];
     const taskChannelFields=document.getElementById('adm_taskChannelFields');
     const taskReferralFields=document.getElementById('adm_taskReferralFields');
-    const taskTitle=document.getElementById('adm_taskTitle'), taskChatId=document.getElementById('adm_taskChatId'), taskUrl=document.getElementById('adm_taskUrl'), taskAvatar=document.getElementById('adm_taskAvatar'), taskRefs=document.getElementById('adm_taskRefs'), taskReward=document.getElementById('adm_taskReward'), taskCreate=document.getElementById('adm_taskCreate'), taskMsg=document.getElementById('adm_taskMsg'), taskTable=document.getElementById('adm_taskTable');
+    const taskTitle=document.getElementById('adm_taskTitle'), taskChannels=document.getElementById('adm_taskChannels'), taskChannelsRefresh=document.getElementById('adm_taskChannelsRefresh'), taskRefs=document.getElementById('adm_taskRefs'), taskReward=document.getElementById('adm_taskReward'), taskCreate=document.getElementById('adm_taskCreate'), taskMsg=document.getElementById('adm_taskMsg'), taskTable=document.getElementById('adm_taskTable');
     let taskKind='channel';
     function setTaskKind(kind){taskKind=kind==='referrals'?'referrals':'channel';taskKindBtns.forEach(b=>b.classList.toggle('active',b.dataset.taskkind===taskKind));if(taskChannelFields)taskChannelFields.style.display=taskKind==='channel'?'block':'none';if(taskReferralFields)taskReferralFields.style.display='block'}
     taskKindBtns.forEach(b=>b.addEventListener('click',()=>setTaskKind(b.dataset.taskkind)));setTaskKind('channel');
+    async function loadTaskChannels(){if(!taskChannels)return;taskChannels.innerHTML='<option>Загрузка…</option>';try{const data=await adminJson('/api/admin/task-chats');taskChannels.innerHTML='';(data.items||[]).forEach(item=>{const option=document.createElement('option');option.value=JSON.stringify(item);option.textContent=`${item.title}${item.chatUsername?` · @${item.chatUsername}`:''}`;taskChannels.appendChild(option)});if(!(data.items||[]).length){taskChannels.innerHTML='<option disabled>Нет известных каналов, где бот администратор</option>'}}catch(e){taskChannels.innerHTML='<option disabled>Не удалось загрузить каналы</option>';taskMsg.classList.add('err');taskMsg.textContent='❌ '+e.message}}
+    taskChannelsRefresh?.addEventListener('click',loadTaskChannels);loadTaskChannels();
     async function loadAdminTasks(){
       if(!taskTable)return;
       try{
@@ -5332,7 +5336,7 @@
         });
       }catch(e){taskMsg.classList.add('err');taskMsg.textContent='❌ '+e.message}
     }
-    taskCreate?.addEventListener('click',async()=>{taskMsg.classList.remove('err');taskMsg.textContent='Сохраняем…';taskCreate.disabled=true;try{const result=await adminJson('/api/admin/tasks',{method:'POST',body:JSON.stringify({kind:taskKind,title:taskTitle.value,chatId:taskChatId.value,chatUsername:taskChatId.value.replace(/^@/,''),url:taskUrl.value,avatarUrl:taskAvatar.value,requiredReferrals:Number(taskRefs.value||0),rewardStars:Number(taskReward.value||0)})});taskMsg.textContent=`✅ Задание «${result.item?.title||taskTitle.value}» добавлено`;taskTitle.value='';loadAdminTasks()}catch(e){taskMsg.classList.add('err');taskMsg.textContent='❌ '+e.message}finally{taskCreate.disabled=false}});
+    taskCreate?.addEventListener('click',async()=>{taskMsg.classList.remove('err');taskMsg.textContent='Сохраняем…';taskCreate.disabled=true;try{const channels=taskKind==='channel'?[...(taskChannels?.selectedOptions||[])].filter(o=>o.value&&!o.disabled).map(o=>JSON.parse(o.value)):[];const result=await adminJson('/api/admin/tasks',{method:'POST',body:JSON.stringify({kind:taskKind,title:taskTitle.value,channels,requiredReferrals:Number(taskRefs.value||0),rewardStars:Number(taskReward.value||0)})});taskMsg.textContent=`✅ Задание «${result.item?.title||taskTitle.value}» добавлено`;taskTitle.value='';loadAdminTasks()}catch(e){taskMsg.classList.add('err');taskMsg.textContent='❌ '+e.message}finally{taskCreate.disabled=false}});
 
     // ───── BALANCE ─────
     const balUid=document.getElementById('adm_balUid');
@@ -5555,12 +5559,10 @@
       <label>Название задания</label>
       <input id="adm_taskTitle" type="text" maxlength="120" placeholder="Подписаться на канал GiftPep">
       <div id="adm_taskChannelFields">
-        <label>Chat ID или username</label>
-        <input id="adm_taskChatId" type="text" placeholder="@GiftPep или -1001234567890">
-        <label>Ссылка на канал / чат</label>
-        <input id="adm_taskUrl" type="url" placeholder="https://t.me/GiftPep">
-        <label>URL аватарки (необязательно)</label>
-        <input id="adm_taskAvatar" type="url" placeholder="https://...">
+        <label>Каналы и чаты, где бот администратор</label>
+        <select id="adm_taskChannels" multiple size="4" style="width:100%;min-height:112px;border-radius:12px;background:#1C1C1E;border:1px solid rgba(255,255,255,.1);color:#fff;padding:8px;font-size:14px"></select>
+        <button class="admin-submit" id="adm_taskChannelsRefresh" type="button">Обновить список каналов</button>
+        <div class="admin-hint">Можно выбрать несколько каналов. Все выбранные каналы станут одним заданием с одной общей наградой. Аватарки загрузятся автоматически.</div>
       </div>
       <div id="adm_taskReferralFields">
         <label>Сколько рефералов нужно пригласить (необязательно)</label>
