@@ -2141,7 +2141,8 @@ app.post('/api/tasks/claim', async (req, res) => {
       if (!chat) return res.status(400).json({ error: 'У задания не настроен чат' });
       const membership = await tgApi('getChatMember', { chat_id: chat, user_id: Number(user.id) }, 8000);
       const status = membership?.result?.status;
-      if (!membership?.ok || !['member', 'administrator', 'creator'].includes(status)) {
+      const isMember = ['member', 'administrator', 'creator'].includes(status) || (status === 'restricted' && membership?.result?.is_member === true);
+      if (!membership?.ok || !isMember) {
         return res.status(400).json({ error: 'Сначала подпишитесь на канал или вступите в чат' });
       }
     } else if (task.kind === 'referrals') {
