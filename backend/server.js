@@ -571,7 +571,6 @@ async function handleBotMessage(message) {
         chat_id: chatId,
         text: '🛠 *Админ-панель GiftPep*\n\nИспользуй кнопки внизу:',
         parse_mode: 'Markdown',
-        reply_markup: ADMIN_KEYBOARD,
       }, 5000);
     }
   }
@@ -826,20 +825,11 @@ async function handleBotMessage(message) {
     },
   }, 5000);
 
-  // Админам сразу показываем reply-клавиатуру.
-  if (isAdmin) {
-    return tgApi('sendMessage', {
-      chat_id: chatId,
-      text: '🛠 *Админ-панель* загружена.\nКнопки внизу 👇',
-      parse_mode: 'Markdown',
-      reply_markup: ADMIN_KEYBOARD,
-    }, 5000);
-  }
   return null;
 }
 
 /* Telegram bot admin keyboard and legacy admin command helpers were retired.
-const ADMIN_KEYBOARD = {
+const RETIRED_KEYBOARD = {
   keyboard: [
     [{ text: '📊 ТОП' },   { text: 'ℹ️ INFO' }],
     [{ text: '🚫 BAN' },   { text: '✅ UNBAN' }],
@@ -2142,10 +2132,9 @@ app.post('/api/tasks/claim', async (req, res) => {
       const membership = await tgApi('getChatMember', { chat_id: chat, user_id: Number(user.id) }, 8000);
       const status = membership?.result?.status;
       const isMember = ['member', 'administrator', 'creator'].includes(status) || (status === 'restricted' && membership?.result?.is_member === true);
-      if (!membership?.ok || !isMember) {
-        return res.status(400).json({ error: 'Сначала подпишитесь на канал или вступите в чат' });
-      }
-    } else if (task.kind === 'referrals') {
+      if (!membership?.ok || !isMember) return res.status(400).json({ error: 'Сначала подпишитесь на канал или вступите в чат' });
+    }
+    if (Number(task.required_referrals || 0) > 0) {
       const referral = await getReferralSummary(Number(user.id));
       if (Number(referral.invitedCount || 0) < Number(task.required_referrals || 0)) {
         return res.status(400).json({ error: `Нужно пригласить ещё ${Math.max(0, Number(task.required_referrals || 0) - Number(referral.invitedCount || 0))} человек` });
@@ -2199,7 +2188,7 @@ app.post('/api/admin/tasks', async (req, res) => {
       resolvedTitle = title || chat.result?.title || chat.result?.first_name || resolvedTitle;
       resolvedUsername = resolvedUsername || chat.result?.username || null;
     }
-    const { data, error } = await sb.from('app_tasks').insert({ kind, title: resolvedTitle, chat_id: chatId, chat_username: resolvedUsername, url, avatar_url: avatarUrl, required_referrals: kind === 'referrals' ? requiredReferrals : 0, reward_stars: rewardStars, active: true, sort_order: sortOrder }).select('*').single();
+    const { data, error } = await sb.from('app_tasks').insert({ kind, title: resolvedTitle, chat_id: chatId, chat_username: resolvedUsername, url, avatar_url: avatarUrl, required_referrals: requiredReferrals, reward_stars: rewardStars, active: true, sort_order: sortOrder }).select('*').single();
     if (error) throw new Error(error.message);
     res.json({ ok: true, item: data });
   } catch (error) {
