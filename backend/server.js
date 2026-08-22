@@ -2073,6 +2073,30 @@ function taskChatLink(task) {
   return '';
 }
 
+app.get('/api/tasks/:taskId/avatar', async (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const taskId = Number(req.params.taskId || 0);
+  if (!Number.isSafeInteger(taskId) || taskId <= 0) return res.sendStatus(400);
+  try {
+    const { data: task, error } = await sb.from('app_tasks').select('kind,chat_id,chat_username').eq('id', taskId).maybeSingle();
+    if (error || !task || task.kind !== 'channel') return res.sendStatus(404);
+    const chat = await tgApi('getChat', { chat_id: task.chat_id || task.chat_username });
+    const fileId = chat?.result?.photo?.big_file_id || chat?.result?.photo?.small_file_id;
+    if (!chat?.ok || !fileId) return res.sendStatus(404);
+    const file = await tgApi('getFile', { file_id: fileId });
+    const filePath = file?.result?.file_path;
+    if (!file?.ok || !filePath) return res.sendStatus(404);
+    const image = await fetch(`https://api.telegram.org/file/bot${CONFIG.BOT_TOKEN}/${filePath}`);
+    if (!image.ok) return res.sendStatus(404);
+    res.set('Cache-Control', 'public, max-age=300');
+    res.type(filePath.split('.').pop() || 'jpg');
+    res.send(Buffer.from(await image.arrayBuffer()));
+  } catch (error) {
+    res.sendStatus(404);
+  }
+});
+
 app.get('/api/tasks', async (req, res) => {
   const user = requireUser(req, res);
   if (!user) return;
@@ -2088,7 +2112,7 @@ app.get('/api/tasks', async (req, res) => {
     const items = (tasks || []).map((task) => ({
       id: Number(task.id), kind: task.kind, title: task.title,
       chatId: task.chat_id, chatUsername: task.chat_username,
-      url: taskChatLink(task), avatarUrl: task.avatar_url || '',
+      url: taskChatLink(task), avatarUrl: task.avatar_url || (task.kind === 'channel' ? `/api/tasks/${Number(task.id)}/avatar` : ''),
       requiredReferrals: Number(task.required_referrals || 0),
       rewardStars: Number(task.reward_stars || 0),
       invitedCount: Number(referral?.invitedCount || 0),
