@@ -432,6 +432,24 @@ async function tgSendDocument(chatId, filename, text, caption = '') {
   return response.json();
 }
 
+async function tgSendVideo(chatId, filePath, caption = '', replyMarkup = null) {
+  if (!fs.existsSync(filePath)) throw new Error(`Video file not found: ${filePath}`);
+  const form = new FormData();
+  form.append('chat_id', String(chatId));
+  if (caption) {
+    form.append('caption', String(caption).slice(0, 1024));
+    form.append('parse_mode', 'Markdown');
+  }
+  if (replyMarkup) form.append('reply_markup', JSON.stringify(replyMarkup));
+  form.append('video', new Blob([fs.readFileSync(filePath)], { type: 'video/mp4' }), path.basename(filePath));
+  const response = await fetch(`https://api.telegram.org/bot${CONFIG.BOT_TOKEN}/sendVideo`, {
+    method: 'POST',
+    body: form,
+    signal: AbortSignal.timeout(60_000),
+  });
+  return response.json();
+}
+
 function inferWebhookUrl(req = null) {
   const explicit = String(CONFIG.WEBHOOK_URL || '').trim();
   if (explicit) {
@@ -569,7 +587,7 @@ async function handleBotMessage(message) {
     if (text === '🛠 АДМИН' || /^\/admin(?:@\w+)?(?:\s|$)/i.test(text)) {
       return tgApi('sendMessage', {
         chat_id: chatId,
-        text: '🛠 *Админ-панель GiftPep*\n\nИспользуй кнопки внизу:',
+        text: '🛠 *Админ-панель Gift Pepe*\n\nИспользуй кнопки внизу:',
         parse_mode: 'Markdown',
       }, 5000);
     }
@@ -804,26 +822,36 @@ async function handleBotMessage(message) {
   }
 
   const welcome =
-    '🎰 *GiftPep* — топ-казино для нфт подарков\n\n' +
+    '🎰 *Gift Pepe* — топ-казино для нфт подарков\n\n' +
     '🎁 Крути краш, апгрейдь подарки и забирай нфт подарки.\n\n' +
     '👇 Жми «Играть», чтобы начать!';
 
-  // Сначала приветствие с web_app-кнопкой.
-  await tgApi('sendMessage', {
-    chat_id: chatId,
-    text: welcome,
-    parse_mode: 'Markdown',
-    disable_web_page_preview: true,
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: '🎮 Играть', web_app: { url: appUrl } }],
-        [
-          { text: '📣 Канал', url: `https://t.me/${CONFIG.CHANNEL_USERNAME}` },
-          { text: '💬 Поддержка', url: `https://t.me/${CONFIG.SUPPORT_USERNAME}` },
-        ],
+  const startReplyMarkup = {
+    inline_keyboard: [
+      [{ text: '🎮 Играть', web_app: { url: appUrl } }],
+      [
+        { text: '📣 Канал', url: `https://t.me/${CONFIG.CHANNEL_USERNAME}` },
+        { text: '💬 Поддержка', url: `https://t.me/${CONFIG.SUPPORT_USERNAME}` },
       ],
-    },
-  }, 5000);
+    ],
+  };
+
+  // Сначала отправляем видео с сервера. Если файла нет или Telegram временно недоступен,
+  // оставляем безопасный текстовый fallback, чтобы /start всё равно работал.
+  const videoPath = path.join(__dirname, 'GiftPepe.mp4');
+  try {
+    const videoResult = await tgSendVideo(chatId, videoPath, welcome, startReplyMarkup);
+    if (!videoResult?.ok) throw new Error(videoResult?.description || 'sendVideo failed');
+  } catch (error) {
+    console.warn('start video send failed:', error?.message || error);
+    await tgApi('sendMessage', {
+      chat_id: chatId,
+      text: welcome,
+      parse_mode: 'Markdown',
+      disable_web_page_preview: true,
+      reply_markup: startReplyMarkup,
+    }, 5000);
+  }
 
   return null;
 }
@@ -2187,7 +2215,14 @@ async function syncMarketPricesOnce() {
     const r = await fetch(`${CONFIG.RELAYER_URL}/market-min-prices`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-relayer-key': CONFIG.RELAYER_INTERNAL_KEY },
-      body: JSON.stringify({ giftIds }),
+      body: JSON.stringify({
+        giftIds,
+        gifts: GIFT_CATALOG.map((gift) => ({
+          id: String(gift.id || gift.giftId || ''),
+          name: String(gift.name || ''),
+          price: Number(gift.price || 0),
+        })).filter((gift) => gift.id),
+      }),
     });
     const data = await r.json().catch(() => ({}));
     if (!r.ok || !data?.ok) {
@@ -3871,7 +3906,7 @@ app.post('/api/admin/users/export', async (req, res) => {
     for (const gift of gifts) { const list = giftsByUser.get(Number(gift.user_id)) || []; list.push(gift); giftsByUser.set(Number(gift.user_id), list); }
     for (const bet of bets) { const list = betsByUser.get(Number(bet.user_id)) || []; list.push(bet); betsByUser.set(Number(bet.user_id), list); }
     for (const ref of refs) refsByUser.set(Number(ref.referrer_id), Number(refsByUser.get(Number(ref.referrer_id)) || 0) + 1);
-    const lines = ['GiftPep — полный экспорт пользователей', `Сформирован: ${new Date().toISOString()}`, `Пользователей: ${users.length}`, ''];
+    const lines = ['Gift Pepe — полный экспорт пользователей', `Сформирован: ${new Date().toISOString()}`, `Пользователей: ${users.length}`, ''];
     users.forEach((user, index) => {
       const userGifts = giftsByUser.get(Number(user.id)) || [], userBets = betsByUser.get(Number(user.id)) || [];
       const wonBets = userBets.filter((x) => x.cashed_out).length;
@@ -3947,8 +3982,11 @@ app.listen(CONFIG.PORT, async () => {
 
   // 1) Сразу подтягиваем сохранённые рыночные цены с диска (если есть).
   loadMarketPricesFromDisk();
-  // 2) Первый синк через 30 сек после старта (даём релееру подняться).
-  setTimeout(() => { syncMarketPricesOnce().catch(() => {}); }, 30 * 1000);
+  // 2) Синк после старта с повторами: PM2 может поднять API раньше relayer.
+  const marketSyncRetryDelays = [30, 90, 180];
+  for (const delaySec of marketSyncRetryDelays) {
+    setTimeout(() => { syncMarketPricesOnce().catch(() => {}); }, delaySec * 1000);
+  }
   // 3) Дальше — раз в сутки.
   setInterval(() => { syncMarketPricesOnce().catch(() => {}); }, 24 * 60 * 60 * 1000).unref?.();
 

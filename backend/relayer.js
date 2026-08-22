@@ -408,13 +408,21 @@ function startHttpServer() {
           return;
         }
         const body = await readJson(req);
-        const giftIds = Array.isArray(body.giftIds) ? body.giftIds.map(String) : [];
+        const catalogGifts = Array.isArray(body.gifts) ? body.gifts : [];
+        const giftIds = Array.isArray(body.giftIds) ? body.giftIds.map(String) : catalogGifts.map((g) => String(g?.id || '')).filter(Boolean);
         if (!giftIds.length) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: false, error: 'giftIds required' }));
           return;
         }
         const prices = {};
+        // Если у конкретного подарка сейчас нет объявления на resale, сохраняем
+        // его базовую Telegram-цену, чтобы каталог не становился пустым.
+        for (const gift of catalogGifts) {
+          const id = String(gift?.id || '').trim();
+          const basePrice = Number(gift?.price || 0);
+          if (id && Number.isFinite(basePrice) && basePrice > 0) prices[id] = basePrice;
+        }
         let okCount = 0; let failCount = 0;
         for (const id of giftIds) {
           try {
