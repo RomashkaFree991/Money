@@ -563,8 +563,8 @@ async function main() {
         const m = update.message;
         const mCls = m?.className || '';
         const aCls = m?.action?.className || '';
-        console.log(`📥 raw ${cls} → message=${mCls} action=${aCls || '-'}`);
-
+        // Обычные посты каналов не логируем: relayer получает их постоянно.
+        // Обрабатываем только сервисные сообщения, где может находиться подарок.
         if (mCls === 'MessageService' && m?.action) {
           await handleMessage(client, { message: m });
         }
