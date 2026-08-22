@@ -212,9 +212,9 @@
   .tasks-empty{color:rgba(255,255,255,.42);font-size:13px;padding:8px 0}
   .tasks-overlay{position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.44);display:flex;align-items:flex-end;justify-content:center;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .24s ease,visibility .24s ease}
   .tasks-overlay.open{opacity:1;visibility:visible;pointer-events:auto}
-  .tasks-sheet{width:100%;max-width:560px;max-height:54vh;min-height:280px;overflow-y:auto;background:#000 url('assets/background_pepe.png') center top/cover no-repeat;border:1px solid rgba(255,255,255,.12);border-bottom:0;border-radius:26px 26px 0 0;padding:18px 16px calc(22px + env(safe-area-inset-bottom));box-shadow:0 -18px 50px rgba(0,0,0,.5);transform:translateY(100%);transition:transform .28s ease}
+  .tasks-sheet{width:100%;max-width:560px;max-height:54vh;min-height:280px;overflow-y:auto;background:#000 url('assets/background_pepe.png') center top/cover no-repeat;border:1px solid rgba(255,255,255,.12);border-bottom:0;border-radius:34px 34px 0 0;padding:20px 16px calc(22px + env(safe-area-inset-bottom));box-shadow:0 -20px 56px rgba(0,0,0,.58);transform:translateY(100%);transition:transform .28s ease}
   .tasks-overlay.open .tasks-sheet{transform:translateY(0)}
-  .tasks-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}.tasks-close{width:34px;height:34px;border:0;border-radius:50%;background:rgba(255,255,255,.1);color:#fff;font-size:22px;line-height:1;cursor:pointer}.tasks-sheet .task-row{background:rgba(28,28,30,.78);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:10px;margin-top:8px}.tasks-sheet .task-row:first-child{border-top:1px solid rgba(255,255,255,.08)}
+  .tasks-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}.tasks-close{width:34px;height:34px;border:0;border-radius:50%;background:rgba(255,255,255,.1);color:#fff;font-size:22px;line-height:1;cursor:pointer}  .tasks-sheet .task-row{background:transparent;border:0;border-radius:0;padding:10px 4px;margin-top:2px;cursor:pointer}.tasks-sheet .task-row:first-child{border-top:0}.tasks-sheet .task-row.selected{background:rgba(255,255,255,.08);border-radius:14px}.tasks-bottom-claim{display:block;width:100%;height:48px;margin-top:16px;border-radius:999px;font-size:15px}.tasks-bottom-claim:disabled{opacity:.38;cursor:default}.tasks-bottom-claim.pending{background:#3A3A3C;color:rgba(255,255,255,.5)}
 
   .inventory-header{display:flex;align-items:center;flex-wrap:nowrap;margin-bottom:14px;gap:8px;min-width:0}
   .inventory-title{color:#fff;font-size:17px;font-weight:700;flex-shrink:0}
@@ -1672,42 +1672,24 @@
   }
 
   async function loadTasks(){
-    const panel=document.getElementById('tasksPanel'), list=document.getElementById('tasksList');
+    const panel=document.getElementById('tasksPanel'), list=document.getElementById('tasksList'), claimBtn=document.getElementById('tasksClaimBtn');
     if(!panel||!list)return;
     try{
       const resp=await fetch(API_BASE+'/api/tasks',{headers:{'x-init-data':tg?.initData||''},cache:'no-store'});
-      const data=await readApiJson(resp);
-      if(!resp.ok)throw new Error(data.error||'Не удалось загрузить задания');
-      const items=Array.isArray(data.items)?data.items:[];
-      list.textContent='';
-      if(!items.length){list.innerHTML='<div class="tasks-empty">Сейчас заданий нет</div>';return}
+      const data=await readApiJson(resp); if(!resp.ok)throw new Error(data.error||'Не удалось загрузить задания');
+      const items=Array.isArray(data.items)?data.items:[]; list.textContent='';
+      if(!items.length){list.innerHTML='<div class="tasks-empty">Сейчас заданий нет</div>';if(claimBtn)claimBtn.style.display='none';return}
+      let selected=null;
+      const selectTask=(task,row)=>{selected=task;list.querySelectorAll('.task-row').forEach(x=>x.classList.remove('selected'));row.classList.add('selected');if(claimBtn){claimBtn.style.display='block';claimBtn.disabled=!!task.claimed;claimBtn.textContent=task.claimed?'Получено':'Забрать';claimBtn.classList.toggle('pending',!task.claimed)}};
       items.forEach(task=>{
-        const row=document.createElement('div'); row.className='task-row'+(task.claimed?' claimed':'');
-        let avatar=document.createElement('div'); avatar.className='task-avatar';
-        if(task.avatarUrl){const img=document.createElement('img');img.src=task.avatarUrl;img.alt='';img.className='task-avatar';avatar=img} else avatar.textContent=(task.title||'З').trim().charAt(0).toUpperCase();
-        const info=document.createElement('div'); info.className='task-info';
-        const name=document.createElement('div'); name.className='task-name'; name.textContent=task.title||'Задание';
-        const meta=document.createElement('div'); meta.className='task-meta';
-        if(task.kind==='referrals') meta.textContent=`Приглашено ${task.invitedCount||0} / ${task.requiredReferrals||0} · +${task.rewardStars||0} ⭐`;
-        else meta.textContent=`Подписка · +${task.rewardStars||0} ⭐`;
-        info.append(name,meta);
-        const action=document.createElement('button'); action.type='button'; action.className='task-claim'; action.textContent=task.claimed?'Получено':'Забрать'; action.disabled=!!task.claimed;
-        if(task.kind==='channel' && task.url){
-          const open=document.createElement('button'); open.type='button'; open.className='task-open'; open.textContent='Открыть';
-          open.addEventListener('click',()=>{try{tg?.openTelegramLink?tg.openTelegramLink(task.url):window.open(task.url,'_blank')}catch{window.open(task.url,'_blank')}});
-          row.append(avatar,info,open,action);
-        } else row.append(avatar,info,action);
-        action.addEventListener('click',async()=>{
-          if(action.disabled)return;
-          action.disabled=true; action.textContent='Проверяем…';
-          try{
-            const r=await fetch(API_BASE+'/api/tasks/claim',{method:'POST',headers:{'Content-Type':'application/json','x-init-data':tg?.initData||''},body:JSON.stringify({taskId:task.id})});
-            const result=await readApiJson(r); if(!r.ok)throw new Error(result.error||'Не удалось забрать награду');
-            updateBalance(Number(result.balance||0)); await loadTasks();
-          }catch(e){action.disabled=false;action.classList.add('pending');action.textContent='Забрать';meta.textContent='❌ '+(e.message||'Ошибка')}
-        });
+        const row=document.createElement('div');row.className='task-row'+(task.claimed?' claimed':'');row.tabIndex=0;
+        let avatar=document.createElement('div');avatar.className='task-avatar';
+        if(task.avatarUrl){const img=document.createElement('img');img.src=task.avatarUrl.startsWith('http')?task.avatarUrl:API_BASE+task.avatarUrl;img.alt='';img.className='task-avatar';avatar=img}else avatar.textContent=(task.title||'З').trim().charAt(0).toUpperCase();
+        const info=document.createElement('div');info.className='task-info';const name=document.createElement('div');name.className='task-name';name.textContent=task.title||'Задание';const meta=document.createElement('div');meta.className='task-meta';meta.textContent=task.kind==='referrals'?`Приглашено ${task.invitedCount||0} / ${task.requiredReferrals||0}`:'Подписаться';info.append(name,meta);row.append(avatar,info);
+        row.addEventListener('click',()=>{if(task.kind==='channel'&&task.url){try{tg?.openTelegramLink?tg.openTelegramLink(task.url):window.open(task.url,'_blank')}catch{window.open(task.url,'_blank')}}selectTask(task,row)});
         list.appendChild(row);
       });
+      if(claimBtn){claimBtn.style.display='block';claimBtn.disabled=true;claimBtn.textContent='Забрать';claimBtn.onclick=async()=>{if(!selected||selected.claimed)return;claimBtn.disabled=true;claimBtn.textContent='Проверяем…';try{const r=await fetch(API_BASE+'/api/tasks/claim',{method:'POST',headers:{'Content-Type':'application/json','x-init-data':tg?.initData||''},body:JSON.stringify({taskId:selected.id})});const result=await readApiJson(r);if(!r.ok)throw new Error(result.error||'Не удалось забрать награду');updateBalance(Number(result.balance||0));await loadTasks()}catch(e){claimBtn.disabled=false;claimBtn.classList.add('pending');claimBtn.textContent='Забрать';}}}
     }catch(e){list.innerHTML='<div class="tasks-empty">Не удалось загрузить задания</div>';console.warn('Tasks load failed:',e.message)}
   }
 
@@ -5482,6 +5464,7 @@
   <div class="tasks-sheet" role="dialog" aria-modal="true" aria-labelledby="tasksTitle">
     <div class="tasks-head"><div><div class="tasks-title" id="tasksTitle">Задания</div><div class="tasks-subtitle">Выполняй задания и забирай награды ⭐</div></div><button class="tasks-close" id="tasksClose" type="button" aria-label="Закрыть">×</button></div>
     <div id="tasksPanel" class="tasks-panel" style="margin:0;padding:0;background:transparent;border:0;box-shadow:none"><div id="tasksList"><div class="tasks-empty">Загружаем задания…</div></div></div>
+    <button class="task-claim tasks-bottom-claim" id="tasksClaimBtn" type="button" disabled>Забрать</button>
   </div>
 </div>
 <div class="admin-overlay" id="adminOverlay">
