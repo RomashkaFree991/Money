@@ -201,6 +201,16 @@
   .referral-arrow{width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;flex-shrink:0}
   .referral-arrow svg{width:18px;height:18px}
 
+  /* === ONBOARDING TASKS === */
+  .tasks-panel{background:rgba(28,28,30,.94);border:1px solid rgba(255,255,255,.09);border-radius:22px;padding:16px;margin:0 0 20px;box-shadow:0 12px 30px rgba(0,0,0,.18)}
+  .tasks-title{color:#fff;font-size:18px;font-weight:800;margin-bottom:4px}
+  .tasks-subtitle{color:rgba(255,255,255,.48);font-size:12px;line-height:1.35;margin-bottom:12px}
+  .task-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid rgba(255,255,255,.07)}
+  .task-avatar{width:42px;height:42px;border-radius:50%;object-fit:cover;background:linear-gradient(135deg,#007AFF,#34C759);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:16px;flex-shrink:0}
+  .task-info{flex:1;min-width:0}.task-name{color:#fff;font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.task-meta{color:rgba(255,255,255,.45);font-size:11px;margin-top:3px}
+  .task-open,.task-claim{height:34px;border:0;border-radius:10px;padding:0 12px;color:#fff;font-size:12px;font-weight:800;white-space:nowrap;cursor:pointer;flex-shrink:0}.task-open{background:#007AFF}.task-claim{background:#34C759}.task-row.claimed{opacity:.45}.task-row.claimed .task-claim{background:#3A3A3C;cursor:default}.task-row.pending .task-claim{background:#3A3A3C;color:rgba(255,255,255,.55)}
+  .tasks-empty{color:rgba(255,255,255,.42);font-size:13px;padding:8px 0}
+
   .inventory-header{display:flex;align-items:center;flex-wrap:nowrap;margin-bottom:14px;gap:8px;min-width:0}
   .inventory-title{color:#fff;font-size:17px;font-weight:700;flex-shrink:0}
   .inventory-count{margin-left:auto;display:inline-flex;align-items:center;justify-content:center;height:26px;padding:0;color:rgba(255,255,255,.58);font-size:12px;font-weight:700;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:0 1 auto;text-align:right;background:none;border:none;backdrop-filter:none;-webkit-backdrop-filter:none}
@@ -1300,6 +1310,12 @@
       <span>🔧</span><span>Админ-панель</span>
     </button>
 
+    <div class="tasks-panel" id="tasksPanel">
+      <div class="tasks-title">Задания</div>
+      <div class="tasks-subtitle">Выполняй задания и забирай награды ⭐</div>
+      <div id="tasksList"><div class="tasks-empty">Загружаем задания…</div></div>
+    </div>
+
     <div class="section-title">Промокоды</div>
     <div class="promo-input-wrap">
       <input class="promo-input" type="text" placeholder="Введите промокод">
@@ -1327,7 +1343,7 @@
     <div class="inventory-empty" id="inventoryEmpty">
       <div class="lottie-wrap" id="lottieContainer"></div>
       <div class="empty-title">Не нашли подарков?</div>
-      <div class="empty-desc">Отправьте подарок <a href="https://t.me/GiftPepeRelayer" target="_blank">@GiftPepeRelayer</a><br>или выиграйте в играх</div>
+      <div class="empty-desc">Отправьте подарок <a href="https://t.me/GiftPepeReleyer" target="_blank">@GiftPepeReleyer</a><br>или выиграйте в играх</div>
     </div>
   </div>
 
@@ -1519,7 +1535,7 @@
       <div class="sheet-gifts" id="sheetGifts"></div>
       <div class="sheet-lottie" id="sheetLottie"></div>
       <div class="empty-title">Не нашли подарков?</div>
-      <div class="empty-desc">Отправьте подарок <a href="https://t.me/GiftPepeRelayer" target="_blank">@GiftPepeRelayer</a><br>или выиграйте в играх</div>
+      <div class="empty-desc">Отправьте подарок <a href="https://t.me/GiftPepeReleyer" target="_blank">@GiftPepeReleyer</a><br>или выиграйте в играх</div>
     </div>
     <button class="sheet-add-btn" id="sheetAddBtn">Добавить подарок</button>
   </div>
@@ -1656,6 +1672,46 @@
     }
   }
 
+  async function loadTasks(){
+    const panel=document.getElementById('tasksPanel'), list=document.getElementById('tasksList');
+    if(!panel||!list)return;
+    try{
+      const resp=await fetch(API_BASE+'/api/tasks',{headers:{'x-init-data':tg?.initData||''},cache:'no-store'});
+      const data=await readApiJson(resp);
+      if(!resp.ok)throw new Error(data.error||'Не удалось загрузить задания');
+      const items=Array.isArray(data.items)?data.items:[];
+      list.textContent='';
+      if(!items.length){list.innerHTML='<div class="tasks-empty">Сейчас заданий нет</div>';return}
+      items.forEach(task=>{
+        const row=document.createElement('div'); row.className='task-row'+(task.claimed?' claimed':'');
+        let avatar=document.createElement('div'); avatar.className='task-avatar';
+        if(task.avatarUrl){const img=document.createElement('img');img.src=task.avatarUrl;img.alt='';img.className='task-avatar';avatar=img} else avatar.textContent=(task.title||'З').trim().charAt(0).toUpperCase();
+        const info=document.createElement('div'); info.className='task-info';
+        const name=document.createElement('div'); name.className='task-name'; name.textContent=task.title||'Задание';
+        const meta=document.createElement('div'); meta.className='task-meta';
+        if(task.kind==='referrals') meta.textContent=`Приглашено ${task.invitedCount||0} / ${task.requiredReferrals||0} · +${task.rewardStars||0} ⭐`;
+        else meta.textContent=`Подписка · +${task.rewardStars||0} ⭐`;
+        info.append(name,meta);
+        const action=document.createElement('button'); action.type='button'; action.className='task-claim'; action.textContent=task.claimed?'Получено':'Забрать'; action.disabled=!!task.claimed;
+        if(task.kind==='channel' && task.url){
+          const open=document.createElement('button'); open.type='button'; open.className='task-open'; open.textContent='Открыть';
+          open.addEventListener('click',()=>{try{tg?.openTelegramLink?tg.openTelegramLink(task.url):window.open(task.url,'_blank')}catch{window.open(task.url,'_blank')}});
+          row.append(avatar,info,open,action);
+        } else row.append(avatar,info,action);
+        action.addEventListener('click',async()=>{
+          if(action.disabled)return;
+          action.disabled=true; action.textContent='Проверяем…';
+          try{
+            const r=await fetch(API_BASE+'/api/tasks/claim',{method:'POST',headers:{'Content-Type':'application/json','x-init-data':tg?.initData||''},body:JSON.stringify({taskId:task.id})});
+            const result=await readApiJson(r); if(!r.ok)throw new Error(result.error||'Не удалось забрать награду');
+            updateBalance(Number(result.balance||0)); await loadTasks();
+          }catch(e){action.disabled=false;action.textContent='Забрать';meta.textContent='❌ '+(e.message||'Ошибка')}
+        });
+        list.appendChild(row);
+      });
+    }catch(e){list.innerHTML='<div class="tasks-empty">Не удалось загрузить задания</div>';console.warn('Tasks load failed:',e.message)}
+  }
+
   async function initUser(){
     if(!tg)return;
     tg.ready();tg.expand();
@@ -1751,7 +1807,7 @@
     ru:{
       topPlace:'Вы в топе на <b>—</b> месте', waitingDots:'Ожидание...', profile:'Профиль', promocodes:'Промокоды', promoPlaceholder:'Введите промокод', apply:'Применить',
       referralTitle:'РЕФЕРАЛЬНАЯ СИСТЕМА', referralDesc:'Приглашайте людей, чтобы получать бонусы', inventory:'Инвентарь', noGiftsTitle:'Не нашли подарков?',
-      noGiftsDesc:'Отправьте подарок <a href="https://t.me/GiftPepeRelayer" target="_blank">@GiftPepeRelayer</a><br>или выиграйте в играх', chooseGift:'Выберите подарок',
+      noGiftsDesc:'Отправьте подарок <a href="https://t.me/GiftPepeReleyer" target="_blank">@GiftPepeReleyer</a><br>или выиграйте в играх', chooseGift:'Выберите подарок',
       myGifts:'Мои подарки', giftsForUpgrade:'Подарки для апгрейда', makeUpgrade:'Сделать апгрейд', yourGifts:'Ваши подарки', empty:'Пусто', giftCost:'Стоимость подарков',
       makeContract:'Сделать контракт', addGifts:'Добавить подарки', waiting:'Ожидание', waitingBets:'Ожидание ставок', placeBet:'Сделать ставку', cashOut:'Забрать',
       giftUnlocked:'Ваш подарок', claim:'Забрать', sell:'Продать', support:'Поддержка', language:'Язык', saveAndExit:'Сохранить и выйти', topup:'Пополнение', stars:'Звезды', ton:'TON',
@@ -1761,7 +1817,7 @@
     en:{
       topPlace:'You are in the top at <b>—</b> place', waitingDots:'Waiting...', profile:'Profile', promocodes:'Promo codes', promoPlaceholder:'Enter promo code', apply:'Apply',
       referralTitle:'REFERRAL SYSTEM', referralDesc:'Invite people to get bonuses', inventory:'Inventory', noGiftsTitle:'No gifts found?',
-      noGiftsDesc:'Send a gift to <a href="https://t.me/GiftPepeRelayer" target="_blank">@GiftPepeRelayer</a><br>or win one in games', chooseGift:'Choose a gift',
+      noGiftsDesc:'Send a gift to <a href="https://t.me/GiftPepeReleyer" target="_blank">@GiftPepeReleyer</a><br>or win one in games', chooseGift:'Choose a gift',
       myGifts:'My gifts', giftsForUpgrade:'Gifts for upgrade', makeUpgrade:'Make upgrade', yourGifts:'Your gifts', empty:'Empty', giftCost:'Gift value',
       makeContract:'Make contract', addGifts:'Add gifts', waiting:'Waiting', waitingBets:'Waiting for bets', placeBet:'Place bet', cashOut:'Cash out',
       giftUnlocked:'Your gift', claim:'Claim', sell:'Sell', support:'Support', language:'Language', saveAndExit:'Save and exit', topup:'Top up', stars:'Stars', ton:'TON',
@@ -4363,6 +4419,7 @@
     );
     try{
       await initUser();
+      loadTasks();
       // Заранее восстанавливаем TON-кошелёк, чтобы при открытии пополнения он
       // уже был «подключён» и не показывал кнопку Connect.
       ensureTonConnect().then(()=>{syncTopupWalletUI();syncTopupSubmitLabel();}).catch(()=>{});
@@ -4901,7 +4958,7 @@
       if(resp.ok){
         inventoryItems=Array.isArray(data.items)?data.items.map(item=>normalizeInventoryGift(item)).filter(Boolean):[];
         renderInventory();
-        // Если в инвентаре появились новые подарки (пополнение через @GiftPepeRelayer),
+        // Если в инвентаре появились новые подарки (пополнение через @GiftPepeReleyer),
         // подтянем топ и баланс, чтобы стоимость подарка появилась в лидерборде.
         if(inventoryItems.length>prevCount){
           refreshTop().catch(()=>{});
@@ -5112,6 +5169,7 @@
       buildGiftSelect();
       loadAdminPromos();
       loadAdminStats();
+      loadAdminTasks();
     });
     overlay?.querySelector('.admin-close')?.addEventListener('click',()=>overlay.classList.remove('open'));
     overlay?.addEventListener('click',e=>{ if(e.target===overlay) overlay.classList.remove('open'); });
@@ -5217,7 +5275,7 @@
           const cells=[
             String(item.code||'—'),
             item.rewardKind==='gift' ? `🎁 ${item.gift?.name||item.reward_gift_id||'подарок'}` : `⭐ ${Number(item.reward||0)}`,
-            `${Number(item.activations||0)} / ${Number(item.max_uses_per_user||0)} на юзера`,
+            `${Number(item.activations||0)} / ${Number(item.max_uses_per_user||0)} всего`,
             `${Number(item.totalReward||0)}⭐`,
             formatAdminDate(item.lastActivatedAt),
           ];
@@ -5272,6 +5330,28 @@
       }catch(e){sendGiftMsg.classList.add('err');sendGiftMsg.textContent='❌ '+e.message}
       finally{sendGiftBtn.disabled=false}
     });
+
+    // ───── TASKS ─────
+    const taskKindBtns=overlay?.querySelectorAll('[data-taskkind]')||[];
+    const taskChannelFields=document.getElementById('adm_taskChannelFields');
+    const taskReferralFields=document.getElementById('adm_taskReferralFields');
+    const taskTitle=document.getElementById('adm_taskTitle'), taskChatId=document.getElementById('adm_taskChatId'), taskUrl=document.getElementById('adm_taskUrl'), taskAvatar=document.getElementById('adm_taskAvatar'), taskRefs=document.getElementById('adm_taskRefs'), taskReward=document.getElementById('adm_taskReward'), taskCreate=document.getElementById('adm_taskCreate'), taskMsg=document.getElementById('adm_taskMsg'), taskTable=document.getElementById('adm_taskTable');
+    let taskKind='channel';
+    function setTaskKind(kind){taskKind=kind==='referrals'?'referrals':'channel';taskKindBtns.forEach(b=>b.classList.toggle('active',b.dataset.taskkind===taskKind));if(taskChannelFields)taskChannelFields.style.display=taskKind==='channel'?'block':'none';if(taskReferralFields)taskReferralFields.style.display=taskKind==='referrals'?'block':'none'}
+    taskKindBtns.forEach(b=>b.addEventListener('click',()=>setTaskKind(b.dataset.taskkind)));setTaskKind('channel');
+    async function loadAdminTasks(){
+      if(!taskTable)return;
+      try{
+        const data=await adminJson('/api/admin/tasks'); taskTable.textContent='';
+        (data.items||[]).forEach(item=>{
+          const tr=document.createElement('tr'), title=document.createElement('td'); title.textContent=item.title||'—';
+          const condition=document.createElement('td'); condition.textContent=item.kind==='referrals'?`Рефералы: ${item.required_referrals}`:`Чат: ${item.chat_username?`@${item.chat_username}`:(item.chat_id||'—')}`;
+          const reward=document.createElement('td'); reward.textContent=`${Number(item.reward_stars||0)}⭐`;
+          const action=document.createElement('td'), del=document.createElement('button'); del.type='button';del.textContent='Удалить';del.addEventListener('click',async()=>{if(!confirm(`Удалить задание «${item.title}»?`))return;try{await adminJson('/api/admin/tasks/delete',{method:'POST',body:JSON.stringify({taskId:item.id})});loadAdminTasks()}catch(e){taskMsg.classList.add('err');taskMsg.textContent='❌ '+e.message}});action.appendChild(del);tr.append(title,condition,reward,action);taskTable.appendChild(tr)
+        });
+      }catch(e){taskMsg.classList.add('err');taskMsg.textContent='❌ '+e.message}
+    }
+    taskCreate?.addEventListener('click',async()=>{taskMsg.classList.remove('err');taskMsg.textContent='Сохраняем…';taskCreate.disabled=true;try{const result=await adminJson('/api/admin/tasks',{method:'POST',body:JSON.stringify({kind:taskKind,title:taskTitle.value,chatId:taskChatId.value,chatUsername:taskChatId.value.replace(/^@/,''),url:taskUrl.value,avatarUrl:taskAvatar.value,requiredReferrals:Number(taskRefs.value||0),rewardStars:Number(taskReward.value||0)})});taskMsg.textContent=`✅ Задание «${result.item?.title||taskTitle.value}» добавлено`;taskTitle.value='';loadAdminTasks()}catch(e){taskMsg.classList.add('err');taskMsg.textContent='❌ '+e.message}finally{taskCreate.disabled=false}});
 
     // ───── BALANCE ─────
     const balUid=document.getElementById('adm_balUid');
@@ -5409,6 +5489,7 @@
       <button class="admin-tab" data-tab="stats" type="button">Статистика</button>
       <button class="admin-tab" data-tab="people" type="button">Люди</button>
       <button class="admin-tab" data-tab="sendgift" type="button">Подарок</button>
+      <button class="admin-tab" data-tab="tasks" type="button">Задания</button>
       <button class="admin-tab" data-tab="pol" type="button">Вывод</button>
     </div>
 
@@ -5429,9 +5510,9 @@
         <label>Какой подарок</label>
         <select id="adm_promoGift"></select>
       </div>
-      <label>Максимум активаций (одним юзером)</label>
+      <label>Общий лимит активаций промокода</label>
       <input id="adm_promoMax" type="number" min="1" value="1">
-      <div class="admin-hint">Промокод можно использовать любому количеству юзеров — каждый юзер «N раз», где N — число выше.</div>
+      <div class="admin-hint">Лимит общий для всех пользователей. После N успешных активаций промокод автоматически перестаёт выдавать награду.</div>
       <button class="admin-submit" id="adm_promoCreate" type="button">Создать промокод</button>
       <div class="admin-msg" id="adm_promoMsg"></div>
       <div class="admin-toolbar">
@@ -5473,6 +5554,35 @@
       <textarea id="adm_sendGiftText" maxlength="128" placeholder="Поздравляем! Подарок от GiftPep" style="width:100%;min-height:82px;resize:vertical;border-radius:10px;background:#1C1C1E;border:1px solid rgba(255,255,255,.08);color:#fff;font-size:14px;padding:10px 12px;outline:none"></textarea>
       <button class="admin-submit" id="adm_sendGiftBtn" type="button">Отправить подарок</button>
       <div class="admin-msg" id="adm_sendGiftMsg"></div>
+    </div>
+
+    <!-- TASKS -->
+    <div class="admin-section" id="adminSec_tasks">
+      <div class="admin-muted">Канал, чат или группа: бот должен быть добавлен туда администратором, иначе Telegram не сможет проверить подписку. Для задания «Рефералы» поля чата не нужны.</div>
+      <label>Тип задания</label>
+      <div class="admin-row choice">
+        <div class="admin-choice active" data-taskkind="channel">Канал / чат</div>
+        <div class="admin-choice" data-taskkind="referrals">Рефералы</div>
+      </div>
+      <label>Название задания</label>
+      <input id="adm_taskTitle" type="text" maxlength="120" placeholder="Подписаться на канал GiftPep">
+      <div id="adm_taskChannelFields">
+        <label>Chat ID или username</label>
+        <input id="adm_taskChatId" type="text" placeholder="@GiftPep или -1001234567890">
+        <label>Ссылка на канал / чат</label>
+        <input id="adm_taskUrl" type="url" placeholder="https://t.me/GiftPep">
+        <label>URL аватарки (необязательно)</label>
+        <input id="adm_taskAvatar" type="url" placeholder="https://...">
+      </div>
+      <div id="adm_taskReferralFields" style="display:none">
+        <label>Сколько рефералов нужно пригласить</label>
+        <input id="adm_taskRefs" type="number" min="1" value="2" placeholder="2">
+      </div>
+      <label>Награда в ⭐</label>
+      <input id="adm_taskReward" type="number" min="1" value="50" placeholder="50">
+      <button class="admin-submit" id="adm_taskCreate" type="button">Добавить задание</button>
+      <div class="admin-msg" id="adm_taskMsg"></div>
+      <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Задание</th><th>Условие</th><th>⭐</th><th></th></tr></thead><tbody id="adm_taskTable"></tbody></table></div>
     </div>
 
     <!-- BALANCE -->
