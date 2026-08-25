@@ -106,6 +106,7 @@ async function getBanInfo(userId) {
     if (!/banned_at|ban_reason|column/i.test(e?.message || '')) console.error('getBanInfo error:', e?.message || e);
   }
   banCache.set(id, { banned: false, reason: null, bannedAt: null, expiresAt: now + BAN_CACHE_TTL_MS });
+  console.log('[TON] NOT FOUND intent=',intent.id);
   return null;
 }
 
@@ -1987,6 +1988,10 @@ app.post('/api/inventory/withdraw-invoice', async (req, res) => {
         code: 'RELAYER_UNAVAILABLE',
       });
     }
+    const msg = String(error?.message || '');
+    if (/Нет свободного физического NFT|не удалось зарезервировать/i.test(msg)) {
+      return res.status(403).json({ error: `Для вывода нужно пополнение от ${WITHDRAW_MIN_DEPOSIT_STARS}⭐.` });
+    }
     return res.status(409).json({ error: error.message || 'Не удалось зарезервировать NFT для вывода' });
   }
 
@@ -2303,6 +2308,7 @@ function readTonMessageComment(message) {
 }
 
 async function findTonPaymentOnChain(intent) {
+  console.log('[TON] findTonPaymentOnChain intent=',intent.id,'to=',intent.destination_address,'nano=',intent.amount_nano);
   const expectedSource = normalizeTonAddress(intent.wallet_address);
   const expectedDestination = normalizeTonAddress(intent.destination_address);
   if (!expectedSource || !expectedDestination) throw new Error('Bad TON address in intent');
@@ -2317,16 +2323,26 @@ async function findTonPaymentOnChain(intent) {
     const qs = new URLSearchParams({
       address: intent.destination_address,
       limit: '100',
-      archival: 'false',
+      archival: 'true',
     });
     if (lt && hash) { qs.set('lt', lt); qs.set('hash', hash); }
     const headers = CONFIG.TONCENTER_API_KEY ? { 'X-API-Key': CONFIG.TONCENTER_API_KEY } : {};
-    const response = await fetch(`${CONFIG.TONCENTER_API_BASE}/getTransactions?${qs}`, { headers });
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok || !body?.ok || !Array.isArray(body.result)) {
-      throw new Error(body?.error || `TON Center HTTP ${response.status}`);
+    let response, body, tonRetry = 0;
+    while (true) {
+      response = await fetch(`${CONFIG.TONCENTER_API_BASE}/getTransactions?${qs}`, { headers });
+      body = await response.json().catch(() => ({}));
+      if (!response.ok || !body?.ok || !Array.isArray(body.result)) {
+        if (body?.error && /LITE_SERVER_UNKNOWN|cannot find block|not in db/i.test(String(body.error)) && tonRetry < 3) {
+          tonRetry++;
+          await new Promise(r => setTimeout(r, 3000 * tonRetry));
+          continue;
+        }
+        throw new Error(body?.error || `TON Center HTTP ${response.status}`);
+      }
+      break;
     }
 
+    console.log('[TON] page',page,'txs=',body.result?.length);
     let reachedOlder = false;
     for (const tx of body.result) {
       const msg = tx?.in_msg;
@@ -2342,6 +2358,7 @@ async function findTonPaymentOnChain(intent) {
       if (readTonMessageComment(msg) !== expectedComment) continue;
       const txHash = String(tx?.transaction_id?.hash || msg?.hash || '').trim();
       if (!txHash) continue;
+      console.log('[TON] FOUND intent=',intent.id,'txHash=',txHash);
       return { txHash, utime: Number(tx.utime || 0), source, destination, value: value.toString() };
     }
     if (reachedOlder || body.result.length < 100) break;
