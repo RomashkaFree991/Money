@@ -637,7 +637,7 @@
 
   .crash-rocket{
     position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
-    width:240px;height:240px;z-index:3;
+    width:210px;height:210px;z-index:3;
     display:none;pointer-events:none;
   }
   .crash-rocket.visible{display:block}
@@ -2117,16 +2117,7 @@
         });
         const invData=await invResp.json().catch(()=>({}));
         if(!invResp.ok) throw new Error(invData.error||'Invoice failed');
-        const {invoiceLink,intentId}=invData;
-        if(!invoiceLink||!intentId) throw new Error('Bad invoice response');
-        // Шаг 2: открываем оплату. Только status==='paid' → реальный вывод.
-        tg.openInvoice(invoiceLink, async(status)=>{
-          if(status!=='paid'){
-            cleanup();
-            if(status==='failed') tg?.showAlert?.(t('paymentFailed'));
-            else if(status==='cancelled') tg?.showAlert?.(t('paymentCancelled'));
-            return;
-          }
+        const finishWithdrawal=async(intentId)=>{
           try{
             const resp=await fetch(API_BASE+'/api/inventory/withdraw',{
               method:'POST',
@@ -2137,10 +2128,30 @@
             if(!resp.ok) throw new Error(data.error||'Withdraw failed');
             if(Array.isArray(data.items)) inventoryItems=data.items.map(it=>normalizeInventoryGift(it)).filter(Boolean);
             cleanup();
+            if(data.message) tg?.showAlert?.(data.message);
           }catch(err){
             cleanup();
             tg?.showAlert?tg.showAlert(err.message):alert(err.message);
           }
+        };
+
+        // Если комиссия была оплачена до закрытия Mini App, не запрашиваем её повторно.
+        if(invData.alreadyPaid&&invData.intentId){
+          await finishWithdrawal(invData.intentId);
+          return;
+        }
+
+        const {invoiceLink,intentId}=invData;
+        if(!invoiceLink||!intentId) throw new Error('Bad invoice response');
+        // Шаг 2: открываем оплату. Только status==='paid' → реальный вывод.
+        tg.openInvoice(invoiceLink, async(status)=>{
+          if(status!=='paid'){
+            cleanup();
+            if(status==='failed') tg?.showAlert?.(t('paymentFailed'));
+            else if(status==='cancelled') tg?.showAlert?.(t('paymentCancelled'));
+            return;
+          }
+          await finishWithdrawal(intentId);
         });
       }catch(err){
         cleanup();
@@ -2787,7 +2798,7 @@
     crashRocket.innerHTML='';
     crashRocketAnim=lottie.loadAnimation({
       container:crashRocket,renderer:'svg',loop:true,autoplay:true,
-      path:'assets/rocket.json'
+      path:'assets/crocket.json'
     });
   }
 
