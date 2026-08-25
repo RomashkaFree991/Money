@@ -1019,7 +1019,7 @@
 
   /* === GAME HUB === */
   .games-page{
-    min-height:100%;padding:72px 16px calc(104px + env(safe-area-inset-bottom));
+    min-height:100%;padding:0 0 6px;
     display:flex;flex-direction:column;align-items:stretch;gap:12px;
   }
   .game-banner{
@@ -1028,6 +1028,7 @@
     transition:transform .2s ease,filter .2s ease;
   }
   .game-banner:active{transform:scale(.985);filter:brightness(1.05)}
+  .game-banner--static{cursor:default}
   .game-banner img{display:block;width:100%;height:auto;object-fit:contain}
 
   /* === ADMIN PANEL === */
@@ -1299,6 +1300,9 @@
       <button class="game-banner" type="button" data-game-target="crash" aria-label="Open Crash game">
         <img src="assets/Crash_banner.png" alt="Crash">
       </button>
+      <div class="game-banner game-banner--static" role="img" aria-label="PVP Arena">
+        <img src="assets/PVP_Arena_banner.png" alt="PVP Arena">
+      </div>
       <button class="game-banner" type="button" data-game-target="upgrade" aria-label="Open Upgrade game">
         <img src="assets/Upgrade_banner.png" alt="Upgrade">
       </button>
