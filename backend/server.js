@@ -139,7 +139,8 @@ async function clearUserBan(userId) {
 
 // Withdraw flow: фронт сначала платит 25⭐ комиссию, только потом мы делаем перевод.
 // Withdrawal intents/receipts и transfer-снимки хранятся в PostgreSQL.
-const WITHDRAW_FEE_STARS = Number(process.env.WITHDRAW_FEE_STARS || 30);
+// Комиссия за передачу подарка: всегда 25 Stars, сумма попадает в Telegram invoice.
+const WITHDRAW_FEE_STARS = 25;
 // v8.16: минимальный депозит, необходимый чтобы юзер мог выводить подарки.
 const WITHDRAW_MIN_DEPOSIT_STARS = Math.max(50, Number(process.env.WITHDRAW_MIN_DEPOSIT_STARS || 50));
 // v8.16: минимальная ставка в краше.
@@ -1889,20 +1890,37 @@ app.post('/api/inventory/sell', async (req, res) => {
 // users.total_deposited: последнее является счётчиком недельного топа и обнуляется
 // при смене цикла. Это исключает блокировку вывода после rollover топа.
 async function getWithdrawDepositProgress(userId) {
-  const { data, error } = await sb.from('payment_receipts')
-    .select('amount')
-    .eq('user_id', Number(userId))
-    .eq('kind', 'deposit')
-    .limit(100000);
-  if (error) throw new Error(error.message || 'Deposit receipt lookup failed');
+  // Stars: в payment_receipts остаются только invoice-депозиты. TON-пополнения
+  // считаем по подтверждённым intent, чтобы не потерять их после сброса недельного TOP.
+  const [starsResult, tonResult] = await Promise.all([
+    sb.from('payment_receipts')
+      .select('amount')
+      .eq('user_id', Number(userId))
+      .eq('kind', 'deposit')
+      .not('invoice_id', 'is', null)
+      .limit(100000),
+    sb.from('ton_deposit_intents')
+      .select('stars_amount')
+      .eq('user_id', Number(userId))
+      .eq('status', 'credited')
+      .limit(100000),
+  ]);
+  if (starsResult.error) throw new Error(starsResult.error.message || 'Stars deposit receipt lookup failed');
+  if (tonResult.error) throw new Error(tonResult.error.message || 'TON deposit receipt lookup failed');
 
-  const deposited = (data || []).reduce((sum, row) => {
-    const amount = Number(row?.amount || 0);
+  const sumAmounts = (rows, key) => (rows || []).reduce((sum, row) => {
+    const amount = Number(row?.[key] || 0);
     return Number.isFinite(amount) && amount > 0 ? sum + Math.floor(amount) : sum;
   }, 0);
+  const starsDeposited = sumAmounts(starsResult.data, 'amount');
+  const tonCredited = sumAmounts(tonResult.data, 'stars_amount');
+  const deposited = starsDeposited + tonCredited;
+
   return {
     minimum: WITHDRAW_MIN_DEPOSIT_STARS,
     deposited,
+    starsDeposited,
+    tonCredited,
     missing: Math.max(0, WITHDRAW_MIN_DEPOSIT_STARS - deposited),
   };
 }
@@ -1933,8 +1951,10 @@ app.post('/api/inventory/withdraw-invoice', async (req, res) => {
       code: 'MIN_DEPOSIT_NOT_REACHED',
       minimumDeposit: depositProgress.minimum,
       deposited: depositProgress.deposited,
+      starsDeposited: depositProgress.starsDeposited,
+      tonCredited: depositProgress.tonCredited,
       missingDeposit: depositProgress.missing,
-      error: `Чтобы вывести подарок, нужно пополнить минимум ${depositProgress.minimum}⭐. Пополнено: ${depositProgress.deposited}⭐. Не хватает: ${depositProgress.missing}⭐.`,
+      error: `Чтобы вывести подарок, нужно пополнить минимум ${depositProgress.minimum}⭐. Пополнено: ${depositProgress.deposited}⭐ (Stars: ${depositProgress.starsDeposited}⭐, TON: ${depositProgress.tonCredited}⭐). Не хватает: ${depositProgress.missing}⭐.`,
     });
   }
 
