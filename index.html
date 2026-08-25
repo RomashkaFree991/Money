@@ -7,8 +7,11 @@
 <title>Mini App</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
-<script src="https://unpkg.com/@tonconnect/ui@3.0.0/dist/tonconnect-ui.min.js"></script>
-<style>
+  <script src="https://unpkg.com/@tonconnect/ui@3.0.0/dist/tonconnect-ui.min.js"></script>
+  <link rel="preload" as="image" href="assets/Crash_banner.png" fetchpriority="high">
+  <link rel="preload" as="image" href="assets/PVP_Arena_banner.png" fetchpriority="high">
+  <link rel="preload" as="image" href="assets/Upgrade_banner.png" fetchpriority="high">
+  <style>
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','Segoe UI',Roboto,sans-serif;background:#000 url('assets/background_pepe.png') center top/cover no-repeat;background-attachment:fixed}
   .app{position:relative;width:100%;height:100%}
@@ -1020,7 +1023,7 @@
   /* === GAME HUB === */
   .games-page{
     min-height:100%;padding:0 0 6px;
-    display:flex;flex-direction:column;align-items:stretch;gap:12px;
+    display:flex;flex-direction:column;align-items:stretch;gap:5px;
   }
   .game-banner{
     display:block;width:100%;padding:0;margin:0;overflow:visible;border:0;border-radius:0;
@@ -1298,13 +1301,13 @@
   <div class="page visible" id="gamePage">
     <div class="games-page">
       <button class="game-banner" type="button" data-game-target="crash" aria-label="Open Crash game">
-        <img src="assets/Crash_banner.png" alt="Crash">
+        <img src="assets/Crash_banner.png" alt="Crash" decoding="async" fetchpriority="high">
       </button>
       <div class="game-banner game-banner--static" role="img" aria-label="PVP Arena">
-        <img src="assets/PVP_Arena_banner.png" alt="PVP Arena">
+        <img src="assets/PVP_Arena_banner.png" alt="PVP Arena" decoding="async" fetchpriority="high">
       </div>
       <button class="game-banner" type="button" data-game-target="upgrade" aria-label="Open Upgrade game">
-        <img src="assets/Upgrade_banner.png" alt="Upgrade">
+        <img src="assets/Upgrade_banner.png" alt="Upgrade" decoding="async" fetchpriority="high">
       </button>
     </div>
   </div>
@@ -1656,8 +1659,14 @@
     return anim;
   }
 
-  // Lottie — profile
-  let profileLottieAnim=makeTapToPlayLottie(document.getElementById('lottieContainer'),'https://cdn.changes.tg/gifts/models/Jolly%20Chimp/lottie/Tired%20Primate.json');
+  // Анимация профиля не нужна на стартовом Game-экране — создаём её только при входе в профиль.
+  let profileLottieAnim=null;
+  function ensureProfileLottie(){
+    if(!profileLottieAnim){
+      profileLottieAnim=makeTapToPlayLottie(document.getElementById('lottieContainer'),'https://cdn.changes.tg/gifts/models/Jolly%20Chimp/lottie/Tired%20Primate.json');
+    }
+    return profileLottieAnim;
+  }
 
   let sheetLottieLoaded=false;
   let sheetLottieAnim=null;
@@ -1706,19 +1715,20 @@
   let referralRefreshInFlight=null;
   let lastInventoryRefreshAt=0;
   let lastReferralRefreshAt=0;
-  // Подтягиваем актуальные минимальные цены с Telegram NFT-маркета (бэкэнд кеширует).
-  // Молча применяем поверх захардкоженного каталога — краш и инвентарь читают .price.
-  (async()=>{try{
-    const r=await fetch(API_BASE+'/api/market-prices',{cache:'no-store'});
-    if(!r.ok) return;
-    const d=await r.json().catch(()=>({}));
-    const prices=d&&d.prices||{};
-    for(const g of GIFT_CATALOG){
-      const id=String(g.id||g.giftId||'');
-      const mp=Number(prices[id]);
-      if(Number.isFinite(mp)&&mp>0) g.price=mp;
-    }
-  }catch(e){}})();
+  // Рыночные цены нужны только внутри игр и инвентаря; не блокируем ими первый экран Game.
+  async function refreshMarketPrices(){
+    try{
+      const r=await fetch(API_BASE+'/api/market-prices',{cache:'no-store'});
+      if(!r.ok) return;
+      const d=await r.json().catch(()=>({}));
+      const prices=d&&d.prices||{};
+      for(const g of GIFT_CATALOG){
+        const id=String(g.id||g.giftId||'');
+        const mp=Number(prices[id]);
+        if(Number.isFinite(mp)&&mp>0) g.price=mp;
+      }
+    }catch(e){}
+  }
   const withdrawingGiftIds=new Set();
   let crashPrizeGift=null;
   let crashPrizePending=false;
@@ -2512,20 +2522,28 @@
     }catch(e){}
   }
 
-  // Trophy lottie
-  trophyLottieAnim=makeTapToPlayLottie(document.getElementById('trophyLottie'),'assets/trophy.json');
-
-  // Lottie в центре колеса апгрейда — играет только при клике по кнопке «Сделать апгрейд».
-  let upgradeRedoAnim=null;
-  try{
-    const _redoEl=document.getElementById('upgradeWheelLogo');
-    if(_redoEl&&window.lottie){
-      upgradeRedoAnim=lottie.loadAnimation({container:_redoEl,renderer:'svg',loop:false,autoplay:false,path:'assets/redo.json'});
-      const _resetRedo=()=>{try{upgradeRedoAnim.goToAndStop(0,true)}catch(e){}};
-      try{upgradeRedoAnim.addEventListener('DOMLoaded',_resetRedo);upgradeRedoAnim.addEventListener('complete',_resetRedo);}catch(e){}
+  // Не загружаем Lottie неактивных экранов до тех пор, пока пользователь их не откроет.
+  function ensureTrophyLottie(){
+    if(!trophyLottieAnim){
+      trophyLottieAnim=makeTapToPlayLottie(document.getElementById('trophyLottie'),'assets/trophy.json');
     }
-  }catch(e){console.warn('redo lottie init failed:',e)}
-  function playUpgradeRedo(){try{upgradeRedoAnim?.stop?.();upgradeRedoAnim?.goToAndPlay?.(0,true);}catch(e){}}
+    return trophyLottieAnim;
+  }
+
+  let upgradeRedoAnim=null;
+  function ensureUpgradeRedo(){
+    if(upgradeRedoAnim) return upgradeRedoAnim;
+    try{
+      const redoEl=document.getElementById('upgradeWheelLogo');
+      if(redoEl&&window.lottie){
+        upgradeRedoAnim=lottie.loadAnimation({container:redoEl,renderer:'svg',loop:false,autoplay:false,path:'assets/redo.json'});
+        const resetRedo=()=>{try{upgradeRedoAnim.goToAndStop(0,true)}catch(e){}};
+        try{upgradeRedoAnim.addEventListener('DOMLoaded',resetRedo);upgradeRedoAnim.addEventListener('complete',resetRedo);}catch(e){}
+      }
+    }catch(e){console.warn('redo lottie init failed:',e)}
+    return upgradeRedoAnim;
+  }
+  function playUpgradeRedo(){try{ensureUpgradeRedo()?.stop?.();upgradeRedoAnim?.goToAndPlay?.(0,true);}catch(e){}}
 
   // Generate stars for crash
   const sky=document.getElementById('crashSky');
@@ -4186,8 +4204,12 @@
       crashStarted=true;
       runCrashRound();
     }else if(tab==='top'){
+      ensureTrophyLottie();
       refreshTop();
+    }else if(tab==='upgrade'){
+      ensureUpgradeRedo();
     }else if(tab==='profile'){
+      ensureProfileLottie();
       Promise.all([refreshBalance(),refreshReferral(true),refreshInventory(true)]).catch(()=>{});
     }
   }
@@ -4228,31 +4250,45 @@
     appRoot.classList.remove('boot-hidden');
     bootScreen.classList.add('hidden');
   }
+  function preloadImage(src,timeoutMs=3500){
+    return new Promise(resolve=>{
+      const img=new Image();
+      const done=()=>resolve();
+      const timer=setTimeout(done,timeoutMs);
+      img.onload=()=>{clearTimeout(timer);done();};
+      img.onerror=()=>{clearTimeout(timer);done();};
+      img.src=src;
+      if(img.complete){clearTimeout(timer);done();}
+    });
+  }
+  function runAfterFirstPaint(task){
+    const run=()=>Promise.resolve().then(task).catch(()=>{});
+    if('requestIdleCallback' in window) window.requestIdleCallback(run,{timeout:1800});
+    else setTimeout(run,700);
+  }
   async function bootstrapApp(){
     showBootState(
       t('loading'),
-      currentLang==='en'?'Loading balance, top, crash, referral and gifts':'Подгружаем баланс, топ, краш, рефералку и подарки'
+      currentLang==='en'?'Preparing your game':'Подготавливаем игру'
     );
     try{
+      // Пока виден загрузочный экран, ждём пользователя, лидеров и все три баннера.
       await initUser();
-      // Заранее восстанавливаем TON-кошелёк, чтобы при открытии пополнения он
-      // уже был «подключён» и не показывал кнопку Connect.
-      ensureTonConnect().then(()=>{syncTopupWalletUI();syncTopupSubmitLabel();}).catch(()=>{});
       await Promise.allSettled([
-        refreshBalance(),
-        refreshTop(),
+        refreshTop(true),
+        preloadImage('assets/Crash_banner.png'),
+        preloadImage('assets/PVP_Arena_banner.png'),
+        preloadImage('assets/Upgrade_banner.png'),
       ]);
-      // Game — стартовый экран. Crash запускается только после выбора его баннера.
-      if(currentTab==='crash'&&!crashStarted){
-        crashStarted=true;
-        runCrashRound();
-      }
       if(!tg?.initData){
         const testGifts=GIFT_CATALOG.slice().sort((a,b)=>b.price-a.price).slice(0,5);
         inventoryItems=testGifts.map((g,i)=>normalizeInventoryGift({...g,id:'test_'+i,giftId:g.id},'test_'+i));
-        renderInventory();
       }
       hideBootState();
+
+      // Сеть и анимации неактивных экранов запускаем только после первого кадра Game.
+      runAfterFirstPaint(()=>refreshMarketPrices());
+      runAfterFirstPaint(()=>ensureTonConnect().then(()=>{syncTopupWalletUI();syncTopupSubmitLabel();}));
     }catch(e){
       console.error('Bootstrap failed:',e);
       hideBootState();
