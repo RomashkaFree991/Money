@@ -106,7 +106,6 @@ async function getBanInfo(userId) {
     if (!/banned_at|ban_reason|column/i.test(e?.message || '')) console.error('getBanInfo error:', e?.message || e);
   }
   banCache.set(id, { banned: false, reason: null, bannedAt: null, expiresAt: now + BAN_CACHE_TTL_MS });
-  console.log('[TON] NOT FOUND intent=',intent.id);
   return null;
 }
 
@@ -1306,42 +1305,6 @@ function isCatalogGiftValid(gift) {
   return !!giftId && !!name && price > 0 && !!image && image.includes(giftId);
 }
 
-function pickCraftRewardGift(targetStars) {
-  const target = Math.max(1, Math.floor(Number(targetStars || 0)));
-  const sorted = [...GIFT_CATALOG]
-    .filter(isCatalogGiftValid)
-    .sort((a, b) => Number(a.price || 0) - Number(b.price || 0));
-
-  if (!sorted.length) {
-    throw new Error('Craft catalog is empty');
-  }
-
-  const affordable = sorted.filter((gift) => Number(gift.price || 0) <= target);
-  const poolBase = affordable.length ? affordable : sorted.slice(0, Math.min(6, sorted.length));
-  const tail = poolBase.slice(Math.max(0, poolBase.length - Math.min(8, poolBase.length)));
-  const pool = tail.length ? tail : poolBase;
-
-  let closest = pool[0];
-  let bestDistance = Math.abs(Number(pool[0]?.price || 0) - target);
-  for (const gift of pool) {
-    const distance = Math.abs(Number(gift?.price || 0) - target);
-    if (distance < bestDistance) {
-      closest = gift;
-      bestDistance = distance;
-    }
-  }
-
-  const closePool = pool.filter((gift) => Math.abs(Number(gift?.price || 0) - Number(closest?.price || 0)) <= 40);
-  const picked = closePool[secureRandomIndex(closePool.length)] || closest;
-  const normalized = normalizeGift(picked);
-
-  if (!normalized?.id || !normalized?.name || !normalized?.image || !normalized?.price) {
-    throw new Error('Craft reward is invalid');
-  }
-
-  return normalized;
-}
-
 function pickCrashGiftForPayout(payout, selectedGift = null) {
   const numericPayout = Math.max(0, Math.floor(Number(payout || 0)));
   const normalizedSelected = normalizeGift(selectedGift);
@@ -1725,14 +1688,6 @@ async function sellAllInventoryGifts(userId) {
   };
 }
 
-
-function sampleCraftMultiplier() {
-  const r = secureRandomUnit();
-  if (r < 0.52) return Number((0.55 + secureRandomUnit() * 0.55).toFixed(3));
-  if (r < 0.82) return Number((1.05 + secureRandomUnit() * 0.45).toFixed(3));
-  if (r < 0.95) return Number((1.45 + secureRandomUnit() * 0.55).toFixed(3));
-  return Number((2.0 + secureRandomUnit() * 0.7).toFixed(3));
-}
 
 const CRASH = { countdownMs: 10000, resetMs: 3000, growthMs: 8000, historyLimit: 12 };
 
@@ -2698,46 +2653,6 @@ app.post('/api/upgrade/spin', async (req, res) => {
   }
 });
 
-app.post('/api/craft/spin', async (req, res) => {
-  const user = requireUser(req, res);
-  if (!user) return;
-  const giftIds = Array.isArray(req.body?.giftIds) ? req.body.giftIds.map((id) => Number(id || 0)).filter(Boolean) : [];
-  const uniqueIds = [...new Set(giftIds)].slice(0, 10);
-  if (uniqueIds.length < 3) return res.status(400).json({ error: 'Choose at least 3 gifts' });
-
-  try {
-    const inventory = await getUserInventory(user.id);
-    const selected = uniqueIds.map((id) => inventory.find((item) => Number(item.id) === id)).filter(Boolean);
-    if (selected.length !== uniqueIds.length) return res.status(400).json({ error: 'Some gifts were not found' });
-
-    const totalPrice = selected.reduce((sum, item) => sum + Number(item.price || 0), 0);
-    const multiplier = sampleCraftMultiplier();
-    const targetRewardPrice = Math.max(1, Math.floor(totalPrice * multiplier));
-    const craftedGift = normalizeGift(pickCraftRewardGift(targetRewardPrice));
-    if (!craftedGift?.id || !craftedGift?.name || !craftedGift?.image || !craftedGift?.price) throw new Error('Craft reward is invalid');
-
-    const { data, error } = await sb.rpc('inventory_craft_apply', {
-      p_user_id: Number(user.id), p_gift_ids: uniqueIds,
-      p_reward: { id: craftedGift.id, name: craftedGift.name, price: craftedGift.price, image: craftedGift.image },
-    });
-    if (error) throw new Error(error.message || 'Craft transaction failed');
-
-    const wonDb = data?.wonGift || {};
-    const savedGift = {
-      id: Number(wonDb.id), giftId: String(wonDb.gift_id || ''), name: String(wonDb.gift_name || 'Gift'),
-      price: Number(wonDb.gift_price || 0), image: String(wonDb.gift_image || ''),
-      withdrawAt: wonDb.withdraw_available_at || null, createdAt: wonDb.created_at || null,
-    };
-    const items = await getUserInventory(user.id);
-    return res.json({
-      ok: true, consumed: selected, totalPrice, multiplier, rewardPrice: Number(savedGift.price || 0),
-      wonGift: savedGift, items, serverNow: Date.now(),
-    });
-  } catch (error) {
-    return res.status(400).json({ error: error.message || 'Craft failed' });
-  }
-});
-
 app.get('/api/crash/state', async (req, res) => {
   const user = requireUser(req, res);
   if (!user) return;
@@ -3372,80 +3287,67 @@ async function notifyAdminsTopRollover({ previousStartedAt, newStartedAt, awarde
   }));
 }
 
+async function notifyTopAwardRecipients(awarded) {
+  await Promise.all((awarded || []).map(async (row) => {
+    try {
+      const title = row.type === 'referrals' ? 'топе рефералов' : 'топе депозитов';
+      await tgApi('sendMessage', {
+        chat_id: Number(row.userId),
+        text: `🏆 Поздравляем! Вы заняли ${Number(row.place)} место в ${title}. Награда «${String(row.gift || 'подарок')}» добавлена в инвентарь.`,
+      }, 8000);
+    } catch (error) {
+      console.warn('top reward recipient notification failed:', error?.message || error);
+    }
+  }));
+}
+
+function normalizeTopRolloverResult(raw) {
+  const result = typeof raw === 'string' ? JSON.parse(raw) : (raw || {});
+  return {
+    rolled: !!result.rolled,
+    reason: result.reason || null,
+    error: result.error || null,
+    previousStartedAt: Number(result.previousStartedAt || 0),
+    newStartedAt: Number(result.newStartedAt || 0),
+    endsAt: Number(result.endsAt || 0),
+    awarded: Array.isArray(result.awarded) ? result.awarded : [],
+  };
+}
+
 async function rolloverTopCycleIfDue() {
   if (topRolloverBusy) return { rolled: false, reason: 'busy' };
   topRolloverBusy = true;
   try {
-    const startedAt = await getTopCycleStart();
-    const endsAt = startedAt + TOP_CYCLE_MS;
-    if (Date.now() < endsAt) return { rolled: false, endsAt };
+    const depositRewards = getTopRewardGifts('deposits').filter(Boolean).map((gift) => ({
+      id: gift.id, name: gift.name, price: Number(gift.price || 0), image: gift.image,
+    }));
+    const referralRewards = getTopRewardGifts('referrals').filter(Boolean).map((gift) => ({
+      id: gift.id, name: gift.name, price: Number(gift.price || 0), image: gift.image,
+    }));
 
-    // 1) Берём топ-3 по депозитам и топ-3 по рефералам этого же 7-дневного цикла.
-    const { data: leaders, error: leadersErr } = await sb
-      .from('users')
-      .select('id,first_name,username,total_deposited')
-      .gt('total_deposited', 0)
-      .order('total_deposited', { ascending: false })
-      .limit(3);
-    if (leadersErr) throw new Error(leadersErr.message);
+    const { data, error } = await sb.rpc('rollover_top_cycle_atomic', {
+      p_now_ms: Date.now(),
+      p_cycle_ms: TOP_CYCLE_MS,
+      p_inventory_hold_ms: INVENTORY_HOLD_MS,
+      p_deposit_rewards: depositRewards,
+      p_referral_rewards: referralRewards,
+    });
+    if (error) throw new Error(error.message || 'Atomic top rollover failed');
 
-    const referralSnapshot = await getReferralLeaderboardSnapshot(null, startedAt, 3);
-    const referralLeaders = referralSnapshot.leaders || [];
-
-    // 2) Выдаём отдельные подарки двум топам.
-    const depositRewards = getTopRewardGifts('deposits');
-    const referralRewards = getTopRewardGifts('referrals');
-    const awarded = [];
-
-    for (let i = 0; i < (leaders || []).length; i++) {
-      const gift = depositRewards[i];
-      const leader = leaders[i];
-      if (!gift || !leader) continue;
-      try {
-        await addGiftToInventory(Number(leader.id), gift);
-        awarded.push({ type: 'deposits', userId: Number(leader.id), username: leader.username ? String(leader.username) : null, firstName: leader.first_name ? String(leader.first_name) : null, score: Number(leader.total_deposited || 0), gift: gift.name, giftPrice: Number(gift.price || 0), place: i + 1 });
-        try {
-          await tgApi('sendMessage', {
-            chat_id: Number(leader.id),
-            text: `🏆 Поздравляем! Вы заняли ${i + 1} место в топе депозитов. Награда «${gift.name}» добавлена в инвентарь.`,
-          });
-        } catch (e) {}
-      } catch (e) {
-        console.warn('deposit top reward award failed:', e?.message || e);
-      }
+    const result = normalizeTopRolloverResult(data);
+    if (result.rolled) {
+      await notifyTopAwardRecipients(result.awarded);
+      await notifyAdminsTopRollover({
+        previousStartedAt: result.previousStartedAt,
+        newStartedAt: result.newStartedAt,
+        awarded: result.awarded,
+      });
+      console.log(`🏁 top cycle atomically rolled over; awards=${result.awarded.length}; newCycleEndsAt=${new Date(result.endsAt).toISOString()}`);
     }
-
-    for (let i = 0; i < referralLeaders.length; i++) {
-      const gift = referralRewards[i];
-      const leader = referralLeaders[i];
-      if (!gift || !leader) continue;
-      try {
-        await addGiftToInventory(Number(leader.id), gift);
-        awarded.push({ type: 'referrals', userId: Number(leader.id), username: leader.username ? String(leader.username) : null, firstName: leader.first_name ? String(leader.first_name) : null, score: Number(leader.invited_count || 0), gift: gift.name, giftPrice: Number(gift.price || 0), place: i + 1 });
-        try {
-          await tgApi('sendMessage', {
-            chat_id: Number(leader.id),
-            text: `🤝 Поздравляем! Вы заняли ${i + 1} место в топе рефералов. Награда «${gift.name}» добавлена в инвентарь.`,
-          });
-        } catch (e) {}
-      } catch (e) {
-        console.warn('referral top reward award failed:', e?.message || e);
-      }
-    }
-
-    // 3) Обнуляем total_deposited у всех. Реферальные связи НЕ удаляем:
-    // новый цикл считает только links.created_at >= нового startedAt.
-    await sb.from('users').update({ total_deposited: 0, updated_at: new Date().toISOString() }).gt('total_deposited', 0);
-
-    // 4) Стартуем новый 7-дневный цикл.
-    const newStart = Date.now();
-    await setTopCycleStart(newStart);
-    await notifyAdminsTopRollover({ previousStartedAt: startedAt, newStartedAt: newStart, awarded });
-    console.log(`🏁 top cycle rolled over. awarded=${JSON.stringify(awarded)} newCycleEndsAt=${new Date(newStart + TOP_CYCLE_MS).toISOString()}`);
-    return { rolled: true, awarded, endsAt: newStart + TOP_CYCLE_MS };
-  } catch (e) {
-    console.error('top rollover failed:', e?.message || e);
-    return { rolled: false, error: e?.message || String(e) };
+    return result;
+  } catch (error) {
+    console.error('top rollover failed:', error?.message || error);
+    return { rolled: false, error: error?.message || String(error) };
   } finally {
     topRolloverBusy = false;
   }
