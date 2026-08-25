@@ -1031,6 +1031,8 @@
     transition:transform .2s ease,filter .2s ease;
   }
   .game-banner:active{transform:scale(.985);filter:brightness(1.05)}
+  /* PNG-баннеры содержат прозрачные внешние поля, поэтому компенсируем их отрицательным отступом. */
+  .games-page .game-banner+.game-banner{margin-top:-28px}
   .game-banner--static{cursor:default}
   .game-banner img{display:block;width:100%;height:auto;object-fit:contain}
 
@@ -2583,6 +2585,7 @@
   let crashServerOffsetMs=0;
   let crashStateRequestController=null;
   let crashStateRequestToken=0;
+  let crashViewSession=0;
   let crashStateRequestInFlight=false;
   let crashRoundLocked=false;
   let crashLocalBetRoundId=0;
@@ -3710,7 +3713,9 @@
     if(!crashBetActive&&!crashPrizePending) betBtn.textContent=t('placeBet');
   }
   // CRASH BACKGROUND RECOVERY FIX: abortable polling + forced resync after resume.
-  async function refreshCrashState(silent=false,force=false){
+  async function refreshCrashState(silent=false,force=false,viewSession=crashViewSession){
+    // Не применяем ответ от предыдущего входа в Crash или от уже скрытого экрана.
+    if(currentTab!=='crash'||viewSession!==crashViewSession)return false;
     if(crashStateRequestInFlight&&!force)return false;
 
     if(force&&crashStateRequestController){
@@ -3730,7 +3735,7 @@
         signal:controller.signal
       });
       const data=await readApiJson(resp);
-      if(token!==crashStateRequestToken)return false;
+      if(token!==crashStateRequestToken||viewSession!==crashViewSession||currentTab!=='crash')return false;
       if(!resp.ok)throw new Error(data.error||'Crash sync failed');
       if(isStaleCrashState(data))return false;
 
@@ -3791,17 +3796,21 @@
     }
     crashStateRequestInFlight=false;
     crashStateRequestToken+=1;
+    crashViewSession+=1;
   }
 
   function runCrashRound(){
+    if(currentTab!=='crash') return;
     crashRealtimeStarted=true;
+    const viewSession=crashViewSession;
     if(!crashRealtimeTimer){
-      crashRealtimeTimer=setInterval(()=>refreshCrashState(true,false),500);
+      crashRealtimeTimer=setInterval(()=>refreshCrashState(true,false,crashViewSession),500);
     }
     if(!crashRealtimeFrame&&document.visibilityState==='visible'){
       crashRealtimeFrame=requestAnimationFrame(renderCrashRealtimeFrame);
     }
-    refreshCrashState(true,true);
+    // Не отменяем уже идущий актуальный запрос: это и было источником мигания таймера.
+    if(!crashStateRequestInFlight) refreshCrashState(true,false,viewSession);
   }
   let crashStarted=false;
 
@@ -4201,6 +4210,8 @@
       currentTab=tab;
     }
     if(tab==='crash'){
+      // Каждый вход получает собственную сессию; устаревшие ответы предыдущего входа игнорируются.
+      crashViewSession+=1;
       crashStarted=true;
       runCrashRound();
     }else if(tab==='top'){
