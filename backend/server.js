@@ -1885,6 +1885,28 @@ app.post('/api/inventory/sell', async (req, res) => {
   }
 });
 
+// Для вывода используем неизменяемую историю подтверждённых пополнений, а не
+// users.total_deposited: последнее является счётчиком недельного топа и обнуляется
+// при смене цикла. Это исключает блокировку вывода после rollover топа.
+async function getWithdrawDepositProgress(userId) {
+  const { data, error } = await sb.from('payment_receipts')
+    .select('amount')
+    .eq('user_id', Number(userId))
+    .eq('kind', 'deposit')
+    .limit(100000);
+  if (error) throw new Error(error.message || 'Deposit receipt lookup failed');
+
+  const deposited = (data || []).reduce((sum, row) => {
+    const amount = Number(row?.amount || 0);
+    return Number.isFinite(amount) && amount > 0 ? sum + Math.floor(amount) : sum;
+  }, 0);
+  return {
+    minimum: WITHDRAW_MIN_DEPOSIT_STARS,
+    deposited,
+    missing: Math.max(0, WITHDRAW_MIN_DEPOSIT_STARS - deposited),
+  };
+}
+
 // Шаг 1. Юзер жмёт «Вывести» → создаём Stars-инвойс на WITHDRAW_FEE_STARS звёзд.
 // Сам вывод произойдёт только после оплаты этого инвойса (см. /webhook).
 app.post('/api/inventory/withdraw-invoice', async (req, res) => {
@@ -1899,12 +1921,21 @@ app.post('/api/inventory/withdraw-invoice', async (req, res) => {
   if (!policyCheck.allowed) return res.status(403).json({ error: policyCheck.message });
   if (!user.username) return res.status(400).json({ error: 'Сделайте @username чтобы получить подарок' });
 
-  const { data: u, error: userError } = await sb.from('users').select('total_deposited').eq('id', user.id).maybeSingle();
-  if (userError) return res.status(500).json({ error: 'Deposit check failed' });
-  const deposited = Number(u?.total_deposited || 0);
-  if (deposited < WITHDRAW_MIN_DEPOSIT_STARS) {
-    const need = WITHDRAW_MIN_DEPOSIT_STARS - deposited;
-    return res.status(403).json({ error: `Для вывода нужно пополнение от ${WITHDRAW_MIN_DEPOSIT_STARS}⭐ (не хватает ${need}⭐).` });
+  let depositProgress;
+  try {
+    depositProgress = await getWithdrawDepositProgress(user.id);
+  } catch (error) {
+    console.error('withdraw deposit check failed:', error?.message || error);
+    return res.status(500).json({ error: 'Не удалось проверить подтверждённые пополнения. Попробуйте позже.' });
+  }
+  if (depositProgress.deposited < depositProgress.minimum) {
+    return res.status(403).json({
+      code: 'MIN_DEPOSIT_NOT_REACHED',
+      minimumDeposit: depositProgress.minimum,
+      deposited: depositProgress.deposited,
+      missingDeposit: depositProgress.missing,
+      error: `Чтобы вывести подарок, нужно пополнить минимум ${depositProgress.minimum}⭐. Пополнено: ${depositProgress.deposited}⭐. Не хватает: ${depositProgress.missing}⭐.`,
+    });
   }
 
   // Если комиссия уже оплачена или перевод находится в reconciliation, новый invoice не создаём.
@@ -1945,7 +1976,10 @@ app.post('/api/inventory/withdraw-invoice', async (req, res) => {
     }
     const msg = String(error?.message || '');
     if (/Нет свободного физического NFT|не удалось зарезервировать/i.test(msg)) {
-      return res.status(403).json({ error: `Для вывода нужно пополнение от ${WITHDRAW_MIN_DEPOSIT_STARS}⭐.` });
+      return res.status(403).json({
+        code: 'NO_PHYSICAL_GIFT_BACKING',
+        error: 'Сейчас нет свободного физического NFT для этого подарка. Попробуйте выбрать другой подарок или повторите позже.',
+      });
     }
     return res.status(409).json({ error: error.message || 'Не удалось зарезервировать NFT для вывода' });
   }
