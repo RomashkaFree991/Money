@@ -1676,6 +1676,11 @@
   const INVENTORY_HOLD_MS=0;
   const MAX_CRASH_HISTORY=10;
   let inventoryItems=[];
+  let inventorySnapshotKey='';
+  let inventoryRefreshInFlight=null;
+  let referralRefreshInFlight=null;
+  let lastInventoryRefreshAt=0;
+  let lastReferralRefreshAt=0;
   // Подтягиваем актуальные минимальные цены с Telegram NFT-маркета (бэкэнд кеширует).
   // Молча применяем поверх захардкоженного каталога — краш и инвентарь читают .price.
   (async()=>{try{
@@ -1811,7 +1816,14 @@
       });
     },20000);
   }
+  function makeInventorySnapshot(items=inventoryItems){
+    return (items||[]).map(item=>[
+      item?.id||'', item?.giftId||'', item?.name||'', Number(item?.price||0),
+      item?.withdrawAt||item?.withdraw_available_at||'', item?.tgMsgId||item?.tg_msg_id||'', item?.tgSlug||item?.tg_slug||'',
+    ].join(':')).join('|');
+  }
   function renderInventory(){
+    inventorySnapshotKey=makeInventorySnapshot();
     updateInventorySummary();
     if(upgradeSourceGift && !inventoryItems.some(item=>String(item.id)===String(upgradeSourceGift.id))){
       upgradeSourceGift=null;
@@ -2364,7 +2376,7 @@
       if(Number.isFinite(Number(credited.balance))) updateBalance(Number(credited.balance));
       topupAmount.value='';
       closeTopup();
-      await Promise.all([refreshBalance(),refreshTop(),refreshReferral()]);
+      await Promise.all([refreshBalance(),refreshTop(true),refreshReferral(true)]);
     }catch(e){
       console.error('TON topup error:',e);
       const msg=String(e?.message||'TON transaction failed');
@@ -2433,6 +2445,8 @@
   let topMode='deposits';
   let topCache={leaders:[],myRank:null,myScore:0};
   let referralTopCache={leaders:[],myRank:null,myScore:0};
+  const topRefreshInFlight={deposits:null,referrals:null};
+  const topRefreshedAt={deposits:0,referrals:0};
   function updateBalance(v){
     balance=Number(v||0);
     document.getElementById('balanceText').textContent=formatStars(balance);
@@ -4133,15 +4147,23 @@
   }
   let currentTab='crash';
   function showTab(tab){
+    const previousTab=currentTab;
     closeReferralPage();
+    if(previousTab==='crash'&&tab!=='crash') pauseCrashRound();
     Object.values(pages).forEach(p=>p.classList.remove('visible'));
     if(pages[tab]){
       void pages[tab].offsetWidth;
       pages[tab].classList.add('visible');
       currentTab=tab;
     }
-    if(tab==='crash'){crashStarted=true;runCrashRound()}
-    if(tab==='top')refreshTop();
+    if(tab==='crash'){
+      crashStarted=true;
+      runCrashRound();
+    }else if(tab==='top'){
+      refreshTop();
+    }else if(tab==='profile'){
+      Promise.all([refreshBalance(),refreshReferral(true),refreshInventory(true)]).catch(()=>{});
+    }
   }
   requestAnimationFrame(()=>{
     moveIndicator(document.querySelector('.nav-item.active'),false);
@@ -4552,11 +4574,13 @@
   bootstrapApp();
   updateLottiePerformance();
 
+  // Не опрашиваем сервер каждые 5 секунд на любой вкладке. Инвентарь и рефералы
+  // нужны только в профиле; каждые 30 секунд достаточно для фоновой синхронизации.
   setInterval(()=>{
-    if(!tg?.initData) return;
+    if(!tg?.initData||document.hidden||currentTab!=='profile') return;
     refreshReferral();
     refreshInventory();
-  },5000);
+  },30000);
 
   document.addEventListener('visibilitychange',()=>{
     if(document.visibilityState!=='visible'){
@@ -4570,14 +4594,18 @@
       return;
     }
 
-    // Android/Telegram may suspend fetch/timers. Throw away any suspended
-    // request and rebuild Crash from a fresh DB-backed snapshot first.
-    crashStarted=true;
-    runCrashRound();
+    // Android/Telegram may suspend fetch/timers. Возобновляем только данные
+    // активной вкладки, чтобы возвращение в приложение не запускало лишние запросы.
     refreshBalance();
-    refreshTop();
-    refreshReferral();
-    setTimeout(()=>refreshInventory(),180);
+    if(currentTab==='crash'){
+      crashStarted=true;
+      runCrashRound();
+    }else if(currentTab==='top'){
+      refreshTop(true);
+    }else if(currentTab==='profile'){
+      refreshReferral(true);
+      setTimeout(()=>refreshInventory(true),180);
+    }
   });
 
   // ─── BACKEND HELPERS ─────────────────────────────────────────────────────────
@@ -4609,77 +4637,107 @@
             referralEarned=Number(data.referral.earned||referralEarned||0);
             updateReferralUI();
           }
-          await Promise.all([refreshBalance(),refreshTop(),refreshReferral()]);
+          await Promise.all([refreshBalance(),refreshTop(true),refreshReferral(true)]);
           return true;
         }
       }catch(e){}
       await new Promise(r=>setTimeout(r,500));
     }
-    await Promise.all([refreshBalance(),refreshTop(),refreshReferral()]);
+    await Promise.all([refreshBalance(),refreshTop(true),refreshReferral(true)]);
     return Number(balance)>=Number(previousBalance)+Number(starsValue||0);
   }
 
-  async function refreshInventory(){
+  async function refreshInventory(force=false){
     if(!tg?.initData)return null;
     if(upgradeSpinBusy)return {items:inventoryItems};
-    try{
-      const prevCount=Array.isArray(inventoryItems)?inventoryItems.length:0;
-      const resp=await fetch(API_BASE+'/api/inventory',{headers:{'x-init-data':tg.initData}});
-      const data=await resp.json();
-      if(resp.ok){
-        inventoryItems=Array.isArray(data.items)?data.items.map(item=>normalizeInventoryGift(item)).filter(Boolean):[];
-        renderInventory();
-        // Если в инвентаре появились новые подарки (пополнение через @GiftPepeReleyer),
-        // подтянем топ и баланс, чтобы стоимость подарка появилась в лидерборде.
-        if(inventoryItems.length>prevCount){
-          refreshTop().catch(()=>{});
-          refreshBalance().catch(()=>{});
+    if(inventoryRefreshInFlight)return inventoryRefreshInFlight;
+    if(!force&&(currentTab!=='profile'||Date.now()-lastInventoryRefreshAt<25000)) return {items:inventoryItems,cached:true};
+
+    inventoryRefreshInFlight=(async()=>{
+      try{
+        const prevCount=Array.isArray(inventoryItems)?inventoryItems.length:0;
+        const resp=await fetch(API_BASE+'/api/inventory',{headers:{'x-init-data':tg.initData}});
+        const data=await resp.json();
+        if(resp.ok){
+          const nextItems=Array.isArray(data.items)?data.items.map(item=>normalizeInventoryGift(item)).filter(Boolean):[];
+          const changed=makeInventorySnapshot(nextItems)!==inventorySnapshotKey;
+          inventoryItems=nextItems;
+          lastInventoryRefreshAt=Date.now();
+          if(changed) renderInventory();
+          // Если в инвентаре появились новые подарки, обновляем связанные данные один раз.
+          if(nextItems.length>prevCount){
+            refreshTop(true).catch(()=>{});
+            refreshBalance().catch(()=>{});
+          }
+          if(data.pendingPrize&&!crashPrizeResolveBusy){
+            enterPendingCrashPrize(data.pendingPrize,crashSettledPayout,crashBetAmount,{autoOpen:false});
+          }else if(crashPrizePending&&!crashBetActive&&!crashPrizeResolveBusy){
+            hideCrashPrize();
+            crashPrizePending=false;
+            crashPrizeGift=null;
+            crashPrizeModalAutoKey='';
+          }
+          return data;
         }
-        if(data.pendingPrize&&!crashPrizeResolveBusy){
-          enterPendingCrashPrize(data.pendingPrize,crashSettledPayout,crashBetAmount,{autoOpen:false});
-        }else if(crashPrizePending&&!crashBetActive&&!crashPrizeResolveBusy){
-          hideCrashPrize();
-          crashPrizePending=false;
-          crashPrizeGift=null;
-          crashPrizeModalAutoKey='';
-        }
-        return data;
-      }
-    }catch(e){console.warn('Inventory refresh failed:',e.message)}
-    return null;
+      }catch(e){console.warn('Inventory refresh failed:',e.message)}
+      return null;
+    })().finally(()=>{inventoryRefreshInFlight=null;});
+    return inventoryRefreshInFlight;
   }
 
-  async function refreshReferral(){
+  async function refreshReferral(force=false){
     if(!tg?.initData)return null;
-    try{
-      const resp=await fetch(API_BASE+'/api/referral',{headers:{'x-init-data':tg.initData}});
-      const data=await resp.json();
-      if(resp.ok){
-        referralInvited=Number(data.invitedCount||0);
-        referralEarned=Number(data.earned||0);
-        referralCode=String(data.referrerLink||referralCode||'');
-        updateReferralUI();
-        return data;
-      }
-    }catch(e){console.warn('Referral refresh failed:',e.message)}
-    return null;
+    if(referralRefreshInFlight)return referralRefreshInFlight;
+    if(!force&&(currentTab!=='profile'||Date.now()-lastReferralRefreshAt<25000)) return null;
+
+    referralRefreshInFlight=(async()=>{
+      try{
+        const resp=await fetch(API_BASE+'/api/referral',{headers:{'x-init-data':tg.initData}});
+        const data=await resp.json();
+        if(resp.ok){
+          referralInvited=Number(data.invitedCount||0);
+          referralEarned=Number(data.earned||0);
+          referralCode=String(data.referrerLink||referralCode||'');
+          lastReferralRefreshAt=Date.now();
+          updateReferralUI();
+          return data;
+        }
+      }catch(e){console.warn('Referral refresh failed:',e.message)}
+      return null;
+    })().finally(()=>{referralRefreshInFlight=null;});
+    return referralRefreshInFlight;
   }
 
-  async function refreshTop(){
-    try{
-      const mode=topMode==='referrals'?'referrals':'deposits';
-      const params=new URLSearchParams({mode,ts:String(Date.now())});
-      if(tgUserId)params.set('userId',String(tgUserId));
-      const resp=await fetch(API_BASE+'/api/top?'+params.toString(),{cache:'no-store'});
-      const data=await readApiJson(resp);
-      if(!resp.ok)throw new Error(data.error||'Top failed');
-      const leaders=Array.isArray(data.leaders)?data.leaders:[];
-      const myRank=data.myRank??null;
-      const myScore=Number(data.myScore||0);
-      if(mode==='referrals')referralTopCache={leaders,myRank,myScore};
-      else topCache={leaders,myRank,myScore};
-      if(mode===topMode)renderTop(leaders,myRank,myScore);
-    }catch(e){console.warn('Top refresh failed:',e.message)}
+  async function refreshTop(force=false){
+    const mode=topMode==='referrals'?'referrals':'deposits';
+    if(topRefreshInFlight[mode]) return topRefreshInFlight[mode];
+    if(!force&&Date.now()-Number(topRefreshedAt[mode]||0)<10000){
+      return mode==='referrals'?referralTopCache:topCache;
+    }
+
+    topRefreshInFlight[mode]=(async()=>{
+      try{
+        const params=new URLSearchParams({mode,ts:String(Date.now())});
+        if(tgUserId)params.set('userId',String(tgUserId));
+        const resp=await fetch(API_BASE+'/api/top?'+params.toString(),{cache:'no-store'});
+        const data=await readApiJson(resp);
+        if(!resp.ok)throw new Error(data.error||'Top failed');
+        const leaders=Array.isArray(data.leaders)?data.leaders:[];
+        const myRank=data.myRank??null;
+        const myScore=Number(data.myScore||0);
+        if(mode==='referrals')referralTopCache={leaders,myRank,myScore};
+        else topCache={leaders,myRank,myScore};
+        topRefreshedAt[mode]=Date.now();
+        if(mode===topMode)renderTop(leaders,myRank,myScore);
+        return {leaders,myRank,myScore};
+      }catch(e){
+        console.warn('Top refresh failed:',e.message);
+        return null;
+      }finally{
+        topRefreshInFlight[mode]=null;
+      }
+    })();
+    return topRefreshInFlight[mode];
   }
 
   function syncTopModeUI(){
@@ -4701,7 +4759,7 @@
     syncTopModeUI();
     const cache=topMode==='referrals'?referralTopCache:topCache;
     renderTop(cache.leaders||[],cache.myRank??null,Number(cache.myScore||0));
-    refreshTop();
+    refreshTop(true);
   }
 
   document.querySelectorAll('[data-top-mode]').forEach(btn=>{
