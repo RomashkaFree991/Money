@@ -395,17 +395,6 @@
   .sheet-gifts.visible{display:grid}
   .sheet-gift-card{padding:12px 10px;border-radius:18px;background:#1C1C1E;border:1px solid rgba(255,255,255,.08);display:flex;flex-direction:column;align-items:center;gap:8px;position:relative;transition:border-color .22s ease, box-shadow .22s ease, transform .22s ease, opacity .22s ease, filter .22s ease}
   .sheet-gift-card.selected{border-color:#0A84FF;box-shadow:0 0 0 1px rgba(10,132,255,.22), 0 12px 24px rgba(10,132,255,.12);transform:translateY(-1px)}
-  .sheet-gift-card.in-craft{opacity:.35;filter:saturate(.5);pointer-events:none}
-  .sheet-gift-card.in-craft .sheet-craft-pill{display:flex}
-  .sheet-gift-card.craft-selected{border-color:#0A84FF;box-shadow:0 0 0 1px rgba(10,132,255,.22)}
-  .sheet-gift-card.craft-selected .sheet-craft-pill{display:none}
-  .sheet-craft-pill{
-    display:none;position:absolute;top:8px;right:8px;
-    height:20px;padding:0 8px;border-radius:999px;
-    background:rgba(255,255,255,.12);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
-    color:rgba(255,255,255,.7);font-size:10px;font-weight:700;
-    align-items:center;justify-content:center;white-space:nowrap;
-  }
   .sheet-gift-status{
     position:absolute;top:8px;right:8px;
     display:inline-flex;align-items:center;justify-content:center;
@@ -588,72 +577,6 @@
 
   .modal-save{
     width:100%;height:48px;border-radius:14px;border:none;cursor:pointer;
-    background:#007AFF;color:#fff;font-size:15px;font-weight:700;
-  }
-
-  /* === CRAFT === */
-  .craft-page{display:flex;flex-direction:column;gap:14px}
-  .craft-section-title{
-    color:#fff;font-size:15px;font-weight:700;margin-bottom:2px;
-  }
-  .craft-window{
-    background:#1C1C1E;
-    border:1px solid rgba(255,255,255,.08);
-    border-radius:20px;padding:14px;
-  }
-  .craft-grid{
-    display:grid;grid-template-columns:repeat(5,1fr);gap:8px;
-  }
-  .craft-cell{
-    aspect-ratio:.78;border-radius:14px;
-    background:#2C2C2E;
-    border:1.5px dashed rgba(255,255,255,.08);
-    display:flex;flex-direction:column;align-items:center;justify-content:flex-start;
-    cursor:pointer;position:relative;overflow:hidden;
-    padding:10px 6px 8px;
-    transition:background .2s ease, opacity .62s ease, transform .62s ease;
-  }
-  .craft-cell span{
-    color:rgba(255,255,255,.18);font-size:9px;font-weight:600;
-    text-transform:uppercase;letter-spacing:.03em;
-    display:flex;align-items:center;justify-content:center;
-    width:100%;flex:1;transform:none;
-  }
-  .craft-info{
-    background:#1C1C1E;
-    border:1px solid rgba(255,255,255,.08);
-    border-radius:20px;padding:16px;
-  }
-  .craft-info-row{
-    display:flex;align-items:center;gap:6px;margin-bottom:4px;
-  }
-  .craft-info-row span{
-    color:#fff;font-size:22px;font-weight:800;
-  }
-  .craft-info-row img{
-    width:20px;height:20px;object-fit:contain;
-    filter:drop-shadow(0 0 4px rgba(255,200,0,.4));
-  }
-  .craft-info-label{
-    color:rgba(255,255,255,.3);font-size:12px;font-weight:600;
-    margin-bottom:16px;
-  }
-  .craft-action-btn{
-    width:100%;height:46px;border-radius:14px;border:none;
-    background:rgba(0,122,255,.13);
-    color:rgba(0,122,255,.4);font-size:14px;font-weight:700;
-    cursor:default;letter-spacing:.01em;
-  }
-  .craft-action-btn.active{background:#007AFF;color:#fff;cursor:pointer}
-
-  .craft-cell.active{border-color:rgba(255,255,255,.08);border-style:solid;box-shadow:none;background:#2C2C2E;justify-content:center}
-  .craft-cell img{width:52px;height:52px;object-fit:contain;filter:drop-shadow(0 8px 14px rgba(0,0,0,.24));flex-shrink:0}
-  .craft-cell.entering{animation:craftCellIn .24s ease both}
-  .craft-cell.removing{opacity:.34;transform:scale(.97);filter:saturate(.55) brightness(.82)}
-  @keyframes craftCellIn{from{opacity:0;transform:translateY(8px) scale(.94)}to{opacity:1;transform:translateY(0) scale(1)}}
-
-  .craft-add-btn{
-    width:100%;height:50px;border-radius:999px;border:none;cursor:pointer;
     background:#007AFF;color:#fff;font-size:15px;font-weight:700;
   }
 
@@ -1392,33 +1315,6 @@
     </div>
   </div>
 
-  <!-- CRAFT -->
-  <div class="page" id="craftPage">
-    <div class="craft-page">
-      <div class="craft-section-title">Ваши подарки</div>
-      <div class="craft-window">
-        <div class="craft-grid" id="craftGrid">
-          <div class="craft-cell"><span>Пусто</span></div>
-          <div class="craft-cell"><span>Пусто</span></div>
-          <div class="craft-cell"><span>Пусто</span></div>
-          <div class="craft-cell"><span>Пусто</span></div>
-          <div class="craft-cell"><span>Пусто</span></div>
-          <div class="craft-cell"><span>Пусто</span></div>
-          <div class="craft-cell"><span>Пусто</span></div>
-          <div class="craft-cell"><span>Пусто</span></div>
-          <div class="craft-cell"><span>Пусто</span></div>
-          <div class="craft-cell"><span>Пусто</span></div>
-        </div>
-      </div>
-      <div class="craft-info">
-        <div class="craft-info-row"><span id="craftTotalPrice">0</span><img src="assets/star.png" alt="star"></div>
-        <div class="craft-info-label">Стоимость подарков</div>
-        <button class="craft-action-btn" id="craftActionBtn">Сделать контракт</button>
-      </div>
-      <button class="craft-add-btn" id="craftAddBtn">Добавить подарки</button>
-    </div>
-  </div>
-
   <!-- CRASH -->
   <div class="page visible" id="crashPage" style="padding-top:0;left:0;right:0">
     <div class="crash-page">
@@ -1606,10 +1502,6 @@
       <div class="nav-icon"><img src="svg/trophy.svg" alt=""></div>
       <span class="nav-label">Топ</span>
     </div>
-    <div class="nav-item" data-tab="craft">
-      <div class="nav-icon"><img src="svg/craft.svg" alt=""></div>
-      <span class="nav-label">Крафт</span>
-    </div>
     <div class="nav-item active" data-tab="crash">
       <div class="nav-icon"><img src="svg/crash.svg" alt=""></div>
       <span class="nav-label">Краш</span>
@@ -1753,20 +1645,20 @@
       referralTitle:'РЕФЕРАЛЬНАЯ СИСТЕМА', referralDesc:'Приглашайте людей, чтобы получать бонусы', inventory:'Инвентарь', noGiftsTitle:'Не нашли подарков?',
       noGiftsDesc:'Отправьте подарок <a href="https://t.me/GiftPepeReleyer" target="_blank">@GiftPepeReleyer</a><br>или выиграйте в играх', chooseGift:'Выберите подарок',
       myGifts:'Мои подарки', giftsForUpgrade:'Подарки для апгрейда', makeUpgrade:'Сделать апгрейд', yourGifts:'Ваши подарки', empty:'Пусто', giftCost:'Стоимость подарков',
-      makeContract:'Сделать контракт', addGifts:'Добавить подарки', waiting:'Ожидание', waitingBets:'Ожидание ставок', placeBet:'Сделать ставку', cashOut:'Забрать',
+      waiting:'Ожидание', waitingBets:'Ожидание ставок', placeBet:'Сделать ставку', cashOut:'Забрать',
       giftUnlocked:'Ваш подарок', claim:'Забрать', sell:'Продать', support:'Поддержка', language:'Язык', saveAndExit:'Сохранить и выйти', topup:'Пополнение', stars:'Звезды', ton:'TON',
-      topupBtn:'Пополнить', connectWallet:'Подключить кошелек', disconnectWallet:'Отключить кошелек', bet:'Ставка', top:'Топ', craft:'Крафт', crash:'Краш', upgrade:'Апгрейд', profileNav:'Профиль', giftReady:'Подарок', giftOpened:'Подарок открыт',
-      sellAll:'Продать все', withdraw:'Вывести', withdrawSoon:'Выводится...', giftWord1:'подарок', giftWord2:'подарка', giftWord5:'подарков', referralBack:'Назад', invited:'Приглашено', earned:'Заработано', invite:'Пригласить', referralLink:'Реферальная ссылка', copied:'Скопировано', addGift:'Добавить подарок', inCraft:'В крафте', crafting:'Создаём контракт...', chance:'Шанс', chanceEmpty:'Шанс —', tonLoading:'Подключаем кошелёк...', tonNeedWallet:'Подключи TON кошелёк...', tonNotConnected:'TON кошелёк не подключён', tonOpening:'Открываем TON оплату...', tonConfirm:'Подтверждаем TON пополнение...', loading:'Загрузка...', loadingWait:'Подождите немного', promoUnavailable:'Промокод недоступен', upgradeFailed:'Апгрейд не удался', openTelegramPay:'Открой в Telegram для оплаты', creatingInvoice:'Создаём инвойс...', openingPayment:'Открываем оплату...', checkingPayment:'Проверяем оплату...', paymentDelayed:'Оплата принята, но подтверждение задержалось. Баланс обновится чуть позже.', paymentFailed:'Оплата не прошла. Попробуй снова.', paymentCancelled:'Оплата отменена.', errorPrefix:'Ошибка: ', topPlaceAt:'Вы в топе на <b>{rank}</b> месте', topNotYet:'Вы ещё не в топе', now:'Сейчас', soonPrefix:'Оч'
+      topupBtn:'Пополнить', connectWallet:'Подключить кошелек', disconnectWallet:'Отключить кошелек', bet:'Ставка', top:'Топ', crash:'Краш', upgrade:'Апгрейд', profileNav:'Профиль', giftReady:'Подарок', giftOpened:'Подарок открыт',
+      sellAll:'Продать все', withdraw:'Вывести', withdrawSoon:'Выводится...', giftWord1:'подарок', giftWord2:'подарка', giftWord5:'подарков', referralBack:'Назад', invited:'Приглашено', earned:'Заработано', invite:'Пригласить', referralLink:'Реферальная ссылка', copied:'Скопировано', addGift:'Добавить подарок', chance:'Шанс', chanceEmpty:'Шанс —', tonLoading:'Подключаем кошелёк...', tonNeedWallet:'Подключи TON кошелёк...', tonNotConnected:'TON кошелёк не подключён', tonOpening:'Открываем TON оплату...', tonConfirm:'Подтверждаем TON пополнение...', loading:'Загрузка...', loadingWait:'Подождите немного', promoUnavailable:'Промокод недоступен', upgradeFailed:'Апгрейд не удался', openTelegramPay:'Открой в Telegram для оплаты', creatingInvoice:'Создаём инвойс...', openingPayment:'Открываем оплату...', checkingPayment:'Проверяем оплату...', paymentDelayed:'Оплата принята, но подтверждение задержалось. Баланс обновится чуть позже.', paymentFailed:'Оплата не прошла. Попробуй снова.', paymentCancelled:'Оплата отменена.', errorPrefix:'Ошибка: ', topPlaceAt:'Вы в топе на <b>{rank}</b> месте', topNotYet:'Вы ещё не в топе', now:'Сейчас', soonPrefix:'Оч'
     },
     en:{
       topPlace:'You are in the top at <b>—</b> place', waitingDots:'Waiting...', profile:'Profile', promocodes:'Promo codes', promoPlaceholder:'Enter promo code', apply:'Apply',
       referralTitle:'REFERRAL SYSTEM', referralDesc:'Invite people to get bonuses', inventory:'Inventory', noGiftsTitle:'No gifts found?',
       noGiftsDesc:'Send a gift to <a href="https://t.me/GiftPepeReleyer" target="_blank">@GiftPepeReleyer</a><br>or win one in games', chooseGift:'Choose a gift',
       myGifts:'My gifts', giftsForUpgrade:'Gifts for upgrade', makeUpgrade:'Make upgrade', yourGifts:'Your gifts', empty:'Empty', giftCost:'Gift value',
-      makeContract:'Make contract', addGifts:'Add gifts', waiting:'Waiting', waitingBets:'Waiting for bets', placeBet:'Place bet', cashOut:'Cash out',
+      waiting:'Waiting', waitingBets:'Waiting for bets', placeBet:'Place bet', cashOut:'Cash out',
       giftUnlocked:'Your gift', claim:'Claim', sell:'Sell', support:'Support', language:'Language', saveAndExit:'Save and exit', topup:'Top up', stars:'Stars', ton:'TON',
-      topupBtn:'Top up', connectWallet:'Connect wallet', disconnectWallet:'Disconnect wallet', bet:'Bet', top:'Top', craft:'Craft', crash:'Crash', upgrade:'Upgrade', profileNav:'Profile', giftReady:'Gift', giftOpened:'Gift opened',
-      sellAll:'Sell all', withdraw:'Withdraw', withdrawSoon:'Withdrawing...', giftWord1:'gift', giftWord2:'gifts', giftWord5:'gifts', referralBack:'Back', invited:'Invited', earned:'Earned', invite:'Invite', referralLink:'Referral link', copied:'Copied', addGift:'Add gift', inCraft:'In craft', crafting:'Crafting...', chance:'Chance', chanceEmpty:'Chance —', tonLoading:'Connecting wallet...', tonNeedWallet:'Connect TON wallet...', tonNotConnected:'TON wallet is not connected', tonOpening:'Opening TON payment...', tonConfirm:'Confirming TON top up...', loading:'Loading...', loadingWait:'Please wait a bit', promoUnavailable:'Promo code unavailable', upgradeFailed:'Upgrade failed', openTelegramPay:'Open in Telegram to pay', creatingInvoice:'Creating invoice...', openingPayment:'Opening payment...', checkingPayment:'Checking payment...', paymentDelayed:'Payment is accepted, but confirmation is delayed. Balance will update a bit later.', paymentFailed:'Payment failed. Try again.', paymentCancelled:'Payment cancelled.', errorPrefix:'Error: ', topPlaceAt:'You are in the top at <b>{rank}</b> place', topNotYet:'You are not in the top yet', now:'Now', soonPrefix:'In'
+      topupBtn:'Top up', connectWallet:'Connect wallet', disconnectWallet:'Disconnect wallet', bet:'Bet', top:'Top', crash:'Crash', upgrade:'Upgrade', profileNav:'Profile', giftReady:'Gift', giftOpened:'Gift opened',
+      sellAll:'Sell all', withdraw:'Withdraw', withdrawSoon:'Withdrawing...', giftWord1:'gift', giftWord2:'gifts', giftWord5:'gifts', referralBack:'Back', invited:'Invited', earned:'Earned', invite:'Invite', referralLink:'Referral link', copied:'Copied', addGift:'Add gift', chance:'Chance', chanceEmpty:'Chance —', tonLoading:'Connecting wallet...', tonNeedWallet:'Connect TON wallet...', tonNotConnected:'TON wallet is not connected', tonOpening:'Opening TON payment...', tonConfirm:'Confirming TON top up...', loading:'Loading...', loadingWait:'Please wait a bit', promoUnavailable:'Promo code unavailable', upgradeFailed:'Upgrade failed', openTelegramPay:'Open in Telegram to pay', creatingInvoice:'Creating invoice...', openingPayment:'Opening payment...', checkingPayment:'Checking payment...', paymentDelayed:'Payment is accepted, but confirmation is delayed. Balance will update a bit later.', paymentFailed:'Payment failed. Try again.', paymentCancelled:'Payment cancelled.', errorPrefix:'Error: ', topPlaceAt:'You are in the top at <b>{rank}</b> place', topNotYet:'You are not in the top yet', now:'Now', soonPrefix:'In'
     }
   };
   // Force the new GiftPep build to start in English once, even if an older build saved RU.
@@ -1785,7 +1677,7 @@
   const MAX_CRASH_HISTORY=10;
   let inventoryItems=[];
   // Подтягиваем актуальные минимальные цены с Telegram NFT-маркета (бэкэнд кеширует).
-  // Молча применяем поверх захардкоженного каталога — крафт/краш/инвентарь читают .price.
+  // Молча применяем поверх захардкоженного каталога — краш и инвентарь читают .price.
   (async()=>{try{
     const r=await fetch(API_BASE+'/api/market-prices',{cache:'no-store'});
     if(!r.ok) return;
@@ -1953,7 +1845,6 @@
     `;
     }).join('');
     renderSheetGifts();
-    renderCraftUI();
     ensureInventoryTick();
   }
 
@@ -1964,9 +1855,8 @@
     if(sheetTitle){
       sheetTitle.textContent=sheetMode==='upgrade-source' ? t('myGifts') : (sheetMode==='upgrade-target' ? t('giftsForUpgrade') : t('myGifts'));
     }
-    sheetAddBtn.textContent=sheetMode==='craft' ? t('addGifts') : t('addGift');
-    const showBtn=!!(isUpgradeMode&&sheetSelectedGiftId)||(sheetMode==='craft'&&sheetCraftPendingIds.length>0);
-    sheetAddBtn.classList.toggle('visible',showBtn);
+    sheetAddBtn.textContent=t('addGift');
+    sheetAddBtn.classList.toggle('visible',!!(isUpgradeMode&&sheetSelectedGiftId));
     if(!items.length){
       sheetGifts.classList.remove('visible');
       sheetGifts.innerHTML='';
@@ -1982,12 +1872,9 @@
     sheetEmptyDesc.style.display='none';
     sheetGifts.classList.add('visible');
     sheetGifts.innerHTML=items.map(item=>{
-      const inCraft=sheetMode==='craft' && !!item._inCraft;
-      const craftPending=sheetMode==='craft' && sheetCraftPendingIds.includes(String(item._sheetId));
-      const selected=(sheetMode!=='craft') && String(item._sheetId)===String(sheetSelectedGiftId) && !inCraft;
+      const selected=String(item._sheetId)===String(sheetSelectedGiftId);
       return `
-      <div class="sheet-gift-card ${selected?'selected':''} ${inCraft?'in-craft':''} ${craftPending?'craft-selected':''}" data-id="${item._sheetId}">
-        <div class="sheet-craft-pill">${t('inCraft')}</div>
+      <div class="sheet-gift-card ${selected?'selected':''}" data-id="${item._sheetId}">
         <img src="${resolveGiftImage(item)}" alt="${item.name}">
         <div class="sheet-gift-name">${item.name}</div>
         <div class="sheet-gift-price">${formatStars(item.price)} <img src="assets/star.png" alt=""></div>
@@ -1996,72 +1883,10 @@
     }).join('');
   }
 
-
-  const craftGrid=document.getElementById('craftGrid');
-  const craftTotalPriceEl=document.getElementById('craftTotalPrice');
-  const craftActionBtn=document.getElementById('craftActionBtn');
-  const craftAddBtn=document.getElementById('craftAddBtn');
-  const CRAFT_SLOT_COUNT=10;
-  let craftSlots=Array.from({length:CRAFT_SLOT_COUNT},()=>null);
-  let craftBusy=false;
-
-  let craftRemovingGiftIds=[];
-  let craftAppearingGiftIds=[];
-
-  function getCraftItems(){
-    return craftSlots.filter(Boolean);
-  }
-  function getCraftSlotIndexById(id){
-    return craftSlots.findIndex(item=>item && String(item.id)===String(id));
-  }
-  function updateCraftSelectedIds(){
-    craftSelectedGiftIds=getCraftItems().map(item=>String(item.id));
-  }
-  function renderCraftUI(){
-    if(!craftGrid) return;
-    updateCraftSelectedIds();
-    const cells=[];
-    for(let i=0;i<CRAFT_SLOT_COUNT;i+=1){
-      const gift=craftSlots[i]||null;
-      if(gift){
-        const id=String(gift.id);
-        const removing=craftRemovingGiftIds.includes(id);
-        const entering=craftAppearingGiftIds.includes(id);
-        cells.push('<div class="craft-cell active '+(removing?'removing ':'')+(entering?'entering':'')+'" data-id="'+gift.id+'" data-slot="'+i+'"><img src="'+resolveGiftImage(gift)+'" alt="'+gift.name+'"></div>');
-      }else{
-        cells.push('<div class="craft-cell" data-slot="'+i+'"><span>'+t('empty')+'</span></div>');
-      }
-    }
-    craftGrid.innerHTML=cells.join('');
-    const total=getCraftItems().reduce((sum,item)=>sum+Number(item.price||0),0);
-    craftTotalPriceEl.textContent=formatStars(total);
-    const canCraft=!craftBusy && getCraftItems().length>=3;
-    craftActionBtn.classList.toggle('active',canCraft);
-    craftActionBtn.disabled=!canCraft;
-    craftActionBtn.textContent=craftBusy?t('crafting'):t('makeContract');
-  }
-
-  function clearCraftSelection(){
-    craftSlots=Array.from({length:CRAFT_SLOT_COUNT},()=>null);
-    craftSelectedGiftIds=[];
-    craftRemovingGiftIds=[];
-    craftAppearingGiftIds=[];
-    renderCraftUI();
-    renderSheetGifts();
-  }
-
-  async function animateCraftConsumptionSequence(snapshot){
-    craftRemovingGiftIds=snapshot.map(gift=>String(gift.id));
-    renderCraftUI();
-    await new Promise(resolve=>setTimeout(resolve,360));
-  }
-
   const sheetTitle=document.querySelector('.sheet-pill');
   const sheetAddBtn=document.getElementById('sheetAddBtn');
   let sheetMode='inventory';
-  let sheetCraftPendingIds=[];
   let sheetSelectedGiftId='';
-  let craftSelectedGiftIds=[];
   let upgradeSourceGift=null;
   let upgradeTargetGift=null;
   let upgradeSpinBusy=false;
@@ -2206,19 +2031,11 @@
       const minPrice=Number(upgradeSourceGift?.price||0);
       return GIFT_CATALOG.filter(item=>Number(item.price||0)>minPrice).map(item=>({...item, _sheetId:String(item.id||item.giftId||item.name)}));
     }
-    if(sheetMode==='craft'){
-      return inventoryItems.map(item=>({
-        ...item,
-        _sheetId:String(item.id),
-        _inCraft:craftSelectedGiftIds.includes(String(item.id))
-      }));
-    }
     return inventoryItems.map(item=>({...item, _sheetId:String(item.id)}));
   }
   function openSheet(mode='inventory'){
     sheetMode=mode;
     sheetSelectedGiftId='';
-    sheetCraftPendingIds=[];
     renderSheetGifts();
     sheetOverlay.classList.add('open');sheet.classList.add('open');
     updateLottiePerformance();
@@ -2633,7 +2450,7 @@
   const nav=document.getElementById('bottomNav');
   const ind=document.getElementById('indicator');
   const items=document.querySelectorAll('.nav-item');
-  const pages={top:document.getElementById('topPage'),profile:document.getElementById('profilePage'),upgrade:document.getElementById('upgradePage'),crash:document.getElementById('crashPage'),craft:document.getElementById('craftPage')};
+  const pages={top:document.getElementById('topPage'),profile:document.getElementById('profilePage'),upgrade:document.getElementById('upgradePage'),crash:document.getElementById('crashPage')};
   const referralPage=document.getElementById('referralPage');
 
   function updateLottiePerformance(){
@@ -3368,11 +3185,6 @@
     document.querySelectorAll('.slot-label')[0].textContent=t('myGifts');
     document.querySelectorAll('.slot-label')[1].textContent=t('giftsForUpgrade');
     q('.upgrade-btn').innerHTML=t('makeUpgrade')+'\n        <img src="svg/rise.svg" alt="">';
-    q('.craft-section-title').textContent=t('yourGifts');
-    document.querySelectorAll('.craft-cell span').forEach(el=>el.textContent=t('empty'));
-    q('.craft-info-label').textContent=t('giftCost');
-    q('.craft-action-btn').textContent=t('makeContract');
-    q('.craft-add-btn').textContent=t('addGifts');
     q('#sheet .sheet-pill').textContent=t('myGifts');
     q('#sheet .empty-title').textContent=t('noGiftsTitle');
     q('#sheet .empty-desc').innerHTML=t('noGiftsDesc');
@@ -3386,10 +3198,9 @@
     document.querySelector('.topup-block[data-type="ton"] span').textContent=t('ton');
     q('#betSheet .bet-pill').textContent=t('bet');
     document.querySelectorAll('.nav-label')[0].textContent=t('top');
-    document.querySelectorAll('.nav-label')[1].textContent=t('craft');
-    document.querySelectorAll('.nav-label')[2].textContent=t('crash');
-    document.querySelectorAll('.nav-label')[3].textContent=t('upgrade');
-    document.querySelectorAll('.nav-label')[4].textContent=t('profileNav');
+    document.querySelectorAll('.nav-label')[1].textContent=t('crash');
+    document.querySelectorAll('.nav-label')[2].textContent=t('upgrade');
+    document.querySelectorAll('.nav-label')[3].textContent=t('profileNav');
     updateCrashWaitLabel();
     if(!crashRealtimeState||crashRealtimeState.phase!=='live') crashLivePill.textContent=t('waiting');
     if(crashPrizePending){ crashLivePill.textContent=t('giftReady'); closeBet(); }
@@ -4311,10 +4122,6 @@
   }
   let currentTab='crash';
   function showTab(tab){
-    if(currentTab==='craft' && tab!=='craft' && !craftBusy){
-      clearCraftSelection();
-      closeSheet();
-    }
     closeReferralPage();
     Object.values(pages).forEach(p=>p.classList.remove('visible'));
     if(pages[tab]){
@@ -4449,59 +4256,13 @@
   });
   document.getElementById('sheetClose').addEventListener('click',closeSheet);
   sheetOverlay.addEventListener('click',closeSheet);
-  // Craft add gifts opens same sheet
-  craftAddBtn.addEventListener('click',()=>openSheet('craft'));
   sheetGifts.addEventListener('click',e=>{
     const card=e.target.closest('.sheet-gift-card');
-    if(!card) return;
-    if(sheetMode==='inventory') return;
-    if(sheetMode==='craft'){
-      if(card.classList.contains('in-craft')) return;
-      const id=String(card.dataset.id||'');
-      const freeSlots=craftSlots.filter(s=>!s).length;
-      if(sheetCraftPendingIds.includes(id)){
-        sheetCraftPendingIds=sheetCraftPendingIds.filter(x=>x!==id);
-        card.classList.remove('craft-selected');
-      }else if(sheetCraftPendingIds.length<freeSlots){
-        sheetCraftPendingIds.push(id);
-        card.classList.add('craft-selected');
-      }
-      sheetAddBtn.classList.toggle('visible',sheetCraftPendingIds.length>0);
-      return;
-    }
+    if(!card || sheetMode==='inventory') return;
     sheetSelectedGiftId=String(card.dataset.id||'');
     renderSheetGifts();
   });
   sheetAddBtn.addEventListener('click',()=>{
-    if(sheetMode==='craft'){
-      if(!sheetCraftPendingIds.length) return;
-      const items=getSheetItems();
-      const addedIds=[];
-      sheetCraftPendingIds.forEach(pid=>{
-        const item=items.find(x=>String(x._sheetId)===pid);
-        if(!item) return;
-        const normalized=normalizeInventoryGift(item,item.id||item._sheetId);
-        const hasFreeSlot=craftSlots.some(s=>!s);
-        if(normalized && hasFreeSlot && !getCraftItems().some(ci=>String(ci.id)===String(normalized.id))){
-          const addedId=String(normalized.id);
-          const slotIndex=craftSlots.findIndex(s=>!s);
-          if(slotIndex>=0) craftSlots[slotIndex]=normalized;
-          updateCraftSelectedIds();
-          addedIds.push(addedId);
-        }
-      });
-      craftAppearingGiftIds=[...new Set(addedIds)];
-      sheetCraftPendingIds=[];
-      closeSheet();
-      renderCraftUI();
-      if(addedIds.length){
-        setTimeout(()=>{
-          craftAppearingGiftIds=[];
-          craftGrid?.querySelectorAll('.craft-cell.entering').forEach(el=>el.classList.remove('entering'));
-        },280);
-      }
-      return;
-    }
     if(!sheetSelectedGiftId) return;
     const items=getSheetItems();
     const selected=items.find(item=>String(item._sheetId)===String(sheetSelectedGiftId));
@@ -4519,49 +4280,6 @@
     renderUpgradeUI();
   });
 
-  craftGrid?.addEventListener('click',e=>{
-    const cell=e.target.closest('.craft-cell[data-id]');
-    if(!cell) return;
-    const id=String(cell.dataset.id||'');
-    const slotIndex=getCraftSlotIndexById(id);
-    if(slotIndex<0) return;
-    craftSlots[slotIndex]=null;
-    updateCraftSelectedIds();
-    renderCraftUI();
-  });
-  craftActionBtn?.addEventListener('click', async()=>{
-    const craftItems=getCraftItems();
-    if(craftBusy || craftItems.length<3) return;
-    const snapshotSlots=craftSlots.map(item=>item?({...item}):null);
-    const snapshot=craftItems.map(item=>({...item}));
-    craftBusy=true;
-    renderCraftUI();
-    try{
-      const animationPromise=animateCraftConsumptionSequence(snapshot);
-      const resp=await fetch(API_BASE+'/api/craft/spin',{
-        method:'POST',
-        headers:{'Content-Type':'application/json','x-init-data':tg?.initData||''},
-        body:JSON.stringify({giftIds:snapshot.map(item=>item.id)})
-      });
-      const data=await readApiJson(resp);
-      if(!resp.ok) throw new Error(data.error||'Craft failed');
-      await animationPromise;
-      inventoryItems=Array.isArray(data.items)?data.items.map(item=>normalizeInventoryGift(item)).filter(Boolean):inventoryItems;
-      craftSlots=Array.from({length:CRAFT_SLOT_COUNT},()=>null);
-      craftSelectedGiftIds=[];
-      craftRemovingGiftIds=[];
-      renderInventory();
-      openUpgradeResultModal(normalizeInventoryGift(data.wonGift,data.wonGift?.giftId||data.wonGift?.gift_id||data.wonGift?.id||('craft_'+Date.now())));
-    }catch(err){
-      craftSlots=snapshotSlots;
-      updateCraftSelectedIds();
-      craftRemovingGiftIds=[];
-      tg?.showAlert?tg.showAlert(err.message):alert(err.message);
-    }finally{
-      craftBusy=false;
-      renderCraftUI();
-    }
-  });
   function openUpgradeResultModal(gift){
     if(!gift) return;
     const normalized=normalizeCrashPrizeGift(gift);
@@ -4831,7 +4549,6 @@
 
   document.addEventListener('visibilitychange',()=>{
     if(document.visibilityState!=='visible'){
-      if(!craftBusy) clearCraftSelection();
       closeSheet();
       closeCrashResultSheet();
       pauseCrashRound();
@@ -5112,7 +4829,6 @@
       buildGiftSelect();
       loadAdminPromos();
       loadAdminStats();
-      loadAdminTasks();
     });
     overlay?.querySelector('.admin-close')?.addEventListener('click',()=>overlay.classList.remove('open'));
     overlay?.addEventListener('click',e=>{ if(e.target===overlay) overlay.classList.remove('open'); });
