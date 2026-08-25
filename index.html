@@ -1017,6 +1017,26 @@
   .nav-item.active .nav-label{color:#007AFF}
   .nav-item.active .nav-icon img{opacity:1;filter:brightness(0) saturate(100%) invert(33%) sepia(100%) saturate(3000%) hue-rotate(207deg) brightness(103%) contrast(101%)}
 
+  /* === GAME HUB === */
+  .games-page{
+    min-height:100%;padding:82px 16px calc(104px + env(safe-area-inset-bottom));
+    display:flex;flex-direction:column;align-items:stretch;gap:14px;
+  }
+  .games-title-pill{
+    align-self:center;min-width:108px;height:36px;padding:0 18px;border-radius:999px;
+    display:inline-flex;align-items:center;justify-content:center;
+    color:#fff;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.08);
+    font-size:15px;font-weight:800;letter-spacing:.01em;
+  }
+  .game-banner{
+    display:block;width:100%;padding:0;overflow:hidden;border:1px solid rgba(255,255,255,.1);
+    border-radius:24px;background:rgba(255,255,255,.06);cursor:pointer;
+    box-shadow:0 12px 28px rgba(0,0,0,.22);transform:translateZ(0);
+    transition:transform .2s ease,filter .2s ease;
+  }
+  .game-banner:active{transform:scale(.975);filter:brightness(1.08)}
+  .game-banner img{display:block;width:100%;height:auto;aspect-ratio:16/7;object-fit:cover}
+
   /* === ADMIN PANEL === */
   .admin-open-btn{
     display:flex;align-items:center;justify-content:center;gap:8px;
@@ -1280,6 +1300,19 @@
     </div>
   </div>
 
+  <!-- GAME HUB -->
+  <div class="page visible" id="gamePage">
+    <div class="games-page">
+      <div class="games-title-pill">Game</div>
+      <button class="game-banner" type="button" data-game-target="crash" aria-label="Open Crash game">
+        <img src="assets/Crash_banner.png" alt="Crash">
+      </button>
+      <button class="game-banner" type="button" data-game-target="upgrade" aria-label="Open Upgrade game">
+        <img src="assets/Upgrade_banner.png" alt="Upgrade">
+      </button>
+    </div>
+  </div>
+
   <!-- UPGRADE -->
   <div class="page" id="upgradePage">
     <div class="upgrade-page">
@@ -1316,7 +1349,7 @@
   </div>
 
   <!-- CRASH -->
-  <div class="page visible" id="crashPage" style="padding-top:0;left:0;right:0">
+  <div class="page" id="crashPage" style="padding-top:0;left:0;right:0">
     <div class="crash-page">
       <div class="crash-sky" id="crashSky">
         <div class="crash-timer" id="crashTimer"></div>
@@ -1496,23 +1529,19 @@
   </div>
 
   <!-- BOTTOM NAV -->
-  <nav class="bottom-nav" id="bottomNav">
+  <nav class="bottom-nav" id="bottomNav" aria-label="Primary navigation">
     <div class="nav-indicator" id="indicator"></div>
     <div class="nav-item" data-tab="top">
       <div class="nav-icon"><img src="svg/trophy.svg" alt=""></div>
-      <span class="nav-label">Топ</span>
+      <span class="nav-label">Top</span>
     </div>
-    <div class="nav-item active" data-tab="crash">
-      <div class="nav-icon"><img src="svg/crash.svg" alt=""></div>
-      <span class="nav-label">Краш</span>
-    </div>
-    <div class="nav-item" data-tab="upgrade">
-      <div class="nav-icon"><img src="svg/rise.svg" alt=""></div>
-      <span class="nav-label">Апгрейд</span>
+    <div class="nav-item active" data-tab="game">
+      <div class="nav-icon"><img src="svg/game.svg" alt=""></div>
+      <span class="nav-label">Game</span>
     </div>
     <div class="nav-item" data-tab="profile">
       <div class="nav-icon"><img src="svg/user.svg" alt=""></div>
-      <span class="nav-label">Профиль</span>
+      <span class="nav-label">Profile</span>
     </div>
   </nav>
 
@@ -2475,7 +2504,7 @@
   const nav=document.getElementById('bottomNav');
   const ind=document.getElementById('indicator');
   const items=document.querySelectorAll('.nav-item');
-  const pages={top:document.getElementById('topPage'),profile:document.getElementById('profilePage'),upgrade:document.getElementById('upgradePage'),crash:document.getElementById('crashPage')};
+  const pages={top:document.getElementById('topPage'),game:document.getElementById('gamePage'),profile:document.getElementById('profilePage'),upgrade:document.getElementById('upgradePage'),crash:document.getElementById('crashPage')};
   const referralPage=document.getElementById('referralPage');
 
   function updateLottiePerformance(){
@@ -3222,10 +3251,11 @@
     document.querySelector('.topup-block[data-type="stars"] span').textContent=t('stars');
     document.querySelector('.topup-block[data-type="ton"] span').textContent=t('ton');
     q('#betSheet .bet-pill').textContent=t('bet');
-    document.querySelectorAll('.nav-label')[0].textContent=t('top');
-    document.querySelectorAll('.nav-label')[1].textContent=t('crash');
-    document.querySelectorAll('.nav-label')[2].textContent=t('upgrade');
-    document.querySelectorAll('.nav-label')[3].textContent=t('profileNav');
+    // Нижняя навигация намеренно всегда остаётся на английском, независимо от языка приложения.
+    const navLabels=document.querySelectorAll('.nav-label');
+    if(navLabels[0]) navLabels[0].textContent='Top';
+    if(navLabels[1]) navLabels[1].textContent='Game';
+    if(navLabels[2]) navLabels[2].textContent='Profile';
     updateCrashWaitLabel();
     if(!crashRealtimeState||crashRealtimeState.phase!=='live') crashLivePill.textContent=t('waiting');
     if(crashPrizePending){ crashLivePill.textContent=t('giftReady'); closeBet(); }
@@ -4145,7 +4175,7 @@
     ind.style.transform=`translate(${x}px,${y}px)`;
     if(!animate)requestAnimationFrame(()=>{ind.style.transition=''});
   }
-  let currentTab='crash';
+  let currentTab='game';
   function showTab(tab){
     const previousTab=currentTab;
     closeReferralPage();
@@ -4168,15 +4198,21 @@
   requestAnimationFrame(()=>{
     moveIndicator(document.querySelector('.nav-item.active'),false);
   });
-  items.forEach(item=>{
-    item.addEventListener('click',()=>{
-      const targetTab=item.dataset.tab;
-      if(targetTab===currentTab && !referralPage.classList.contains('visible')) return;
-      document.querySelector('.nav-item.active')?.classList.remove('active');
-      item.classList.add('active');
-      moveIndicator(item,true);
-      showTab(targetTab);
-    });
+  function activateTab(targetTab,animate=true){
+    if(!pages[targetTab]) return;
+    if(targetTab===currentTab && !referralPage.classList.contains('visible')) return;
+    // Crash и Upgrade открываются из Game и сохраняют Game активным в нижней панели.
+    const navTarget=document.querySelector(`.nav-item[data-tab="${['crash','upgrade'].includes(targetTab)?'game':targetTab}"]`);
+    document.querySelector('.nav-item.active')?.classList.remove('active');
+    if(navTarget){
+      navTarget.classList.add('active');
+      moveIndicator(navTarget,animate);
+    }
+    showTab(targetTab);
+  }
+  items.forEach(item=>item.addEventListener('click',()=>activateTab(item.dataset.tab,true)));
+  document.querySelectorAll('[data-game-target]').forEach(banner=>{
+    banner.addEventListener('click',()=>activateTab(banner.dataset.gameTarget,true));
   });
 
   const appRoot=document.querySelector('.app');
@@ -4209,11 +4245,9 @@
       await Promise.allSettled([
         refreshBalance(),
         refreshTop(),
-        refreshReferral(),
-        refreshInventory(),
-        refreshCrashState(true),
       ]);
-      if(!crashStarted){
+      // Game — стартовый экран. Crash запускается только после выбора его баннера.
+      if(currentTab==='crash'&&!crashStarted){
         crashStarted=true;
         runCrashRound();
       }
