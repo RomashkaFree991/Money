@@ -10,6 +10,7 @@ const browserGlobals = {
   console: 'readonly',
   document: 'readonly',
   fetch: 'readonly',
+  Image: 'readonly',
   localStorage: 'readonly',
   navigator: 'readonly',
   performance: 'readonly',

@@ -1240,6 +1240,9 @@ function secureRandomUnit() {
 }
 
 let pvpLastLogSignature = '';
+let pvpSettlementInFlight = false;
+let pvpNextSettlementCheckAt = 0;
+let pvpFinalizerLastError = '';
 function logPvpTransition(state) {
   const round = state?.round || {};
   const signature = [round.id, round.phase, round.countdownEndsAt || 0, state?.bank || 0, state?.lastResult?.roundId || 0].join(':');
@@ -1256,9 +1259,35 @@ async function serializePvpState() {
   });
   if (error) throw new Error(error.message || 'PVP state unavailable');
   const state = { ...(data || {}), serverNow: Date.now() };
+  const deadline = Number(state?.round?.countdownEndsAt || 0);
+  pvpNextSettlementCheckAt = state?.round?.phase === 'countdown' && deadline
+    ? Math.max(Date.now() + 250, deadline)
+    : Date.now() + 10000;
   logPvpTransition(state);
   return state;
 }
+
+async function finalizeDuePvpRound() {
+  if (pvpSettlementInFlight || Date.now() < pvpNextSettlementCheckAt) return;
+  pvpSettlementInFlight = true;
+  try {
+    await serializePvpState();
+    pvpFinalizerLastError = '';
+  } catch (error) {
+    const message = String(error?.message || error || 'unknown error');
+    if (message !== pvpFinalizerLastError) {
+      pvpFinalizerLastError = message;
+      console.error('🎯 PVP background settlement error:', message);
+    }
+    // Avoid a tight error loop while the database is temporarily unavailable.
+    pvpNextSettlementCheckAt = Date.now() + 10000;
+  } finally {
+    pvpSettlementInFlight = false;
+  }
+}
+
+const pvpFinalizerTimer = setInterval(finalizeDuePvpRound, 500);
+pvpFinalizerTimer.unref?.();
 
 function secureRandomIndex(length) {
   const n = Number(length || 0);
@@ -2802,6 +2831,10 @@ app.post('/api/pvp/bet', async (req, res) => {
     });
     if (error) throw new Error(error.message || 'PVP bet failed');
     const state = { ...(data || {}), serverNow: Date.now() };
+    const deadline = Number(state?.round?.countdownEndsAt || 0);
+    pvpNextSettlementCheckAt = state?.round?.phase === 'countdown' && deadline
+      ? Math.max(Date.now() + 250, deadline)
+      : Date.now() + 10000;
     logPvpTransition(state);
     console.info(`🎯 PVP bet user=${user.id} amount=${amount} round=${state?.round?.id || '-'} bank=${Number(state?.bank || 0)}`);
     return res.json({ ok: true, ...state });
