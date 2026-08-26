@@ -2212,7 +2212,7 @@ app.post('/api/crash/prize/resolve', async (req, res) => {
     const message = String(error?.message || 'Prize resolve failed');
     // Повторный запрос после успешного применения RPC (например, WebView потерял ответ)
     // не должен показывать пользователю ошибку: возвращаем текущее подтверждённое состояние.
-    if (resolvedData || /no pending|pending.*prize.*(?:not|missing)|already.*resolv|nothing.*resolv/i.test(message)) {
+    if (resolvedData || /prize not found|no pending|pending.*prize.*(?:not|missing)|already.*resolv|nothing.*resolv/i.test(message)) {
       let items = []; let state = null; let currentBalance = Number(resolvedData?.newBalance || 0);
       try {
         [items, state, currentBalance] = await Promise.all([
