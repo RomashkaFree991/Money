@@ -66,6 +66,17 @@ app.set('trust proxy', 1);
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
 app.use(cors({ origin: CONFIG.MINI_APP_URL, methods: ['GET', 'POST'], allowedHeaders: ['Content-Type', 'x-init-data', 'x-admin-key'] }));
 app.use(express.json({ limit: '256kb' }));
+// Оставляем точный след при кратковременных проблемах API, не логируя тела запросов и секреты.
+app.use('/api', (req, res, next) => {
+  const startedAt = Date.now();
+  res.once('finish', () => {
+    const elapsedMs = Date.now() - startedAt;
+    if (res.statusCode >= 500 || elapsedMs >= 1500) {
+      console.warn('api response', { method: req.method, path: req.path, status: res.statusCode, elapsedMs });
+    }
+  });
+  next();
+});
 app.use('/api', rateLimit({
   windowMs: 60_000,
   limit: 300,
@@ -150,6 +161,7 @@ const WITHDRAW_INTENT_TTL_MS = 15 * 60 * 1000;
 // Кеш рыночных цен не является финансовым источником истины и может жить в RAM.
 const MARKET_PRICES_FILE = path.join(__dirname, 'data', 'market_prices.json');
 const marketPrices = new Map(); // giftId(str) -> stars(number)
+let marketSyncInFlight = null;
 const INVENTORY_HOLD_MS = 20 * 60 * 1000;
 
 function isMissingTableError(error, tableName) {
@@ -1788,7 +1800,7 @@ async function serializeCrashState(userId = null) {
 }
 
 app.get('/api/healthz', (req, res) => {
-  res.json({ ok: true, now: Date.now() });
+  res.json({ ok: true, now: Date.now(), uptimeSec: Math.floor(process.uptime()), marketSyncInProgress: !!marketSyncInFlight });
 });
 
 app.post('/api/init', async (req, res) => {
@@ -2223,41 +2235,54 @@ function applyMarketPricesToCatalog() {
 }
 
 async function syncMarketPricesOnce() {
-  const giftIds = GIFT_CATALOG.map((g) => String(g.id || g.giftId || '')).filter(Boolean);
-  if (!giftIds.length) return { ok: true, updated: 0 };
+  // Релеер перебирает большой каталог последовательно. Не допускаем несколько таких
+  // задач одновременно: это могло совпадать с ежедневным запуском и замедлять API.
+  if (marketSyncInFlight) return { ok: false, skipped: true, reason: 'sync_in_progress' };
+
+  marketSyncInFlight = (async () => {
+    const giftIds = GIFT_CATALOG.map((g) => String(g.id || g.giftId || '')).filter(Boolean);
+    if (!giftIds.length) return { ok: true, updated: 0 };
+    try {
+      const r = await fetch(`${CONFIG.RELAYER_URL}/market-min-prices`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-relayer-key': CONFIG.RELAYER_INTERNAL_KEY },
+        body: JSON.stringify({
+          giftIds,
+          gifts: GIFT_CATALOG.map((gift) => ({
+            id: String(gift.id || gift.giftId || ''),
+            name: String(gift.name || ''),
+            price: Number(gift.price || 0),
+          })).filter((gift) => gift.id),
+        }),
+        signal: AbortSignal.timeout(25_000),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data?.ok) {
+        console.warn('market sync failed:', data?.error || r.status);
+        return { ok: false, error: data?.error || `HTTP ${r.status}` };
+      }
+      const prices = data.prices || {};
+      let updated = 0;
+      for (const [id, stars] of Object.entries(prices)) {
+        const n = Number(stars);
+        if (!Number.isFinite(n) || n <= 0) continue;
+        if (marketPrices.get(String(id)) !== n) updated++;
+        marketPrices.set(String(id), n);
+      }
+      applyMarketPricesToCatalog();
+      saveMarketPricesToDisk();
+      console.log(`📈 market sync: ${updated} prices updated, ${marketPrices.size} total`);
+      return { ok: true, updated, total: marketPrices.size };
+    } catch (e) {
+      console.warn('market sync error:', e?.message || e);
+      return { ok: false, error: e?.message || String(e) };
+    }
+  })();
+
   try {
-    const r = await fetch(`${CONFIG.RELAYER_URL}/market-min-prices`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-relayer-key': CONFIG.RELAYER_INTERNAL_KEY },
-      body: JSON.stringify({
-        giftIds,
-        gifts: GIFT_CATALOG.map((gift) => ({
-          id: String(gift.id || gift.giftId || ''),
-          name: String(gift.name || ''),
-          price: Number(gift.price || 0),
-        })).filter((gift) => gift.id),
-      }),
-    });
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok || !data?.ok) {
-      console.warn('market sync failed:', data?.error || r.status);
-      return { ok: false, error: data?.error || `HTTP ${r.status}` };
-    }
-    const prices = data.prices || {};
-    let updated = 0;
-    for (const [id, stars] of Object.entries(prices)) {
-      const n = Number(stars);
-      if (!Number.isFinite(n) || n <= 0) continue;
-      if (marketPrices.get(String(id)) !== n) updated++;
-      marketPrices.set(String(id), n);
-    }
-    applyMarketPricesToCatalog();
-    saveMarketPricesToDisk();
-    console.log(`📈 market sync: ${updated} prices updated, ${marketPrices.size} total`);
-    return { ok: true, updated, total: marketPrices.size };
-  } catch (e) {
-    console.warn('market sync error:', e?.message || e);
-    return { ok: false, error: e?.message || String(e) };
+    return await marketSyncInFlight;
+  } finally {
+    marketSyncInFlight = null;
   }
 }
 
