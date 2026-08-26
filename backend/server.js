@@ -1239,6 +1239,16 @@ function secureRandomUnit() {
   return crypto.randomBytes(6).readUIntBE(0, 6) / 281474976710656;
 }
 
+async function serializePvpState() {
+  // The database function locks the current round and only settles it after the
+  // common server-side deadline. Browser clocks never choose a winner.
+  const { data, error } = await sb.rpc('pvp_settle_due_round', {
+    p_random_draw: secureRandomUnit(),
+  });
+  if (error) throw new Error(error.message || 'PVP state unavailable');
+  return { ...(data || {}), serverNow: Date.now() };
+}
+
 function secureRandomIndex(length) {
   const n = Number(length || 0);
   return n > 1 ? crypto.randomInt(0, n) : 0;
@@ -2752,6 +2762,37 @@ app.post('/api/upgrade/spin', async (req, res) => {
     });
   } catch (error) {
     return res.status(400).json({ error: error.message || 'Upgrade failed' });
+  }
+});
+
+app.get('/api/pvp/state', async (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  try {
+    return res.json(await serializePvpState());
+  } catch (error) {
+    console.error('pvp state error:', error?.message || error);
+    return res.status(503).json({ error: error.message || 'PVP unavailable' });
+  }
+});
+
+app.post('/api/pvp/bet', async (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const amount = parseInt(req.body?.amount, 10);
+  if (!Number.isFinite(amount) || amount < 1) {
+    return res.status(400).json({ error: 'Минимальная ставка 1⭐' });
+  }
+  try {
+    const { data, error } = await sb.rpc('pvp_place_bet', {
+      p_user_id: Number(user.id),
+      p_amount: amount,
+    });
+    if (error) throw new Error(error.message || 'PVP bet failed');
+    return res.json({ ok: true, ...(data || {}), serverNow: Date.now() });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'PVP bet failed' });
   }
 });
 
