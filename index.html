@@ -654,9 +654,9 @@
   }
   .crash-history::-webkit-scrollbar{display:none}
   .crash-history-pill{
-    height:30px;padding:0 12px;border-radius:999px;
+    height:32px;padding:0 13px;border-radius:999px;
     display:flex;align-items:center;justify-content:center;
-    font-size:12px;font-weight:700;white-space:nowrap;flex-shrink:0;
+    font-size:13px;font-weight:750;white-space:nowrap;flex-shrink:0;
     background:transparent;color:rgba(255,255,255,.5);
     border:1.5px solid rgba(255,255,255,.1);
   }
@@ -1046,8 +1046,9 @@
   .pvp-history-avatar{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:#3b3b42;color:#d7d7da;font-size:13px;font-weight:850;overflow:hidden}.pvp-history-avatar img{width:100%;height:100%;object-fit:cover}.pvp-player-meta{display:flex;min-width:0;flex-direction:column;gap:3px}.pvp-player-name{max-width:165px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:15px}.pvp-player-chance{color:rgba(255,255,255,.46);font-size:12px;font-weight:650}.pvp-history-sum{margin-left:auto;display:flex;align-items:center;gap:5px;color:#ffcc00;font-size:15px}.pvp-history-sum img{width:17px;height:17px}.pvp-empty{min-height:86px;display:grid;place-items:center;color:rgba(255,255,255,.42);font-size:14px;font-weight:700;text-align:center}
   .pvp-bet-dock{position:absolute;left:0;right:0;bottom:76px;z-index:17;display:none;padding:16px 16px 13px;background:rgba(31,31,34,.68);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:0;border-radius:24px 24px 0 0;box-shadow:none}
   .pvp-bet-dock.open{display:block}.pvp-bet-btn{width:100%;height:51px;border:0;border-radius:15px;background:#0A84FF;color:#fff;font-family:inherit;font-size:16px;font-weight:850;box-shadow:none;cursor:pointer}.pvp-bet-btn:active{transform:scale(.985);filter:brightness(1.08)}
-  .pvp-result-card{position:absolute;z-index:16;left:14px;right:14px;bottom:156px;display:none;align-items:center;gap:12px;min-height:62px;padding:10px 16px;border:0;border-radius:16px;background:#1C1C1E;box-shadow:0 12px 26px rgba(0,0,0,.26)}
-  .pvp-result-card.visible{display:flex;animation:playerSlideIn .38s cubic-bezier(.22,.61,.36,1) both}.pvp-result-avatar{width:42px;height:42px;border-radius:50%;object-fit:cover;background:#3b3b42;flex-shrink:0}.pvp-result-meta{display:flex;flex:1;min-width:0;flex-direction:column;gap:3px}.pvp-result-title{font-size:12px;font-weight:700;color:rgba(255,255,255,.48)}.pvp-result-name{font-size:15px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pvp-result-prize{margin-left:auto;display:flex;align-items:center;gap:5px;color:#ffcc00;font-size:17px;font-weight:900;white-space:nowrap}.pvp-result-prize img{width:18px;height:18px;object-fit:contain}
+  .pvp-result-overlay{position:fixed;inset:0;z-index:96;background:rgba(0,0,0,.52);opacity:0;pointer-events:none;transition:opacity .24s ease;backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}.pvp-result-overlay.open{opacity:1;pointer-events:auto}
+  .pvp-result-sheet{position:absolute;left:0;right:0;bottom:0;min-height:48vh;max-height:60vh;border:0;border-radius:34px 34px 0 0;background:#000 url('assets/background_pepe.png') center top/cover no-repeat;box-shadow:0 -18px 48px rgba(0,0,0,.46);transform:translateY(105%);transition:transform .34s cubic-bezier(.22,.8,.24,1);padding:14px 16px calc(18px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:15px;overflow:hidden}.pvp-result-sheet::before{content:'';position:absolute;inset:0;pointer-events:none;background:linear-gradient(180deg,rgba(0,0,0,.15),rgba(0,0,0,.48))}.pvp-result-sheet>*{position:relative;z-index:1}.pvp-result-overlay.open .pvp-result-sheet{transform:translateY(0)}
+  .pvp-result-handle{width:38px;height:4px;border-radius:999px;background:rgba(255,255,255,.22);margin:0 auto 2px}.pvp-result-heading{color:#fff;text-align:center;font-size:20px;font-weight:800;line-height:1.2}.pvp-result-player{display:flex;align-items:center;gap:13px;min-height:72px;padding:12px 14px;border:0;border-radius:18px;background:rgba(28,28,30,.92)}.pvp-result-avatar{width:50px;height:50px;border-radius:50%;object-fit:cover;background:#3b3b42;flex-shrink:0}.pvp-result-meta{display:flex;flex:1;min-width:0;flex-direction:column;gap:4px}.pvp-result-title{font-size:12px;font-weight:700;color:rgba(255,255,255,.48)}.pvp-result-name{font-size:17px;font-weight:850;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pvp-result-prize{margin-left:auto;display:flex;align-items:center;gap:5px;color:#ffcc00;font-size:19px;font-weight:900;white-space:nowrap}.pvp-result-prize img{width:20px;height:20px;object-fit:contain}.pvp-result-next{margin:auto auto 0;color:rgba(255,255,255,.6);font-size:13px;font-weight:700}
 
   /* === ADMIN PANEL === */
   .admin-open-btn{
@@ -1343,10 +1344,17 @@
     </div>
   </div>
   <div class="pvp-bet-dock" id="pvpBetDock"><button type="button" class="pvp-bet-btn" id="pvpBetBtn">Сделать ставку</button></div>
-  <div class="pvp-result-card" id="pvpResultCard">
-    <img class="pvp-result-avatar" id="pvpResultAvatar" alt="">
-    <div class="pvp-result-meta"><div class="pvp-result-title" id="pvpResultChance"></div><div class="pvp-result-name" id="pvpResultName"></div></div>
-    <div class="pvp-result-prize" id="pvpResultPrize"></div>
+  <div class="pvp-result-overlay" id="pvpResultOverlay">
+    <div class="pvp-result-sheet" role="dialog" aria-modal="true" aria-labelledby="pvpResultHeading">
+      <div class="pvp-result-handle"></div>
+      <div class="pvp-result-heading" id="pvpResultHeading">Победитель</div>
+      <div class="pvp-result-player">
+        <img class="pvp-result-avatar" id="pvpResultAvatar" alt="">
+        <div class="pvp-result-meta"><div class="pvp-result-title" id="pvpResultChance"></div><div class="pvp-result-name" id="pvpResultName"></div></div>
+        <div class="pvp-result-prize" id="pvpResultPrize"></div>
+      </div>
+      <div class="pvp-result-next">Следующая игра уже готовится</div>
+    </div>
   </div>
 
   <!-- UPGRADE -->
@@ -3170,7 +3178,7 @@
         const starWin=Math.max(0,Number(viewer?.payout||viewer?.displayAmount||0));
         crashResultPrizeImage.src='assets/star.png';
         crashResultPrizeImage.alt='Stars';
-        crashResultPrizeName.textContent='+'+formatStars(starWin)+' ⭐';
+        crashResultPrizeName.textContent='+'+formatStars(starWin);
         crashResultPrize.classList.add('visible');
         crashResultAction.textContent=crashResultText('close');
       }
@@ -4266,7 +4274,7 @@
   const pvpBetsListEl=document.getElementById('pvpBetsList');
   const pvpBetDock=document.getElementById('pvpBetDock');
   const pvpBetBtn=document.getElementById('pvpBetBtn');
-  const pvpResultCard=document.getElementById('pvpResultCard');
+  const pvpResultOverlay=document.getElementById('pvpResultOverlay');
   const pvpResultAvatar=document.getElementById('pvpResultAvatar');
   const pvpResultName=document.getElementById('pvpResultName');
   const pvpResultChance=document.getElementById('pvpResultChance');
@@ -4340,8 +4348,9 @@
   }
   function showPvpResult(result){
     if(!result||!result.roundId||Number(result.roundId)===pvpDisplayedResultId)return;
-    pvpDisplayedResultId=Number(result.roundId);
     const players=Array.isArray(result.bets)?result.bets:[];
+    if(!players.length||!Number(result.winnerUserId))return;
+    pvpDisplayedResultId=Number(result.roundId);
     pvpResultShowing=true;
     pvpPlayers=players;
     renderPvpBet();
@@ -4357,10 +4366,10 @@
     if(pvpResultName)pvpResultName.textContent=winner.firstName||winner.first_name||'Победитель';
     if(pvpResultChance)pvpResultChance.textContent='Победитель · Шанс '+String(result.winnerChance||0)+'%';
     if(pvpResultPrize){pvpResultPrize.replaceChildren(document.createTextNode(String(result.prize||0)+' '));const star=document.createElement('img');star.src='assets/star.png';star.alt='';pvpResultPrize.append(star);}
-    pvpResultCard?.classList.add('visible');
+    pvpResultOverlay?.classList.add('open');
     if(pvpResultHideTimer)clearTimeout(pvpResultHideTimer);
     pvpResultHideTimer=setTimeout(()=>{
-      pvpResultCard?.classList.remove('visible');
+      pvpResultOverlay?.classList.remove('open');
       pvpResultShowing=false;
       resetPvpWheel();
       refreshPvpState();
