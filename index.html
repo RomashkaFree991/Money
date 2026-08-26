@@ -1029,6 +1029,7 @@
   .games-page   .game-banner--static+.game-banner{margin-top:-14px}
   .game-banner--static{cursor:default}
   .game-banner img{display:block;width:100%;height:auto;object-fit:contain}
+  .game-section-divider{display:flex;align-items:center;gap:10px;margin:6px 2px 0;color:rgba(255,255,255,.56);font-size:13px;font-weight:750;text-align:center}.game-section-divider::before,.game-section-divider::after{content:'';height:1px;flex:1;background:rgba(255,255,255,.18)}
 
   /* === PVP ARENA (демонстрационный экран) === */
   .pvp-page{min-height:100%;padding:0 4px 176px;display:flex;flex-direction:column;align-items:center;gap:13px}
@@ -1050,7 +1051,7 @@
   .pvp-bet-dock.open{display:block}.pvp-bet-btn{width:100%;height:51px;border:0;border-radius:15px;background:#0A84FF;color:#fff;font-family:inherit;font-size:16px;font-weight:850;box-shadow:none;cursor:pointer}.pvp-bet-btn:active{transform:scale(.985);filter:brightness(1.08)}.pvp-bet-btn:disabled{background:rgba(255,255,255,.14);color:rgba(255,255,255,.52);cursor:default;transform:none;filter:none}
   .pvp-result-overlay{position:fixed;inset:0;z-index:96;background:rgba(0,0,0,.52);opacity:0;pointer-events:none;transition:opacity .24s ease;backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}.pvp-result-overlay.open{opacity:1;pointer-events:auto}
   .pvp-result-sheet{position:absolute;left:0;right:0;bottom:0;max-height:min(82vh,720px);border-radius:34px 34px 0 0;background:#000 url('assets/background_pepe.png') center top/cover no-repeat;border-top:1px solid rgba(255,255,255,.10);box-shadow:0 -18px 48px rgba(0,0,0,.46);transform:translateY(105%);transition:transform .34s cubic-bezier(.22,.8,.24,1);padding:14px 14px calc(14px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:12px;overflow:hidden}.pvp-result-sheet::before{content:'';position:absolute;inset:0;pointer-events:none;background:linear-gradient(180deg,rgba(0,0,0,.18),rgba(0,0,0,.42))}.pvp-result-sheet>*{position:relative;z-index:1}.pvp-result-overlay.open .pvp-result-sheet{transform:translateY(0)}
-  .pvp-result-handle{width:38px;height:4px;border-radius:999px;background:rgba(255,255,255,.22);margin:0 auto 2px}.pvp-result-heading{color:#fff;text-align:center;font-size:24px;font-weight:850;line-height:1.2}.pvp-result-award{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;padding:2px 0 6px}.pvp-result-award img{width:62px;height:62px;object-fit:contain;filter:drop-shadow(0 10px 16px rgba(0,0,0,.25))}.pvp-result-prize{color:#fff;font-size:24px;font-weight:900;line-height:1}.pvp-result-player{display:flex;width:100%;padding:10px 16px;align-items:center;gap:12px;background:#1C1C1E;border-radius:16px;border:0;min-height:62px}.pvp-result-avatar{width:42px;height:42px;border-radius:50%;object-fit:cover;background:rgba(255,255,255,.12);flex-shrink:0}.pvp-result-meta{display:flex;flex:1;min-width:0;flex-direction:column;gap:3px}.pvp-result-title{font-size:12px;font-weight:700;color:rgba(255,255,255,.48)}.pvp-result-name{color:#fff;font-size:15px;font-weight:750;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pvp-result-next{display:flex;align-items:center;justify-content:center;gap:9px;min-height:26px;color:rgba(255,255,255,.58);font-size:12px;font-weight:650;padding-top:2px}.pvp-result-next b{color:#fff;font-size:13px;font-weight:850;min-width:10px;text-align:center}.pvp-result-progress{position:relative;width:58px;height:2px;border-radius:999px;background:rgba(255,255,255,.16);overflow:hidden}.pvp-result-progress-fill{position:absolute;inset:0 auto 0 0;width:100%;background:#fff;border-radius:inherit;transition:width .1s linear}.pvp-result-close{width:100%;height:52px;border:0;border-radius:999px;background:#0A84FF;color:#fff;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer;touch-action:manipulation}
+  .pvp-result-handle{width:38px;height:4px;border-radius:999px;background:rgba(255,255,255,.22);margin:0 auto 2px}.pvp-result-heading{color:#fff;text-align:center;font-size:24px;font-weight:850;line-height:1.2}.pvp-result-award{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;padding:2px 0 6px}.pvp-result-award img{width:62px;height:62px;object-fit:contain;filter:drop-shadow(0 10px 16px rgba(0,0,0,.25))}.pvp-result-prize{color:#fff;font-size:19px;font-weight:850;line-height:1}.pvp-result-player{display:flex;width:100%;padding:10px 16px;align-items:center;gap:12px;background:#1C1C1E;border-radius:16px;border:0;min-height:62px}.pvp-result-avatar{width:42px;height:42px;border-radius:50%;object-fit:cover;background:rgba(255,255,255,.12);flex-shrink:0}.pvp-result-meta{display:flex;flex:1;min-width:0;flex-direction:column;gap:3px}.pvp-result-title{font-size:12px;font-weight:700;color:rgba(255,255,255,.48)}.pvp-result-name{color:#fff;font-size:15px;font-weight:750;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pvp-result-next{display:flex;align-items:center;justify-content:center;gap:9px;min-height:26px;color:rgba(255,255,255,.58);font-size:12px;font-weight:650;padding-top:2px}.pvp-result-next b{color:#fff;font-size:13px;font-weight:850;min-width:10px;text-align:center}.pvp-result-progress{position:relative;width:58px;height:2px;border-radius:999px;background:rgba(255,255,255,.16);overflow:hidden}.pvp-result-progress-fill{position:absolute;inset:0 auto 0 0;width:100%;background:#fff;border-radius:inherit;transition:width .1s linear}.pvp-result-close{width:100%;height:52px;border:0;border-radius:999px;background:#0A84FF;color:#fff;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer;touch-action:manipulation}
   .crash-result-list .crash-bet-cloud,.crash-result-list .crash-bet-cloud.win-state,.crash-result-list .crash-bet-cloud.loss-state{border:0;box-shadow:none}
 
   /* === ADMIN PANEL === */
@@ -1328,6 +1329,7 @@
       <button class="game-banner" type="button" data-game-target="upgrade" aria-label="Open Upgrade game">
         <img src="assets/Upgrade_banner.png" alt="Upgrade" decoding="async" fetchpriority="high">
       </button>
+      <div class="game-section-divider" aria-label="Кейсы">Кейсы</div>
     </div>
   </div>
 
@@ -3091,27 +3093,23 @@
       crashResultPlayers.appendChild(row);
     });
   }
-  async function claimCrashResultPrizeAndClose(auto=false){
+  async function claimCrashResultPrizeAndClose(){
     if(crashResultSheetBusy)return;
     if(!crashPrizePending||!crashPrizeGift){closeCrashResultSheet();return;}
     crashResultSheetBusy=true;
     if(crashResultAction){crashResultAction.disabled=true;crashResultAction.textContent=crashResultText('receiving');}
     try{
-      await resolveCrashPrize('claim');
-      // resolveCrashPrize restores crashPrizePending on failure, so only close when
-      // the DB really moved the gift into inventory.
-      if(!crashPrizePending) closeCrashResultSheet();
-      else if(auto){
-        crashResultSheetDeadline=Date.now()+5000;
-        tickCrashResultSheet();
-        if(crashResultSheetTicker)clearInterval(crashResultSheetTicker);
-        crashResultSheetTicker=setInterval(tickCrashResultSheet,100);
-      }
-    }catch(_){
-      if(auto){
-        crashResultSheetDeadline=Date.now()+5000;
-        if(crashResultSheetTicker)clearInterval(crashResultSheetTicker);
-        crashResultSheetTicker=setInterval(tickCrashResultSheet,100);
+      const resolved=await resolveCrashPrize('claim');
+      if(resolved||!crashPrizePending){
+        closeCrashResultSheet();
+      }else{
+        // The backend says that no pending prize exists. This is an old local
+        // preview, not a reason to trap the player in a Receive-only sheet.
+        crashPrizePending=false;
+        crashPrizeGift=null;
+        crashPrizeResolveToken='';
+        closeCrashResultSheet();
+        refreshCrashState(true,true);
       }
     }finally{
       crashResultSheetBusy=false;
@@ -3976,7 +3974,7 @@
 
   let crashPrizeResolveBusy=false;
   async function resolveCrashPrize(mode){
-    if(!crashPrizePending||!crashPrizeGift||crashPrizeResolveBusy)return;
+    if(!crashPrizePending||!crashPrizeGift||crashPrizeResolveBusy)return false;
     crashPrizeResolveBusy=true;
     dismissKeyboard();
 
@@ -4063,6 +4061,7 @@
       // Приз подтверждён: помечаем раунд закрытым, чтобы запоздалый state не вернул карточку ставки.
       crashResultDismissedRoundId=Number(data?.state?.roundId||crashRealtimeState?.roundId||0);
       resetCrashPlayer();
+      return true;
     }catch(err){
       updateBalance(prevBalance);
       inventoryItems=prevItems;
@@ -4085,6 +4084,7 @@
         }
       }
       tg?.showAlert?tg.showAlert(err.message):alert(err.message);
+      return false;
     }finally{
       crashPrizeResolveBusy=false;
     }
@@ -4434,8 +4434,7 @@
     const winner=players.find(player=>Number(player.userId)===Number(result.winnerUserId))||result.winner||{};
     const winnerColor=pvpColor({colorIndex:result.winningColorIndex});
     if(pvpResultAvatar){pvpResultAvatar.style.background=winnerColor;if(winner.photoUrl||winner.photo_url){pvpResultAvatar.src=winner.photoUrl||winner.photo_url;pvpResultAvatar.style.padding='0';}else{pvpResultAvatar.removeAttribute('src');pvpResultAvatar.style.padding='12px';}}
-    const winnerIsCurrentUser=Number(winner.userId||winner.user_id)===Number(tgUserId);
-    if(pvpResultHeading)pvpResultHeading.textContent=winnerIsCurrentUser?'You won':'Winner';
+    if(pvpResultHeading)pvpResultHeading.textContent='You won';
     if(pvpResultName)pvpResultName.textContent=winner.firstName||winner.first_name||'Победитель';
     if(pvpResultChance)pvpResultChance.textContent='Шанс '+String(result.winnerChance||0)+'%';
     if(pvpResultPrize)pvpResultPrize.textContent='+'+String(result.prize||0);
