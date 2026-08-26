@@ -1239,6 +1239,15 @@ function secureRandomUnit() {
   return crypto.randomBytes(6).readUIntBE(0, 6) / 281474976710656;
 }
 
+let pvpLastLogSignature = '';
+function logPvpTransition(state) {
+  const round = state?.round || {};
+  const signature = [round.id, round.phase, round.countdownEndsAt || 0, state?.bank || 0, state?.lastResult?.roundId || 0].join(':');
+  if (!round.id || signature === pvpLastLogSignature) return;
+  pvpLastLogSignature = signature;
+  console.info(`🎯 PVP round=${round.id} phase=${round.phase || '-'} bank=${Number(state?.bank || 0)} deadline=${round.countdownEndsAt || '-'} result=${state?.lastResult?.roundId || '-'}`);
+}
+
 async function serializePvpState() {
   // The database function locks the current round and only settles it after the
   // common server-side deadline. Browser clocks never choose a winner.
@@ -1246,7 +1255,9 @@ async function serializePvpState() {
     p_random_draw: secureRandomUnit(),
   });
   if (error) throw new Error(error.message || 'PVP state unavailable');
-  return { ...(data || {}), serverNow: Date.now() };
+  const state = { ...(data || {}), serverNow: Date.now() };
+  logPvpTransition(state);
+  return state;
 }
 
 function secureRandomIndex(length) {
@@ -2790,7 +2801,10 @@ app.post('/api/pvp/bet', async (req, res) => {
       p_amount: amount,
     });
     if (error) throw new Error(error.message || 'PVP bet failed');
-    return res.json({ ok: true, ...(data || {}), serverNow: Date.now() });
+    const state = { ...(data || {}), serverNow: Date.now() };
+    logPvpTransition(state);
+    console.info(`🎯 PVP bet user=${user.id} amount=${amount} round=${state?.round?.id || '-'} bank=${Number(state?.bank || 0)}`);
+    return res.json({ ok: true, ...state });
   } catch (error) {
     return res.status(400).json({ error: error.message || 'PVP bet failed' });
   }
