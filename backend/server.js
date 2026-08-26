@@ -2140,11 +2140,13 @@ app.post('/api/crash/prize/resolve', async (req, res) => {
   if (!user) return;
   const action = String(req.body.action || '').trim();
   if (!['sell', 'claim'].includes(action)) return res.status(400).json({ error: 'Bad action' });
+  let resolvedData = null;
   try {
     const { data, error } = await sb.rpc('pending_prize_resolve', {
       p_user_id: Number(user.id), p_action: action,
     });
     if (error) throw new Error(error.message || 'Prize resolve failed');
+    resolvedData = data;
     const claimedDb = data?.claimedGift || null;
     const claimedGift = claimedDb ? {
       id: Number(claimedDb.id), giftId: String(claimedDb.gift_id || ''), name: String(claimedDb.gift_name || 'Gift'),
@@ -2157,7 +2159,28 @@ app.post('/api/crash/prize/resolve', async (req, res) => {
       items, state,
     });
   } catch (error) {
-    return res.status(400).json({ error: error.message || 'Prize resolve failed' });
+    const message = String(error?.message || 'Prize resolve failed');
+    // Повторный запрос после успешного применения RPC (например, WebView потерял ответ)
+    // не должен показывать пользователю ошибку: возвращаем текущее подтверждённое состояние.
+    if (resolvedData || /no pending|pending.*prize.*(?:not|missing)|already.*resolv|nothing.*resolv/i.test(message)) {
+      let items = []; let state = null; let currentBalance = Number(resolvedData?.newBalance || 0);
+      try {
+        [items, state, currentBalance] = await Promise.all([
+          getUserInventory(user.id),
+          serializeCrashState(user.id),
+          getUserBalance(user.id),
+        ]);
+      } catch (reconcileError) {
+        console.warn('crash prize resolve reconciliation failed:', reconcileError?.message || reconcileError);
+      }
+      return res.json({
+        ok: true, alreadyResolved: true, action,
+        newBalance: Number(currentBalance || 0),
+        claimedGift: resolvedData?.claimedGift || null,
+        items: Array.isArray(items) ? items : [], state,
+      });
+    }
+    return res.status(400).json({ error: message });
   }
 });
 
