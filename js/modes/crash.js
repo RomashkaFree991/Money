@@ -32,6 +32,10 @@
   let crashRealtimeTimer=null;
   let crashRealtimeFrame=null;
   let crashRealtimeState=null;
+  // Числа в карточках достаточно обновлять 10 раз в секунду. Пересборка DOM на
+  // каждом animation frame отнимала кадры у ракеты и делала множитель рваным.
+  let crashLiveValuesPaintAt=0;
+  let crashLivePlayerLastAmount=-1;
   let crashStateFailCount=0;
   let crashServerOffsetMs=0;
   let crashStateRequestController=null;
@@ -45,6 +49,8 @@
   let crashDisplayPhase='countdown';
   let crashCountdownIntroUntil=0;
   let lastCrashDisplayState=null;
+  const crashRoundHashEl=document.getElementById('crashRoundHash');
+  const crashRoundHashValueEl=document.getElementById('crashRoundHashValue');
   const CRASH_WARM_STATE_KEY='giftpep.crash.warm.v1';
   const CRASH_WARM_STATE_MAX_AGE_MS=45_000;
 
@@ -64,6 +70,7 @@
       if(!Number(state.roundId))return false;
       crashRealtimeState=state;
       crashServerOffsetMs=Number(state.serverNow||Date.now())-Date.now();
+      renderCrashRoundHash(state.roundHash);
       renderCrashHistoryState(state);
       renderCrashOtherBets(state.activeBets||[],state);
       updateCrashWaitLabel(state.betsCount||0);
@@ -172,7 +179,18 @@
     const shouldShow=!hasPlayerCard&&!crashPrizePending&&Number(betsCount||0)===0;
     crashWaitText.textContent=shouldShow ? t('waitingBets') : '';
     crashWaitText.style.display=shouldShow ? 'block' : 'none';
+    // Hash расположен под блоком ставок и не зависит от наличия игроков.
+    if(crashRoundHashEl)crashRoundHashEl.hidden=!crashRoundHashEl.dataset.hash;
   }
+  function renderCrashRoundHash(hash){
+    const value=String(hash||'').trim();
+    if(crashRoundHashValueEl)crashRoundHashValueEl.textContent=value?value.slice(0,17)+'…'+value.slice(-6):'';
+    if(crashRoundHashEl){
+      crashRoundHashEl.dataset.hash=value;
+      crashRoundHashEl.hidden=!value;
+    }
+  }
+  crashRoundHashEl?.addEventListener('click',()=>copyRoundHash(crashRoundHashEl.dataset.hash,crashRoundHashEl));
   function renderCrashOtherBets(list=[], state=null){
     if(!crashOthers)return;
     const phase=String(state?.phase||'countdown');
@@ -245,6 +263,9 @@
     });
   }
     function updateCrashOtherBetsLive(state){
+    const paintNow=Date.now();
+    if(paintNow-crashLiveValuesPaintAt<100)return;
+    crashLiveValuesPaintAt=paintNow;
     const multiplier=computeCrashMultiplier(state);
     const phase=String(state?.phase||'countdown');
     crashOthers.querySelectorAll('.crash-bet-cloud').forEach(row=>{
@@ -266,17 +287,12 @@
         row.classList.add('loss-state');
       }
       const amountEl=row.querySelector('.crash-bet-cloud-amount');
-      if(amountEl) amountEl.innerHTML=formatStars(value)+' <img src="assets/star.png" alt="">';
-      // Картинку подарка трогаем только в LIVE-фазе (мультипликатор реально растёт),
-      // а в countdown — оставляем фиксированную (привязана к ставке).
-      if(phase==='live'){
-        const gift=withCrashGiftValue(getCrashPreviewGift(value),value);
-        row.dataset.giftId=String(gift?.id||gift?.giftId||'');
-        row.dataset.giftName=String(gift?.name||'');
-        row.dataset.giftImage=String(resolveGiftImage(gift)||'');
-        const rightEl=row.querySelector('.crash-bet-cloud-right');
-        if(rightEl) updateCrashGiftBadge(rightEl,gift);
+      if(amountEl&&Number(amountEl.dataset.value)!==value){
+        amountEl.dataset.value=String(value);
+        amountEl.innerHTML=formatStars(value)+' <img src="assets/star.png" alt="">';
       }
+      // Превью подарка привязано к первоначальной ставке. Его замена в каждом
+      // кадре вызывала лишние перерасчёты layout и не влияет на выплату.
     });
   }
   let crashPrevHistoryFirst='';
@@ -311,17 +327,17 @@
     const snapshot=Math.max(1,Number(state.lastCrashMultiplier||state.liveMultiplier||1));
     if(state.phase!=='live') return snapshot;
     const growth=Math.max(1000,Number(state.growthMs||8000));
-    const snapshotAt=Number(state.serverNow||0);
-    if(snapshotAt>0 && Number.isFinite(snapshot)){
-      // The backend gives us a fresh live snapshot every poll. Extrapolate only a
-      // short distance from it. If the API temporarily disappears, freeze instead
-      // of letting exp() run for minutes and render x1e+30.
-      const ahead=Math.max(0,Math.min(1600,now-snapshotAt));
-      return snapshot*Math.exp(ahead/growth);
+    const startAt=Number(state.liveStartAt||0);
+    if(startAt>0){
+      // liveStartAt — общая серверная отметка. Она позволяет плавно продолжать
+      // анимацию при медленном ответе API вместо прежней остановки через 1.6 сек.
+      // Сервер остаётся единственным источником завершения раунда и выплаты.
+      const elapsed=Math.max(0,Math.min(30000,now-startAt));
+      return Math.max(snapshot,Math.exp(elapsed/growth));
     }
-    const startAt=Number(state.liveStartAt||state.countdownEndsAt||now);
-    const elapsed=Math.max(0,Math.min(30000,now-startAt));
-    return Math.exp(elapsed/growth);
+    const snapshotAt=Number(state.serverNow||0);
+    const ahead=Math.max(0,Math.min(7500,now-snapshotAt));
+    return snapshot*Math.exp(ahead/growth);
   }
   function stopCrashRocket(){
     crashRocket.classList.remove('visible');
@@ -1133,9 +1149,12 @@
         betBtn.textContent=crashPrizePending?t('giftOpened'):t('placeBet');
       }else if(crashBetActive){
         const win=Math.floor(crashBetAmount*crashMultiplier);
-        renderCrashPlayerWin(win,null);
+        if(win!==crashLivePlayerLastAmount){
+          crashLivePlayerLastAmount=win;
+          renderCrashPlayerWin(win,null);
+          betBtn.innerHTML=t('cashOut')+' '+formatStars(win)+' <img src="assets/star.png" alt="">';
+        }
         betBtn.classList.remove('dim');
-        betBtn.innerHTML=t('cashOut')+' '+formatStars(win)+' <img src="assets/star.png" alt="">';
       }else if(!crashPrizePending){
         betBtn.classList.add('dim');
         betBtn.textContent=t('placeBet');
@@ -1220,6 +1239,7 @@
       crashStateFailCount=0;
       const prevState=crashRealtimeState;
       crashRealtimeState=data;
+      renderCrashRoundHash(data.roundHash);
       saveCrashWarmState(data);
       applyCrashRoundBoundary(prevState,data);
       syncCrashViewerBet(data);
@@ -1295,7 +1315,7 @@
 
   async function placeBet(amount){
     if(!crashRealtimeState||balance<amount||crashPrizePending)return false;
-    if(Number(amount)<1) return false;
+    if(Number(amount)<10) return false;
     const phase=deriveCrashDisplayPhase(crashRealtimeState);
     if(phase!=='countdown') return false;
     const prevBalance=balance;
@@ -1318,6 +1338,7 @@
     crashSettledPayout=0;
     crashBetActive=true;
     crashBetAmount=amount;
+    crashLivePlayerLastAmount=-1;
     crashPrizeGift=null;
     crashPrizePending=false;
     setCrashPlayerState(null);
@@ -1350,7 +1371,9 @@
         renderCrashOtherBets(data.state.activeBets||[],data.state);
         updateCrashWaitLabel(data.state.betsCount||0);
       }else{
-        await refreshCrashState(true);
+        // Ставка уже принята транзакцией; общий снимок не должен задерживать
+        // интерфейс ещё на несколько секунд при медленном Supabase.
+        refreshCrashState(true).catch(()=>{});
       }
       if(Number.isFinite(Number(data?.newBalance))) updateBalance(Number(data.newBalance));
       crashBetSyncPending=false;
