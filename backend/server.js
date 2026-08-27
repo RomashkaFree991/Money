@@ -77,6 +77,25 @@ app.use('/api', (req, res, next) => {
   });
   next();
 });
+app.use('/api/crash', (req, res, next) => {
+  const startedAt = Date.now();
+  res.once('finish', () => {
+    const elapsedMs = Date.now() - startedAt;
+    const isCashout = req.path === '/cashout';
+    const isBet = req.path === '/bet';
+    if (isCashout || isBet || res.statusCode >= 400 || elapsedMs >= 700) {
+      const level = res.statusCode >= 400 || elapsedMs >= 1500 ? 'warn' : 'info';
+      console[level]('🚀 CRASH timing', {
+        method: req.method,
+        path: req.path,
+        status: res.statusCode,
+        elapsedMs,
+        slow: elapsedMs >= 700,
+      });
+    }
+  });
+  next();
+});
 app.use('/api', rateLimit({
   windowMs: 60_000,
   limit: 300,
@@ -154,8 +173,9 @@ async function clearUserBan(userId) {
 const WITHDRAW_FEE_STARS = 25;
 // v8.16: минимальный депозит, необходимый чтобы юзер мог выводить подарки.
 const WITHDRAW_MIN_DEPOSIT_STARS = Math.max(50, Number(process.env.WITHDRAW_MIN_DEPOSIT_STARS || 50));
-// v8.16: минимальная ставка в краше.
-const CRASH_MIN_BET = Number(process.env.CRASH_MIN_BET || 1);
+// Минимальная ставка для Crash и PVP.
+const CRASH_MIN_BET = Math.max(10, Number(process.env.CRASH_MIN_BET || 10));
+const PVP_MIN_BET = Math.max(10, Number(process.env.PVP_MIN_BET || 10));
 const WITHDRAW_INTENT_TTL_MS = 15 * 60 * 1000;
 
 // Кеш рыночных цен не является финансовым источником истины и может жить в RAM.
@@ -2821,8 +2841,8 @@ app.post('/api/pvp/bet', async (req, res) => {
   const user = requireUser(req, res);
   if (!user) return;
   const amount = parseInt(req.body?.amount, 10);
-  if (!Number.isFinite(amount) || amount < 1) {
-    return res.status(400).json({ error: 'Минимальная ставка 1⭐' });
+  if (!Number.isFinite(amount) || amount < PVP_MIN_BET) {
+    return res.status(400).json({ error: `Минимальная ставка ${PVP_MIN_BET}⭐` });
   }
   try {
     const { data, error } = await sb.rpc('pvp_place_bet', {
@@ -2933,6 +2953,14 @@ app.post('/api/crash/cashout', async (req, res) => {
     const state = await getCrashInternalState();
     if (roundId !== state.roundId || !state.liveStartAt || !state.crashAt
         || requestReceivedAtMs < state.liveStartAt || requestReceivedAtMs >= state.crashAt) {
+      console.warn('🚀 CRASH cashout rejected', {
+        userId: Number(user.id),
+        roundId,
+        receivedAtMs: requestReceivedAtMs,
+        liveStartAt: Number(state.liveStartAt || 0),
+        crashAt: Number(state.crashAt || 0),
+        lateByMs: state.crashAt ? Math.max(0, requestReceivedAtMs - Number(state.crashAt)) : null,
+      });
       return res.status(409).json({
         error: 'Round is not live',
         code: 'CRASH_TOO_LATE',
@@ -3035,7 +3063,8 @@ app.post('/api/crash/cashout', async (req, res) => {
     console.log(
       `🎁 CRASH CASHOUT user=${user.id} round=${roundId} requested=${Number(req.body?.requestedPayout || 0)} `
       + `max=${serverMaxPayout} settleAt=${settleAtMs} payout=${Number(data?.payout || 0)} `
-      + `kind=${payoutKind} gift=${pendingPrize?.name || '-'} balance=${Number(data?.newBalance || 0)}`
+      + `kind=${payoutKind} gift=${pendingPrize?.name || '-'} balance=${Number(data?.newBalance || 0)} `
+      + `arrivalBeforeCrashMs=${Math.max(0, Number(state.crashAt || 0) - requestReceivedAtMs)} routeElapsedMs=${Date.now() - requestReceivedAtMs}`
     );
 
     return res.json({
