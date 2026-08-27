@@ -24,6 +24,7 @@
   let crashRoundToken=0;
 
   let crashLastCountdownDigit=-1;
+  let crashCountdownRoundId=0;
   let crashDigitAnimTimeout=null;
   let crashBetActive=false;
   let crashBetAmount=0;
@@ -327,16 +328,11 @@
     const snapshot=Math.max(1,Number(state.lastCrashMultiplier||state.liveMultiplier||1));
     if(state.phase!=='live') return snapshot;
     const growth=Math.max(1000,Number(state.growthMs||8000));
-    const startAt=Number(state.liveStartAt||0);
-    if(startAt>0){
-      // liveStartAt — общая серверная отметка. Она позволяет плавно продолжать
-      // анимацию при медленном ответе API вместо прежней остановки через 1.6 сек.
-      // Сервер остаётся единственным источником завершения раунда и выплаты.
-      const elapsed=Math.max(0,Math.min(30000,now-startAt));
-      return Math.max(snapshot,Math.exp(elapsed/growth));
-    }
     const snapshotAt=Number(state.serverNow||0);
-    const ahead=Math.max(0,Math.min(7500,now-snapshotAt));
+    // Браузер не знает секретную точку crashAt. Поэтому он может продолжать
+    // число лишь коротко от последнего серверного снимка: иначе UI способен
+    // показать 13.65x, когда серверный раунд уже завершился на 3.84x.
+    const ahead=Math.max(0,Math.min(1200,now-snapshotAt));
     return snapshot*Math.exp(ahead/growth);
   }
   function stopCrashRocket(){
@@ -359,10 +355,9 @@
     if(!state) return 'countdown';
     const phase=String(state.phase||'countdown');
     const countdownEndsAt=Number(state.countdownEndsAt||0);
-    // Never synthesize the next countdown from an old ended round. The old
-    // countdownEndsAt belongs to the previous round and used to render 1 -> 10.
-    // Wait until crash_sync_state returns the real new round with its own timer.
-    if(phase==='countdown' && countdownEndsAt && now>=countdownEndsAt) return 'live';
+    // Не синтезируем live-фазу в браузере. Только сервер знает crashAt; после
+    // нуля показываем переход и ждём подтверждённый следующий снимок.
+    if(phase==='countdown' && countdownEndsAt && now>=countdownEndsAt) return 'transition';
     return phase;
   }
 
@@ -1061,6 +1056,7 @@
     crashCountdownIntroUntil=0;
     if(crashDigitAnimTimeout){clearTimeout(crashDigitAnimTimeout);crashDigitAnimTimeout=null}
     crashLastCountdownDigit=-1;
+    crashCountdownRoundId=Number(nextState.roundId||0);
     crashTimer.textContent='';
     crashTimer.className='crash-timer';
 
@@ -1106,9 +1102,16 @@
     crashRoundLive=displayPhase==='live';
     updateCrashOtherBetsLive({...state, phase: displayPhase});
 
-    if(displayPhase==='countdown'){
+    if(displayPhase==='countdown'||displayPhase==='transition'){
+      const roundId=Number(state.roundId||0);
+      if(roundId!==crashCountdownRoundId){
+        crashCountdownRoundId=roundId;
+        crashLastCountdownDigit=-1;
+      }
       const endsAt=Number(state.countdownEndsAt||state.liveStartAt||0);
-      const count=Math.min(10,Math.max(1,Math.ceil(Math.max(0,endsAt-now)/1000)));
+      const calculated=displayPhase==='transition'?0:Math.min(10,Math.max(0,Math.ceil(Math.max(0,endsAt-now)/1000)));
+      // Внутри одного roundId секунды могут только уменьшаться.
+      const count=crashLastCountdownDigit>=0?Math.min(crashLastCountdownDigit,calculated):calculated;
       crashTimer.style.display='';
       if(count!==crashLastCountdownDigit){
         if(crashDigitAnimTimeout){clearTimeout(crashDigitAnimTimeout);crashDigitAnimTimeout=null}
@@ -1121,6 +1124,17 @@
       stopCrashRocket();
       lossEl.className='crash-loss';
       crashMultiplier=1.0;
+      if(displayPhase==='transition'){
+        // После нуля запрашиваем подтверждённую фазу не чаще четырёх раз в секунду.
+        if(Date.now()>=crashBoundaryRefreshDueAt){
+          crashBoundaryRefreshDueAt=Date.now()+250;
+          refreshCrashState(true);
+        }
+        crashRoundLocked=true;
+        betBtn.classList.add('dim');
+        betBtn.textContent='Раунд начинается';
+        return;
+      }
       if(crashPrizePending){ crashLivePill.textContent=t('giftReady'); closeBet(); }
       else crashLivePill.textContent=t('waiting');
       if(crashBetActive){

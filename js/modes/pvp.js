@@ -15,10 +15,17 @@
   const pvpResultCountdown=document.getElementById('pvpResultCountdown');
   const pvpResultProgressFill=document.getElementById('pvpResultProgressFill');
   const pvpResultClose=document.getElementById('pvpResultClose');
+  const pvpRoundHashEl=document.getElementById('pvpRoundHash');
+  const pvpRoundHashValueEl=document.getElementById('pvpRoundHashValue');
   const PVP_COLORS=['#FF9500','#0A84FF','#FF3B87','#34C759','#AF52DE','#5AC8FA','#FFCC00','#64D2FF'];
   let pvpPollTimer=null;
   let pvpClockTimer=null;
   let pvpStateRequest=false;
+  let pvpStateRequestToken=0;
+  let pvpStateRequestController=null;
+  let pvpLastAppliedServerNow=0;
+  let pvpCountdownRoundId=0;
+  let pvpLastCountdownValue=-1;
   let pvpState=null;
   let pvpPlayers=[];
   let pvpWheelRotation=0;
@@ -45,10 +52,35 @@
       pvpState=stored.state;
       pvpServerOffsetMs=Number(pvpState.serverNow||Date.now())-Date.now();
       pvpPlayers=Array.isArray(pvpState.bets)?pvpState.bets:[];
+      renderPvpRoundHash(pvpState.roundHash);
+      if(!pvpState.roundHash)restorePvpRoundHash(pvpState.round);
       renderPvpBet();renderPvpClock();
       return true;
     }catch(_){return false;}
   }
+
+  function renderPvpRoundHash(hash){
+    const value=String(hash||'').trim();
+    if(pvpRoundHashValueEl)pvpRoundHashValueEl.textContent=value?value.slice(0,17)+'…'+value.slice(-6):'';
+    if(pvpRoundHashEl){
+      pvpRoundHashEl.dataset.hash=value;
+      pvpRoundHashEl.hidden=!value;
+    }
+  }
+  async function restorePvpRoundHash(round){
+    const roundId=Number(round?.id||0);
+    const anchor=Number(round?.countdownEndsAt||round?.createdAt||round?.created_at||0);
+    if(!roundId||!anchor||!window.crypto?.subtle)return;
+    try{
+      // Формула намеренно совпадает с publicRoundHash() на сервере. Она нужна
+      // только для старого localStorage-снимка, в котором ещё нет roundHash.
+      const raw='giftpep:pvp:'+roundId+':'+anchor;
+      const digest=await window.crypto.subtle.digest('SHA-256',new window.TextEncoder().encode(raw));
+      const value=Array.from(new Uint8Array(digest)).map(byte=>byte.toString(16).padStart(2,'0')).join('');
+      if(Number(pvpState?.round?.id||0)===roundId&&!pvpRoundHashEl?.dataset.hash)renderPvpRoundHash(value);
+    }catch(_){ }
+  }
+  pvpRoundHashEl?.addEventListener('click',()=>copyRoundHash(pvpRoundHashEl.dataset.hash,pvpRoundHashEl));
 
   function pvpTotalBank(){return pvpPlayers.reduce((total,player)=>total+Math.max(0,Number(player.amount||0)),0);}
   function pvpChance(player){const total=pvpTotalBank();return total?Number(player.amount||0)*100/total:0;}
@@ -118,15 +150,26 @@
     if(!pvpTimerEl||!pvpState?.round)return;
     syncPvpBetAvailability();
     const round=pvpState.round;
+    const roundId=Number(round.id||0);
+    if(roundId!==pvpCountdownRoundId){
+      pvpCountdownRoundId=roundId;
+      pvpLastCountdownValue=-1;
+    }
     if(round.phase!=='countdown'){
       pvpWheelEl?.classList.remove('running');
+      pvpLastCountdownValue=-1;
       pvpTimerEl.classList.add('waiting');pvpTimerEl.textContent='Ожидание';
       if(pvpGameTitleEl)pvpGameTitleEl.textContent='Игра #'+round.id;
       return;
     }
     const left=Math.max(0,Number(round.countdownEndsAt||0)-(Date.now()+pvpServerOffsetMs));
+    const calculated=Math.ceil(left/1000);
+    // Даже если поздний HTTP-ответ пришёл после более нового, цифра в том же
+    // серверном раунде не увеличивается и не повторяется назад.
+    const shown=pvpLastCountdownValue>=0?Math.min(pvpLastCountdownValue,calculated):calculated;
+    pvpLastCountdownValue=shown;
     pvpWheelEl?.classList.add('running');
-    pvpTimerEl.classList.remove('waiting');pvpTimerEl.textContent=String(Math.ceil(left/1000));
+    pvpTimerEl.classList.remove('waiting');pvpTimerEl.textContent=String(shown);
     if(pvpGameTitleEl)pvpGameTitleEl.textContent='Игра #'+round.id;
   }
   function resetPvpWheel(){
@@ -207,10 +250,20 @@
   }
   function applyPvpState(nextState){
     if(!nextState?.round)return;
-    if(Number(nextState.serverNow||0))pvpServerOffsetMs=Number(nextState.serverNow)-Date.now();
+    const nextRoundId=Number(nextState.round.id||0);
     const previousRoundId=Number(pvpState?.round?.id||0);
+    const stamp=Number(nextState.serverNow||0);
+    // Не даём старому ответу перезаписать новый раунд или откатить его часы.
+    if(previousRoundId&&nextRoundId<previousRoundId)return;
+    if(nextRoundId===previousRoundId&&stamp&&pvpLastAppliedServerNow&&stamp<pvpLastAppliedServerNow)return;
+    if(stamp){
+      pvpLastAppliedServerNow=Math.max(pvpLastAppliedServerNow,stamp);
+      pvpServerOffsetMs=stamp-Date.now();
+    }
     pvpState=nextState;
     savePvpWarmState(nextState);
+    renderPvpRoundHash(nextState.roundHash);
+    if(!nextState.roundHash)restorePvpRoundHash(nextState.round);
     if(!pvpResultShowing){
       pvpPlayers=Array.isArray(nextState.bets)?nextState.bets:[];
       if(previousRoundId&&previousRoundId!==Number(nextState.round.id))resetPvpWheel();
@@ -221,14 +274,26 @@
   }
   async function refreshPvpState(allowBackground=false){
     if(pvpStateRequest||(!allowBackground&&currentTab!=='pvp'))return;
+    const token=++pvpStateRequestToken;
+    const controller=new AbortController();
+    pvpStateRequestController=controller;
     pvpStateRequest=true;
     try{
-      const response=await fetch(API_BASE+'/api/pvp/state?ts='+Date.now(),{headers:{'x-init-data':tg?.initData||''},cache:'no-store'});
+      const response=await fetch(API_BASE+'/api/pvp/state?ts='+Date.now(),{
+        headers:{'x-init-data':tg?.initData||''},cache:'no-store',signal:controller.signal
+      });
       const data=await readApiJson(response);
+      if(token!==pvpStateRequestToken)return;
       if(!response.ok)throw new Error(data.error||'PVP unavailable');
       applyPvpState(data);
-    }catch(error){console.warn('PVP state error:',error?.message||error);}
-    finally{pvpStateRequest=false;}
+    }catch(error){
+      if(error?.name!=='AbortError')console.warn('PVP state error:',error?.message||error);
+    }finally{
+      if(token===pvpStateRequestToken){
+        pvpStateRequest=false;
+        if(pvpStateRequestController===controller)pvpStateRequestController=null;
+      }
+    }
   }
   function startPvpDemo(){
     if(pvpPollTimer)return;
@@ -250,5 +315,10 @@
     pvpResultOverlay?.classList.remove('open');
     pvpResultShowing=false;
     resetPvpWheel();
+    if(pvpStateRequestController){
+      try{pvpStateRequestController.abort()}catch(_){}
+      pvpStateRequestController=null;
+    }
+    pvpStateRequestToken+=1;
     pvpStateRequest=false;
   }
