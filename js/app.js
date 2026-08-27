@@ -41,7 +41,10 @@
       ensureUpgradeRedo();
     }else if(tab==='profile'){
       ensureProfileLottie();
-      Promise.all([refreshBalance(),refreshReferral(true),refreshInventory(true)]).catch(()=>{});
+      // Последний профиль уже показан из кэша при initUser. Не ждём второй
+      // balance SELECT и не заменяем видимый интерфейс пустым состоянием.
+      restoreProfileWarmState();
+      Promise.all([refreshReferral(),refreshInventory()]).catch(()=>{});
     }
   }
   requestAnimationFrame(()=>{
@@ -114,13 +117,16 @@
       currentLang==='en'?'Loading your game data':'Загружаем данные игры'
     );
     try{
-      // На первом экране грузим только то, что влияет на игры. Top, рефералы,
-      // инвентарь и админка создавали очередь Supabase и оставляли Crash/PVP пустыми.
+      // Сначала показываем user-scoped warm-кэш. Для первого входа подождём
+      // первичные данные в стартовом экране: профиль не должен открываться с
+      // нулевым балансом и пустым инвентарём, которые через секунды «прыгают».
       await bootTask(()=>initUser());
       await Promise.allSettled([
-        bootTask(()=>refreshBalance(),6500),
+        // /api/init уже применяет data.balance; не создаём второй медленный SELECT users.
         bootTask(()=>refreshCrashState(true,false,crashViewSession,true),6500),
         bootTask(()=>refreshPvpState(true),6500),
+        bootTask(()=>refreshInventory(true),6500),
+        bootTask(()=>refreshReferral(true),6500),
         preloadImage('assets/Crash_banner.png'),
         preloadImage('assets/PVP_Arena_banner.png'),
         preloadImage('assets/Upgrade_banner.png'),
@@ -132,10 +138,8 @@
       }
       hideBootState();
 
-      // Второстепенные данные запускаем лишь после первого нарисованного экрана.
+      // Top и цены не должны задерживать первый экран. Профиль уже подготовлен выше.
       runAfterFirstPaint(()=>Promise.allSettled([
-        refreshInventory(true),
-        refreshReferral(true),
         refreshTop(true),
         refreshMarketPrices(),
       ]));
@@ -572,6 +576,7 @@
       const data=await resp.json();
       if(data.balance!==undefined){
         updateBalance(data.balance);
+        saveProfileWarmState();
         return data;
       }
     }catch(e){console.warn('Balance refresh failed:',e.message)}
@@ -625,6 +630,7 @@
             refreshTop(true).catch(()=>{});
             refreshBalance().catch(()=>{});
           }
+          saveProfileWarmState();
           if(data.pendingPrize&&!crashPrizeResolveBusy){
             enterPendingCrashPrize(data.pendingPrize,crashSettledPayout,crashBetAmount,{autoOpen:false});
           }else if(crashPrizePending&&!crashBetActive&&!crashPrizeResolveBusy){
@@ -656,6 +662,7 @@
           referralCode=String(data.referrerLink||referralCode||'');
           lastReferralRefreshAt=Date.now();
           updateReferralUI();
+          saveProfileWarmState();
           return data;
         }
       }catch(e){console.warn('Referral refresh failed:',e.message)}
