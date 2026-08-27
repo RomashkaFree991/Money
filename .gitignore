@@ -1,0 +1,20 @@
+# Dependencies and generated checks
+node_modules/
+.tmp/
+
+# Local secrets and Telegram user-account sessions
+.env
+.env.*
+!.env.example
+*.session
+tg-user.session
+backend/tg-user.session
+
+# Local backups and runtime caches
+backups/
+data/market_prices.json
+
+# Editor and operating-system files
+.DS_Store
+*.swp
+*.swo
