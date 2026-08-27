@@ -79,6 +79,8 @@
       photoUrl=u.photo_url||'';
       tgUserId=u.id;
       applyUserToUI();
+      // Пользовательский кэш показывается только для того же Telegram ID.
+      restoreProfileWarmState();
     }
     try{
       const resp=await fetch(API_BASE+'/api/init',{
@@ -110,6 +112,11 @@
         tgUserId=data.id;
         updateBalance(data.balance??0);
         applyUserToUI();
+        // init уже прошёл проверку подписи Telegram и сервер определил роль.
+        // Это влияет только на видимость кнопки; все admin API всё равно защищены.
+        const adminButton=document.getElementById('adminPanelBtn');
+        if(adminButton&&data.isAdmin===true)adminButton.style.display='flex';
+        saveProfileWarmState();
       }
     }catch(e){console.warn('Backend init failed:',e.message)}
   }
@@ -236,6 +243,46 @@
   let referralRefreshInFlight=null;
   let lastInventoryRefreshAt=0;
   let lastReferralRefreshAt=0;
+  const PROFILE_WARM_STATE_PREFIX='giftpep.profile.warm.v1.';
+  const PROFILE_WARM_STATE_MAX_AGE_MS=15*60*1000;
+
+  function profileWarmStateKey(){
+    const id=Number(tgUserId||0);
+    return id>0?PROFILE_WARM_STATE_PREFIX+id:'';
+  }
+  function saveProfileWarmState(){
+    const key=profileWarmStateKey();
+    if(!key)return;
+    try{
+      localStorage.setItem(key,JSON.stringify({
+        savedAt:Date.now(),balance:Number(balance||0),
+        items:(inventoryItems||[]).slice(0,100),
+        referral:{invited:Number(referralInvited||0),earned:Number(referralEarned||0),code:String(referralCode||'')},
+      }));
+    }catch(_){ }
+  }
+  function restoreProfileWarmState(){
+    const key=profileWarmStateKey();
+    if(!key)return false;
+    try{
+      const cached=JSON.parse(localStorage.getItem(key)||'null');
+      if(!cached||Date.now()-Number(cached.savedAt||0)>PROFILE_WARM_STATE_MAX_AGE_MS){
+        localStorage.removeItem(key);return false;
+      }
+      if(Number.isFinite(Number(cached.balance)))updateBalance(Number(cached.balance));
+      if(Array.isArray(cached.items)){
+        inventoryItems=cached.items.map(item=>normalizeInventoryGift(item)).filter(Boolean);
+        renderInventory();
+      }
+      if(cached.referral){
+        referralInvited=Number(cached.referral.invited||0);
+        referralEarned=Number(cached.referral.earned||0);
+        referralCode=String(cached.referral.code||'');
+        updateReferralUI();
+      }
+      return true;
+    }catch(_){return false;}
+  }
   // Рыночные цены нужны только внутри игр и инвентаря; не блокируем ими первый экран Game.
   async function refreshMarketPrices(){
     try{
@@ -996,4 +1043,20 @@
     const shareUrl='https://t.me/share/url?url='+encodeURIComponent(buildReferralLink());
     if(tg?.openTelegramLink) tg.openTelegramLink(shareUrl);
     else window.open(shareUrl,'_blank');
+  }
+
+  async function copyRoundHash(hash, fallbackEl=null){
+    const value=String(hash||'').trim();
+    if(!value)return;
+    try{
+      if(navigator.clipboard?.writeText) await navigator.clipboard.writeText(value);
+      else if(fallbackEl){
+        const input=document.createElement('textarea');
+        input.value=value;input.style.cssText='position:fixed;opacity:0;pointer-events:none';
+        document.body.append(input);input.select();document.execCommand('copy');input.remove();
+      }
+      if(tg?.showAlert) tg.showAlert(currentLang==='en'?'Hash copied':'Hash скопирован');
+    }catch(error){
+      console.warn('Hash copy failed:',error?.message||error);
+    }
   }
