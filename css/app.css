@@ -276,6 +276,12 @@
     background:rgba(255,255,255,.06);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;
   }
   .referral-copy-btn svg{width:20px;height:20px}
+  .referral-required-note{
+    display:flex;align-items:center;justify-content:center;min-height:28px;
+    margin-top:-5px;padding:0 10px;border-radius:10px;
+    background:rgba(255,255,255,.055);color:rgba(255,255,255,.60);
+    font-size:11px;font-weight:650;letter-spacing:.01em;text-align:center;
+  }
   .referral-invite-btn{
     width:100%;height:50px;border:none;border-radius:999px;cursor:pointer;
     background:#007AFF;color:#fff;font-size:15px;font-weight:700;font-family:inherit;
