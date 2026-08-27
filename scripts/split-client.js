@@ -53,7 +53,12 @@ if (previousEnd !== js.length) throw new Error('Unassigned client JavaScript rem
 
 const cssPath = path.join(root, 'css', 'app.css');
 fs.mkdirSync(path.dirname(cssPath), { recursive: true });
-fs.writeFileSync(cssPath, css.replace(/^\n+|\n+$/g, '') + '\n');
+// CSS moved from the HTML root into css/, so root-level assets must keep
+// resolving from the project root instead of css/assets/.
+const modularCss = css
+  .replace(/url\((['"]?)assets\//g, 'url($1../assets/')
+  .replace(/url\((['"]?)svg\//g, 'url($1../svg/');
+fs.writeFileSync(cssPath, modularCss.replace(/^\n+|\n+$/g, '') + '\n');
 
 const styleReplacement = '\n  <link rel="stylesheet" href="css/app.css">';
 const scriptReplacement = '\n  <script defer src="js/core/runtime.js"></script>\n  <script defer src="js/core/state.js"></script>\n  <script defer src="js/modes/crash.js"></script>\n  <script defer src="js/modes/pvp.js"></script>\n  <script defer src="js/app.js"></script>';
