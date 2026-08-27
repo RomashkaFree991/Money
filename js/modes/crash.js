@@ -45,6 +45,31 @@
   let crashDisplayPhase='countdown';
   let crashCountdownIntroUntil=0;
   let lastCrashDisplayState=null;
+  const CRASH_WARM_STATE_KEY='giftpep.crash.warm.v1';
+  const CRASH_WARM_STATE_MAX_AGE_MS=45_000;
+
+  function saveCrashWarmState(state){
+    try{
+      // Pending prize и viewerBet не сохраняем: это персональные данные текущего запуска.
+      const safeState={...state,pendingPrize:null,viewerBet:null};
+      localStorage.setItem(CRASH_WARM_STATE_KEY,JSON.stringify({savedAt:Date.now(),state:safeState}));
+    }catch(_){}
+  }
+  function restoreCrashWarmState(){
+    if(crashRealtimeState)return true;
+    try{
+      const stored=JSON.parse(localStorage.getItem(CRASH_WARM_STATE_KEY)||'null');
+      if(!stored?.state||Date.now()-Number(stored.savedAt||0)>CRASH_WARM_STATE_MAX_AGE_MS)return false;
+      const state=stored.state;
+      if(!Number(state.roundId))return false;
+      crashRealtimeState=state;
+      crashServerOffsetMs=Number(state.serverNow||Date.now())-Date.now();
+      renderCrashHistoryState(state);
+      renderCrashOtherBets(state.activeBets||[],state);
+      updateCrashWaitLabel(state.betsCount||0);
+      return true;
+    }catch(_){return false;}
+  }
 
   function getPillColor(x){
     if(x<=2)return 'orange';
@@ -1175,7 +1200,9 @@
     const controller=new AbortController();
     crashStateRequestController=controller;
     crashStateRequestInFlight=true;
-    const timeout=setTimeout(()=>controller.abort(),1200);
+    // На первом запуске Supabase может отвечать дольше секунды. Не обрываем
+    // актуальную загрузку и не оставляем экран Crash пустым до следующего polling.
+    const timeout=setTimeout(()=>controller.abort(),5500);
 
     try{
       const resp=await fetch(API_BASE+'/api/crash/state?ts='+Date.now(),{
@@ -1193,6 +1220,7 @@
       crashStateFailCount=0;
       const prevState=crashRealtimeState;
       crashRealtimeState=data;
+      saveCrashWarmState(data);
       applyCrashRoundBoundary(prevState,data);
       syncCrashViewerBet(data);
       if(!allowBackground||currentTab==='crash')maybeOpenCrashResultSheet(data);
@@ -1250,6 +1278,8 @@
 
   function runCrashRound(){
     if(currentTab!=='crash') return;
+    // Показываем недавний локальный снимок моментально, затем сверяем его с сервером.
+    restoreCrashWarmState();
     crashRealtimeStarted=true;
     const viewSession=crashViewSession;
     if(!crashRealtimeTimer){

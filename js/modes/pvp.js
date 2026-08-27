@@ -28,6 +28,27 @@
   let pvpResultCountdownTimer=null;
   let pvpResultShowing=false;
   let pvpServerOffsetMs=0;
+  const PVP_WARM_STATE_KEY='giftpep.pvp.warm.v1';
+  const PVP_WARM_STATE_MAX_AGE_MS=45_000;
+
+  function savePvpWarmState(state){
+    try{
+      const safeState={...state,lastResult:null};
+      localStorage.setItem(PVP_WARM_STATE_KEY,JSON.stringify({savedAt:Date.now(),state:safeState}));
+    }catch(_){}
+  }
+  function restorePvpWarmState(){
+    if(pvpState)return true;
+    try{
+      const stored=JSON.parse(localStorage.getItem(PVP_WARM_STATE_KEY)||'null');
+      if(!stored?.state?.round||Date.now()-Number(stored.savedAt||0)>PVP_WARM_STATE_MAX_AGE_MS)return false;
+      pvpState=stored.state;
+      pvpServerOffsetMs=Number(pvpState.serverNow||Date.now())-Date.now();
+      pvpPlayers=Array.isArray(pvpState.bets)?pvpState.bets:[];
+      renderPvpBet();renderPvpClock();
+      return true;
+    }catch(_){return false;}
+  }
 
   function pvpTotalBank(){return pvpPlayers.reduce((total,player)=>total+Math.max(0,Number(player.amount||0)),0);}
   function pvpChance(player){const total=pvpTotalBank();return total?Number(player.amount||0)*100/total:0;}
@@ -189,6 +210,7 @@
     if(Number(nextState.serverNow||0))pvpServerOffsetMs=Number(nextState.serverNow)-Date.now();
     const previousRoundId=Number(pvpState?.round?.id||0);
     pvpState=nextState;
+    savePvpWarmState(nextState);
     if(!pvpResultShowing){
       pvpPlayers=Array.isArray(nextState.bets)?nextState.bets:[];
       if(previousRoundId&&previousRoundId!==Number(nextState.round.id))resetPvpWheel();
@@ -201,7 +223,7 @@
     if(pvpStateRequest||(!allowBackground&&currentTab!=='pvp'))return;
     pvpStateRequest=true;
     try{
-      const response=await fetch(API_BASE+'/api/pvp/state',{headers:{'x-init-data':tg?.initData||''}});
+      const response=await fetch(API_BASE+'/api/pvp/state?ts='+Date.now(),{headers:{'x-init-data':tg?.initData||''},cache:'no-store'});
       const data=await readApiJson(response);
       if(!response.ok)throw new Error(data.error||'PVP unavailable');
       applyPvpState(data);
@@ -210,6 +232,7 @@
   }
   function startPvpDemo(){
     if(pvpPollTimer)return;
+    restorePvpWarmState();
     if(pvpState){
       renderPvpBet();
       renderPvpClock();
