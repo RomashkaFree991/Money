@@ -1034,7 +1034,7 @@
   /* === PVP ARENA (демонстрационный экран) === */
   .pvp-page{min-height:100%;padding:0 4px 176px;display:flex;flex-direction:column;align-items:center;gap:13px}
   .pvp-wheel-wrap{position:relative;width:min(83vw,365px);aspect-ratio:1;margin:0 auto}
-  .pvp-wheel{position:relative;width:100%;height:100%;aspect-ratio:1;border-radius:50%;padding:14px;background:repeating-conic-gradient(from -18deg,#46474d 0deg 36deg,#1b1c20 36deg 72deg);box-shadow:0 14px 26px rgba(0,0,0,.28),inset 0 0 0 2px rgba(255,255,255,.08)}
+  .pvp-wheel{position:relative;width:100%;height:100%;aspect-ratio:1;border-radius:50%;padding:14px;background:repeating-conic-gradient(from -18deg,#46474d 0deg 36deg,#1b1c20 36deg 72deg);box-shadow:0 14px 26px rgba(0,0,0,.28),inset 0 0 0 2px rgba(255,255,255,.08)}.pvp-wheel-avatar{position:absolute;z-index:1;width:28px;height:28px;border-radius:50%;transform:translate(-50%,-50%);display:grid;place-items:center;overflow:hidden;background:rgba(18,18,20,.92);border:1.5px solid rgba(255,255,255,.82);box-shadow:0 3px 9px rgba(0,0,0,.3);color:#fff;font-size:10px;font-weight:850;pointer-events:none}.pvp-wheel-avatar img{width:100%;height:100%;object-fit:cover}
   .pvp-wheel.running{animation:pvpRoundSpin 16s linear infinite}@keyframes pvpRoundSpin{to{transform:rotate(360deg)}}
   .pvp-wheel::before{display:none}
   /* The shipped up.svg artwork already points down in the PVP marker position. */
@@ -1620,6 +1620,49 @@
   const tg=window.Telegram?.WebApp;
   let firstName='User',userHandle='@user',photoUrl='',tgUserId=null;
 
+  // Лёгкие синтезированные UI-звуки: без загрузки внешних аудиофайлов.
+  let appAudioContext=null;
+  let appAudioUnlocked=false;
+  let appSpinSoundAt=0;
+  function getAppAudioContext(){
+    if(appAudioContext)return appAudioContext;
+    const Context=window.AudioContext||window.webkitAudioContext;
+    if(!Context)return null;
+    try{appAudioContext=new Context();return appAudioContext;}catch(_){return null;}
+  }
+  function unlockAppAudio(){
+    appAudioUnlocked=true;
+    const context=getAppAudioContext();
+    if(context?.state==='suspended')context.resume().catch(()=>{});
+  }
+  function playAppTone(frequency,start,duration,volume=.035,type='sine'){
+    const context=getAppAudioContext();
+    if(!context||!appAudioUnlocked)return;
+    const oscillator=context.createOscillator();
+    const gain=context.createGain();
+    oscillator.type=type;oscillator.frequency.setValueAtTime(frequency,start);
+    gain.gain.setValueAtTime(.0001,start);
+    gain.gain.exponentialRampToValueAtTime(volume,start+.008);
+    gain.gain.exponentialRampToValueAtTime(.0001,start+duration);
+    oscillator.connect(gain);gain.connect(context.destination);
+    oscillator.start(start);oscillator.stop(start+duration+.02);
+  }
+  function playAppSound(kind){
+    const context=getAppAudioContext();
+    if(!context||!appAudioUnlocked)return;
+    if(context.state==='suspended'){context.resume().catch(()=>{});return;}
+    const now=context.currentTime;
+    if(kind==='tab'){
+      playAppTone(520,now,.045,.026,'sine');playAppTone(700,now+.045,.055,.022,'sine');
+    }else if(kind==='spin'){
+      if(Date.now()-appSpinSoundAt<105)return;
+      appSpinSoundAt=Date.now();playAppTone(340,now,.025,.018,'square');
+    }else if(kind==='reward'){
+      playAppTone(523,now,.08,.04,'sine');playAppTone(659,now+.08,.09,.042,'sine');playAppTone(784,now+.17,.16,.048,'sine');
+    }
+  }
+  document.addEventListener('pointerdown',unlockAppAudio,{once:true,passive:true});
+
   function applyUserToUI(){
     document.getElementById('usernameTop').textContent=firstName;
     document.getElementById('profileName').textContent=firstName;
@@ -2100,6 +2143,7 @@
   }
   function animateUpgradeRotation(targetRotation,duration=8200){
     const arrow=upgradeWheelEl?.querySelector('.circle-arrow');
+    let lastSpinTickAt=0;
     if(!arrow){
       setUpgradeArrowRotation(targetRotation);
       renderUpgradeWheel(upgradeWheelRotation,{instant:true});
@@ -2113,6 +2157,7 @@
         const p=Math.min(1,(now-started)/duration);
         const eased=easeUpgradeSpin(p);
         const current=startRotation+(targetRotation-startRotation)*eased;
+        if(p<.97&&now-lastSpinTickAt>118){lastSpinTickAt=now;playAppSound('spin');}
         arrow.style.transform='translateX(-50%) rotate('+current+'deg)';
         if(p<1){
           requestAnimationFrame(step);
@@ -3101,6 +3146,7 @@
     try{
       const resolved=await resolveCrashPrize('claim');
       if(resolved||!crashPrizePending){
+        if(resolved)playAppSound('reward');
         closeCrashResultSheet();
       }else{
         // The backend says that no pending prize exists. This is an old local
@@ -4314,12 +4360,24 @@
   function pvpColor(player){return PVP_COLORS[Math.abs(Number(player.colorIndex||0))%PVP_COLORS.length];}
   function renderPvpWheel(){
     if(!pvpWheelEl)return;
+    pvpWheelEl.replaceChildren();
     const total=pvpTotalBank();
     if(!total){pvpWheelEl.style.background='repeating-conic-gradient(from -18deg,#46474d 0deg 36deg,#1b1c20 36deg 72deg)';return;}
     let cursor=0;const stops=[];
     for(const player of pvpPlayers){
       const part=Math.max(0,Number(player.amount||0))/total*360;
       stops.push(pvpColor(player)+' '+cursor+'deg '+(cursor+part)+'deg');
+      const centerDeg=cursor+part/2-90;
+      const radians=centerDeg*Math.PI/180;
+      const marker=document.createElement('span');
+      marker.className='pvp-wheel-avatar';
+      marker.style.left=(50+Math.cos(radians)*33.5)+'%';
+      marker.style.top=(50+Math.sin(radians)*33.5)+'%';
+      marker.style.background=pvpColor(player);
+      if(player.photoUrl){
+        const image=document.createElement('img');image.src=player.photoUrl;image.alt='';marker.append(image);
+      }else marker.textContent=String(player.firstName||'U').slice(0,1).toUpperCase();
+      pvpWheelEl.append(marker);
       cursor+=part;
     }
     pvpWheelEl.style.background='conic-gradient(from -90deg,'+stops.join(',')+')';
@@ -4347,7 +4405,12 @@
     }
   }
   function pvpCanAcceptBets(){
-    return !pvpResultShowing&&String(pvpState?.round?.phase||'')==='waiting';
+    if(pvpResultShowing)return false;
+    const round=pvpState?.round;
+    if(!round)return false;
+    if(String(round.phase||'')==='waiting')return true;
+    return String(round.phase||'')==='countdown'
+      && Number(round.countdownEndsAt||0)>(Date.now()+pvpServerOffsetMs);
   }
   function syncPvpBetAvailability(){
     if(!pvpBetBtn)return;
@@ -4432,6 +4495,8 @@
     pvpPlayers=players;
     renderPvpBet();
     const winner=players.find(player=>Number(player.userId)===Number(result.winnerUserId))||result.winner||{};
+    const winnerIsCurrentUser=Number(winner.userId||winner.user_id)===Number(tgUserId);
+    if(winnerIsCurrentUser)playAppSound('reward');
     const winnerColor=pvpColor({colorIndex:result.winningColorIndex});
     if(pvpResultAvatar){pvpResultAvatar.style.background=winnerColor;if(winner.photoUrl||winner.photo_url){pvpResultAvatar.src=winner.photoUrl||winner.photo_url;pvpResultAvatar.style.padding='0';}else{pvpResultAvatar.removeAttribute('src');pvpResultAvatar.style.padding='12px';}}
     if(pvpResultHeading)pvpResultHeading.textContent='You won';
@@ -4551,12 +4616,12 @@
     }
     showTab(targetTab);
   }
-  items.forEach(item=>item.addEventListener('click',()=>activateTab(item.dataset.tab,true)));
+  items.forEach(item=>item.addEventListener('click',()=>{playAppSound('tab');activateTab(item.dataset.tab,true)}));
   document.querySelectorAll('[data-game-target]').forEach(banner=>{
-    banner.addEventListener('click',()=>activateTab(banner.dataset.gameTarget,true));
+    banner.addEventListener('click',()=>{playAppSound('tab');activateTab(banner.dataset.gameTarget,true)});
   });
   pvpBetBtn?.addEventListener('click',()=>{
-    if(!pvpCanAcceptBets()){showBetError('Ставки закрыты: игра уже началась');return;}
+    if(!pvpCanAcceptBets()){showBetError('Ставки закрыты: таймер уже закончился');return;}
     openBet('pvp');
   });
   pvpResultClose?.addEventListener('click',closePvpResult);
@@ -4721,6 +4786,7 @@
 
   function openUpgradeResultModal(gift){
     if(!gift) return;
+    playAppSound('reward');
     const normalized=normalizeCrashPrizeGift(gift);
     const image=resolveGiftImage(normalized);
     document.getElementById('upgradeModalPill').textContent=t('giftUnlocked');
@@ -4849,11 +4915,11 @@
   async function submitPvpBet(amount){
     if(!pvpCanAcceptBets()){
       closeBet();
-      showBetError('Ставки закрыты: игра уже началась');
+      showBetError('Ставки закрыты: таймер уже закончился');
       refreshPvpState();
       return;
     }
-    if(amount<1){showBetError('Минимальная ставка 1⭐');return;}
+    if(amount<10){showBetError('Минимальная ставка 10⭐');return;}
     if(amount>balance){showBetError('Недостаточно Stars');return;}
     if(pvpBetSubmitBusy)return;
     pvpBetSubmitBusy=true;
@@ -4881,7 +4947,7 @@
     crashBetSubmitLockUntil=now+240;
     const v=parseInt(betAmountInput.value)||0;
     if(activeBetMode==='pvp'){submitPvpBet(v);return;}
-    if(v<1){showBetError('Минимальная ставка 1⭐');return;}
+    if(v<10){showBetError('Минимальная ставка 10⭐');return;}
     if(v>balance){showBetError('Недостаточно Stars');return;}
     dismissKeyboard(betAmountInput);
     closeBet();
