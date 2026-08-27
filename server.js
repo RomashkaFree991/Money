@@ -1461,10 +1461,6 @@ let pvpFinalizerLastError = '';
 // PVP-state одинаков для всех зрителей. Короткий серверный кэш устраняет всплеск
 // одинаковых RPC, но не влияет на транзакционный pvp_place_bet и выбор победителя.
 const PVP_STATE_CACHE_TTL_MS = 300;
-// При медленном Supabase недавно полученный общий снимок безопасен для показа:
-// таймер продолжает считаться от serverNow, а pvp_place_bet всё равно атомарно
-// проверяет фазу в базе. Это не используется для выбора победителя.
-const PVP_STATE_STALE_MAX_AGE_MS = 12_000;
 let pvpStateCache = null;
 let pvpStateCacheAt = 0;
 let pvpStateRequestInFlight = null;
@@ -1503,15 +1499,10 @@ function refreshPvpStateInBackground() {
 }
 
 async function getPvpStateForClient() {
-  const age = pvpStateCache ? Date.now() - pvpStateCacheAt : Infinity;
-  if (pvpStateCache && age < PVP_STATE_CACHE_TTL_MS) return pvpStateCache;
-  const refresh = refreshPvpStateInBackground();
-  // Не оставляем экран PVP пустым, пока длится один и тот же тяжёлый RPC.
-  if (pvpStateCache && age < PVP_STATE_STALE_MAX_AGE_MS) {
-    refresh.catch(() => {});
-    return pvpStateCache;
-  }
-  return refresh;
+  if (pvpStateCache && Date.now() - pvpStateCacheAt < PVP_STATE_CACHE_TTL_MS) return pvpStateCache;
+  // Важно дождаться именно актуального ответа: повторная выдача старого
+  // countdown с новым serverNow откатывала у клиентов секунды назад.
+  return refreshPvpStateInBackground();
 }
 
 async function finalizeDuePvpRound() {
@@ -2045,7 +2036,6 @@ async function getCrashBets(roundId) {
 // Общий снимок текущего раунда. Множество клиентов получают одинаковые state/bets,
 // поэтому TTL 250 ms резко снижает число RPC/SELECT без влияния на денежные операции.
 const CRASH_SHARED_SNAPSHOT_TTL_MS = 250;
-const CRASH_SHARED_STALE_MAX_AGE_MS = 12_000;
 let crashSharedSnapshot = null;
 let crashSharedSnapshotAt = 0;
 let crashSharedSnapshotInFlight = null;
@@ -2064,17 +2054,14 @@ function refreshCrashSharedSnapshot() {
   return crashSharedSnapshotInFlight;
 }
 
-async function getCrashSharedSnapshot(force = false, allowStale = false) {
-  const age = crashSharedSnapshot ? Date.now() - crashSharedSnapshotAt : Infinity;
-  if (!force && crashSharedSnapshot && age < CRASH_SHARED_SNAPSHOT_TTL_MS) return crashSharedSnapshot;
-  const refresh = refreshCrashSharedSnapshot();
-  // Только GET-снимки для интерфейса могут получить недавнее состояние сразу.
-  // Денежные RPC ниже всегда ждут транзакционную проверку в PostgreSQL.
-  if (!force && allowStale && crashSharedSnapshot && age < CRASH_SHARED_STALE_MAX_AGE_MS) {
-    refresh.catch(() => {});
+async function getCrashSharedSnapshot(force = false) {
+  if (!force && crashSharedSnapshot
+      && Date.now() - crashSharedSnapshotAt < CRASH_SHARED_SNAPSHOT_TTL_MS) {
     return crashSharedSnapshot;
   }
-  return refresh;
+  // Не маркируем старый раунд текущим временем. Это могло заменить новый
+  // множитель уже завершённым значением предыдущего снимка.
+  return refreshCrashSharedSnapshot();
 }
 
 function invalidateCrashSharedSnapshot() {
@@ -2083,8 +2070,8 @@ function invalidateCrashSharedSnapshot() {
 }
 
 // CRASH BACKGROUND RECOVERY FIX: an old pending prize cannot lock future rounds.
-async function serializeCrashState(userId = null, forceSnapshot = false, allowStale = false) {
-  const { state, bets } = await getCrashSharedSnapshot(forceSnapshot, allowStale);
+async function serializeCrashState(userId = null, forceSnapshot = false) {
+  const { state, bets } = await getCrashSharedSnapshot(forceSnapshot);
   const viewerRow = userId
     ? bets.find((bet) => String(bet.userId) === String(userId)) || null
     : null;
@@ -3182,7 +3169,7 @@ app.get('/api/crash/state', async (req, res) => {
   if (!user) return;
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   try {
-    res.json(await serializeCrashState(user.id, false, true));
+    res.json(await serializeCrashState(user.id));
   } catch (error) {
     console.error('crash state error:', {
       message: error?.message || String(error),
