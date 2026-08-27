@@ -91,6 +91,18 @@
         showBannedOverlay(data.reason||'Нарушение правил');
         return;
       }
+      if(data?.referralGate?.required){
+        // Приглашённый сначала открыл Mini App. Сервер ещё не создал связь:
+        // возвращаем его в бот для обязательной подписки и серверной проверки.
+        const botUrl=String(data.referralGate.botUrl||'');
+        try{
+          if(tg?.openTelegramLink&&botUrl)tg.openTelegramLink(botUrl);
+          else if(botUrl)window.location.href=botUrl;
+        }catch(error){
+          console.warn('Referral subscription redirect failed:',error?.message||error);
+        }
+        return;
+      }
       if(data.id){
         firstName=data.first_name||firstName;
         userHandle=data.username?'@'+data.username:userHandle;
