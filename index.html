@@ -11,7 +11,7 @@
   <link rel="preload" as="image" href="assets/Crash_banner.png" fetchpriority="high">
   <link rel="preload" as="image" href="assets/PVP_Arena_banner.png" fetchpriority="high">
   <link rel="preload" as="image" href="assets/Upgrade_banner.png" fetchpriority="high">
-  <link rel="stylesheet" href="css/app.css?v=20260827-perf1">
+  <link rel="stylesheet" href="css/app.css?v=20260827-perf2">
 </head>
 <body>
   <div class="boot-screen" id="bootScreen">
@@ -231,8 +231,9 @@
       <div class="pvp-bank-pill"><span>Банк</span><img src="assets/star.png" alt="Stars"><span id="pvpBankValue">0</span></div>
       <div class="pvp-history" id="pvpHistory">
         <div class="pvp-game-title" id="pvpGameTitle">Игра #1</div>
-        <div class="pvp-empty" id="pvpEmpty"><span>Ожидание ставок</span><button type="button" class="round-hash" id="pvpRoundHash" hidden title="Copy hash"><span>Hash:</span><code id="pvpRoundHashValue"></code></button></div>
+        <div class="pvp-empty" id="pvpEmpty"><span>Ожидание ставок</span></div>
         <div id="pvpBetsList"></div>
+        <button type="button" class="round-hash pvp-round-hash" id="pvpRoundHash" hidden title="Copy hash"><span>Hash:</span><code id="pvpRoundHashValue"></code></button>
       </div>
     </div>
   </div>
@@ -301,7 +302,6 @@
       <div class="crash-ground">
         <div class="crash-wait empty" id="crashWait">
           <span id="crashWaitText"></span>
-          <button type="button" class="round-hash crash-round-hash" id="crashRoundHash" hidden title="Copy hash"><span>Hash:</span><code id="crashRoundHashValue"></code></button>
           <div class="crash-player" id="crashPlayer">
             <img class="crash-player-avatar" id="crashPlayerAvatar" src="" alt="">
             <div class="crash-player-info">
@@ -323,8 +323,9 @@
             </div>
             <div class="crash-player-win" id="crashPlayerWin"></div>
           </div>
-          <div class="crash-bets-stack" id="crashOthers"></div>
+          <div class="crash-others" id="crashOthers"></div>
         </div>
+        <button type="button" class="round-hash crash-round-hash" id="crashRoundHash" hidden title="Copy hash"><span>Hash:</span><code id="crashRoundHashValue"></code></button>
       </div>
     </div>
   </div>
@@ -490,11 +491,11 @@
   </nav>
 
 </div>
-  <script defer src="js/core/runtime.js?v=20260827-perf1"></script>
-  <script defer src="js/core/state.js?v=20260827-perf1"></script>
-  <script defer src="js/modes/crash.js?v=20260827-perf1"></script>
-  <script defer src="js/modes/pvp.js?v=20260827-perf1"></script>
-  <script defer src="js/app.js?v=20260827-perf1"></script>
+  <script defer src="js/core/runtime.js?v=20260827-perf2"></script>
+  <script defer src="js/core/state.js?v=20260827-perf2"></script>
+  <script defer src="js/modes/crash.js?v=20260827-perf2"></script>
+  <script defer src="js/modes/pvp.js?v=20260827-perf2"></script>
+  <script defer src="js/app.js?v=20260827-perf2"></script>
 <div class="admin-overlay" id="adminOverlay">
   <div class="admin-sheet">
     <h2>🔧 Админ-панель <button class="admin-close" type="button">✕</button></h2>

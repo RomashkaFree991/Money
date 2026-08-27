@@ -640,8 +640,10 @@ async function tgSendDocument(chatId, filename, text, caption = '') {
   return response.json();
 }
 
+let startAnimationFileId = null;
+
 async function tgSendAnimation(chatId, filePath, caption = '', replyMarkup = null) {
-  if (!fs.existsSync(filePath)) throw new Error(`Video file not found: ${filePath}`);
+  if (!fs.existsSync(filePath) && !startAnimationFileId) throw new Error(`Video file not found: ${filePath}`);
   const form = new FormData();
   form.append('chat_id', String(chatId));
   if (caption) {
@@ -649,13 +651,21 @@ async function tgSendAnimation(chatId, filePath, caption = '', replyMarkup = nul
     form.append('parse_mode', 'Markdown');
   }
   if (replyMarkup) form.append('reply_markup', JSON.stringify(replyMarkup));
-  form.append('animation', new Blob([fs.readFileSync(filePath)], { type: 'video/mp4' }), path.basename(filePath));
+
+  // Telegram возвращает file_id после первой удачной загрузки. Повторное
+  // использование file_id не загружает MP4 заново и предотвращает таймауты /start.
+  if (startAnimationFileId) form.append('animation', startAnimationFileId);
+  else form.append('animation', new Blob([fs.readFileSync(filePath)], { type: 'video/mp4' }), path.basename(filePath));
+
   const response = await fetch(`https://api.telegram.org/bot${CONFIG.BOT_TOKEN}/sendAnimation`, {
     method: 'POST',
     body: form,
-    signal: AbortSignal.timeout(60_000),
+    signal: AbortSignal.timeout(180_000),
   });
-  return response.json();
+  const payload = await response.json();
+  const fileId = String(payload?.result?.animation?.file_id || '').trim();
+  if (payload?.ok && fileId) startAnimationFileId = fileId;
+  return payload;
 }
 
 function inferWebhookUrl(req = null) {
@@ -1436,6 +1446,14 @@ function secureRandomUnit() {
   return crypto.randomBytes(6).readUIntBE(0, 6) / 281474976710656;
 }
 
+// Публичный неизменный идентификатор раунда для интерфейса и копирования.
+// Это не источник случайности и не участвует в серверном расчёте выигрыша.
+function publicRoundHash(kind, roundId, anchor) {
+  return crypto.createHash('sha256')
+    .update(`giftpep:${String(kind)}:${Number(roundId || 0)}:${Number(anchor || 0)}`)
+    .digest('hex');
+}
+
 let pvpLastLogSignature = '';
 let pvpSettlementInFlight = false;
 let pvpNextSettlementCheckAt = 0;
@@ -1443,6 +1461,10 @@ let pvpFinalizerLastError = '';
 // PVP-state одинаков для всех зрителей. Короткий серверный кэш устраняет всплеск
 // одинаковых RPC, но не влияет на транзакционный pvp_place_bet и выбор победителя.
 const PVP_STATE_CACHE_TTL_MS = 300;
+// При медленном Supabase недавно полученный общий снимок безопасен для показа:
+// таймер продолжает считаться от serverNow, а pvp_place_bet всё равно атомарно
+// проверяет фазу в базе. Это не используется для выбора победителя.
+const PVP_STATE_STALE_MAX_AGE_MS = 12_000;
 let pvpStateCache = null;
 let pvpStateCacheAt = 0;
 let pvpStateRequestInFlight = null;
@@ -1462,6 +1484,7 @@ async function serializePvpState() {
   });
   if (error) throw new Error(error.message || 'PVP state unavailable');
   const state = { ...(data || {}), serverNow: Date.now() };
+  state.roundHash = publicRoundHash('pvp', state?.round?.id, state?.round?.countdownEndsAt || state?.round?.createdAt);
   const deadline = Number(state?.round?.countdownEndsAt || 0);
   pvpNextSettlementCheckAt = state?.round?.phase === 'countdown' && deadline
     ? Math.max(Date.now() + 250, deadline)
@@ -1472,11 +1495,23 @@ async function serializePvpState() {
   return state;
 }
 
-async function getPvpStateForClient() {
-  if (pvpStateCache && Date.now() - pvpStateCacheAt < PVP_STATE_CACHE_TTL_MS) return pvpStateCache;
-  if (pvpStateRequestInFlight) return pvpStateRequestInFlight;
-  pvpStateRequestInFlight = serializePvpState().finally(() => { pvpStateRequestInFlight = null; });
+function refreshPvpStateInBackground() {
+  if (!pvpStateRequestInFlight) {
+    pvpStateRequestInFlight = serializePvpState().finally(() => { pvpStateRequestInFlight = null; });
+  }
   return pvpStateRequestInFlight;
+}
+
+async function getPvpStateForClient() {
+  const age = pvpStateCache ? Date.now() - pvpStateCacheAt : Infinity;
+  if (pvpStateCache && age < PVP_STATE_CACHE_TTL_MS) return pvpStateCache;
+  const refresh = refreshPvpStateInBackground();
+  // Не оставляем экран PVP пустым, пока длится один и тот же тяжёлый RPC.
+  if (pvpStateCache && age < PVP_STATE_STALE_MAX_AGE_MS) {
+    refresh.catch(() => {});
+    return pvpStateCache;
+  }
+  return refresh;
 }
 
 async function finalizeDuePvpRound() {
@@ -2010,27 +2045,36 @@ async function getCrashBets(roundId) {
 // Общий снимок текущего раунда. Множество клиентов получают одинаковые state/bets,
 // поэтому TTL 250 ms резко снижает число RPC/SELECT без влияния на денежные операции.
 const CRASH_SHARED_SNAPSHOT_TTL_MS = 250;
+const CRASH_SHARED_STALE_MAX_AGE_MS = 12_000;
 let crashSharedSnapshot = null;
 let crashSharedSnapshotAt = 0;
 let crashSharedSnapshotInFlight = null;
 
-async function getCrashSharedSnapshot(force = false) {
-  const now = Date.now();
-  if (!force && crashSharedSnapshot && now - crashSharedSnapshotAt < CRASH_SHARED_SNAPSHOT_TTL_MS) {
+function refreshCrashSharedSnapshot() {
+  if (!crashSharedSnapshotInFlight) {
+    crashSharedSnapshotInFlight = (async () => {
+      const state = await getCrashInternalState();
+      const bets = await getCrashBets(state.roundId);
+      const snapshot = { state, bets };
+      crashSharedSnapshot = snapshot;
+      crashSharedSnapshotAt = Date.now();
+      return snapshot;
+    })().finally(() => { crashSharedSnapshotInFlight = null; });
+  }
+  return crashSharedSnapshotInFlight;
+}
+
+async function getCrashSharedSnapshot(force = false, allowStale = false) {
+  const age = crashSharedSnapshot ? Date.now() - crashSharedSnapshotAt : Infinity;
+  if (!force && crashSharedSnapshot && age < CRASH_SHARED_SNAPSHOT_TTL_MS) return crashSharedSnapshot;
+  const refresh = refreshCrashSharedSnapshot();
+  // Только GET-снимки для интерфейса могут получить недавнее состояние сразу.
+  // Денежные RPC ниже всегда ждут транзакционную проверку в PostgreSQL.
+  if (!force && allowStale && crashSharedSnapshot && age < CRASH_SHARED_STALE_MAX_AGE_MS) {
+    refresh.catch(() => {});
     return crashSharedSnapshot;
   }
-  if (!force && crashSharedSnapshotInFlight) return crashSharedSnapshotInFlight;
-  const load = (async () => {
-    const state = await getCrashInternalState();
-    const bets = await getCrashBets(state.roundId);
-    const snapshot = { state, bets };
-    crashSharedSnapshot = snapshot;
-    crashSharedSnapshotAt = Date.now();
-    return snapshot;
-  })();
-  if (!force) crashSharedSnapshotInFlight = load;
-  try { return await load; }
-  finally { if (!force) crashSharedSnapshotInFlight = null; }
+  return refresh;
 }
 
 function invalidateCrashSharedSnapshot() {
@@ -2039,17 +2083,18 @@ function invalidateCrashSharedSnapshot() {
 }
 
 // CRASH BACKGROUND RECOVERY FIX: an old pending prize cannot lock future rounds.
-async function serializeCrashState(userId = null, forceSnapshot = false) {
-  const [{ state, bets }, pendingRead] = await Promise.all([
-    getCrashSharedSnapshot(forceSnapshot),
-    userId ? getPendingPrize(userId) : Promise.resolve(null),
-  ]);
-
+async function serializeCrashState(userId = null, forceSnapshot = false, allowStale = false) {
+  const { state, bets } = await getCrashSharedSnapshot(forceSnapshot, allowStale);
   const viewerRow = userId
     ? bets.find((bet) => String(bet.userId) === String(userId)) || null
     : null;
 
-  let pendingPrize = pendingRead;
+  // В countdown/live у игрока ещё не может быть новый pending-приз. Не делаем
+  // лишний пользовательский SELECT в каждом игровом polling-запросе.
+  const shouldReadPendingPrize = Boolean(userId && (
+    state.phase === 'ended' || viewerRow?.cashedOut || viewerRow?.awardedGift
+  ));
+  let pendingPrize = shouldReadPendingPrize ? await getPendingPrize(userId) : null;
 
   // During the same round, keep the prize pending so the 5-second result sheet
   // can show the Receive button. After crash_sync_state advances to a new round,
@@ -2083,6 +2128,7 @@ async function serializeCrashState(userId = null, forceSnapshot = false) {
   // IMPORTANT: crashMultiplier/crashAt are intentionally never returned to the browser.
   return {
     serverNow: Date.now(), roundId: state.roundId, phase: state.phase,
+    roundHash: publicRoundHash('crash', state.roundId, state.countdownEndsAt || state.liveStartAt || state.nextRoundAt),
     countdownEndsAt: state.countdownEndsAt, liveStartAt: state.liveStartAt,
     growthMs: state.growthMs, nextRoundAt: state.nextRoundAt,
     lastCrashMultiplier: state.phase === 'ended' ? round2(state.crashMultiplier) : round2(liveMultiplier),
@@ -2126,7 +2172,7 @@ app.post('/api/init', async (req, res) => {
 
   const referrerId = extractReferralId(context.startParam);
   const currentUserId = Number(user.id);
-  const profile = data?.[0] ?? {};
+  const profile = { ...(data?.[0] ?? {}), isAdmin: isAdminUser(user) };
 
   if (referrerId) {
     try {
@@ -3116,6 +3162,7 @@ app.post('/api/pvp/bet', async (req, res) => {
     });
     if (error) throw new Error(error.message || 'PVP bet failed');
     const state = { ...(data || {}), serverNow: Date.now() };
+    state.roundHash = publicRoundHash('pvp', state?.round?.id, state?.round?.countdownEndsAt || state?.round?.createdAt);
     pvpStateCache = state;
     pvpStateCacheAt = Date.now();
     const deadline = Number(state?.round?.countdownEndsAt || 0);
@@ -3135,7 +3182,7 @@ app.get('/api/crash/state', async (req, res) => {
   if (!user) return;
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   try {
-    res.json(await serializeCrashState(user.id));
+    res.json(await serializeCrashState(user.id, false, true));
   } catch (error) {
     console.error('crash state error:', {
       message: error?.message || String(error),
@@ -3154,22 +3201,53 @@ app.post('/api/crash/bet', async (req, res) => {
   if (!amount || amount < CRASH_MIN_BET) {
     return res.status(400).json({ error: `Минимальная ставка ${CRASH_MIN_BET}⭐` });
   }
+  const startedAt = Date.now();
   try {
-    // Reconcile any prize orphaned by a backgrounded WebView before the DB
-    // enforces the pending-prize check for this new bet.
-    await serializeCrashState(user.id, true);
-
+    // crash_place_bet — атомарный источник истины: он сам проверяет баланс,
+    // pending-приз и фазу. Раньше здесь были два полных crash_sync_state до и
+    // после RPC, из-за чего даже отклонённая ставка ожидала около 10 секунд.
+    const rpcStartedAt = Date.now();
     const { data, error } = await sb.rpc('crash_place_bet', {
       p_user_id: Number(user.id),
       p_first_name: user.first_name || user.username || 'User',
       p_photo_url: user.photo_url || null,
       p_amount: amount,
     });
-    if (error) throw new Error(error.message || 'Bet failed');
+    const rpcElapsedMs = Date.now() - rpcStartedAt;
+    if (error) {
+      const failure = new Error(error.message || 'Bet failed');
+      failure.code = error.code || null;
+      failure.details = error.details || null;
+      throw failure;
+    }
     invalidateCrashSharedSnapshot();
-    return res.json({ ok: true, newBalance: Number(data?.newBalance || 0), state: await serializeCrashState(user.id, true) });
+    console.info('🚀 CRASH bet accepted', {
+      userId: Number(user.id), amount, rpcElapsedMs, elapsedMs: Date.now() - startedAt,
+    });
+    // Клиент сохраняет оптимистичную карточку и запрашивает общий state в фоне.
+    return res.json({ ok: true, newBalance: Number(data?.newBalance || 0) });
   } catch (error) {
-    return res.status(400).json({ error: error.message || 'Bet failed' });
+    const rawMessage = String(error?.message || 'Bet failed');
+    const normalized = rawMessage.toLowerCase();
+    const code = normalized.includes('insufficient') || normalized.includes('balance')
+      ? 'INSUFFICIENT_BALANCE'
+      : (normalized.includes('pending') || normalized.includes('prize'))
+        ? 'PENDING_PRIZE'
+        : (normalized.includes('round') || normalized.includes('phase') || normalized.includes('started'))
+          ? 'ROUND_CLOSED'
+          : 'CRASH_BET_FAILED';
+    const clientError = code === 'INSUFFICIENT_BALANCE'
+      ? 'Недостаточно Stars для ставки'
+      : code === 'PENDING_PRIZE'
+        ? 'Сначала заберите или продайте предыдущий приз'
+        : code === 'ROUND_CLOSED'
+          ? 'Раунд уже начался. Дождитесь следующего'
+          : 'Не удалось принять ставку. Повторите ещё раз';
+    console.warn('🚀 CRASH bet rejected', {
+      userId: Number(user.id), amount, code, elapsedMs: Date.now() - startedAt,
+      dbCode: error?.code || null, message: rawMessage, details: error?.details || null,
+    });
+    return res.status(code === 'ROUND_CLOSED' ? 409 : 400).json({ error: clientError, code });
   }
 });
 
@@ -4403,19 +4481,18 @@ app.listen(CONFIG.PORT, async () => {
   // 3) Дальше — раз в сутки.
   setInterval(() => { syncMarketPricesOnce().catch(() => {}); }, 24 * 60 * 60 * 1000).unref?.();
 
-  // 4) Проверяем/инициализируем persistent Crash state сразу при старте.
-  try {
-    const crashState = await getCrashInternalState();
-    console.log(`✅ Crash DB ready: round=${crashState.roundId} phase=${crashState.phase}`);
-  } catch (error) {
-    console.error('❌ Crash DB init failed:', {
-      message: error?.message || String(error),
-      code: error?.code || null,
-      details: error?.details || null,
-      hint: error?.hint || null,
-    });
-  }
-
+    // 4) Прогреваем общие игровые снимки. API уже слушает порт, поэтому долгий
+  // Supabase не задерживает запуск; первый посетитель получает снимок сразу после
+  // завершения этого общего запроса, а не создаёт собственную очередь.
+  getCrashSharedSnapshot()
+    .then(({ state }) => console.log(`✅ Crash DB ready: round=${state.roundId} phase=${state.phase}`))
+    .catch((error) => console.error('❌ Crash DB init failed:', {
+      message: error?.message || String(error), code: error?.code || null,
+      details: error?.details || null, hint: error?.hint || null,
+    }));
+  refreshPvpStateInBackground()
+    .then((state) => console.log(`✅ PVP DB ready: round=${state?.round?.id || '-'} phase=${state?.round?.phase || '-'}`))
+    .catch((error) => console.error('❌ PVP DB init failed:', error?.message || error));
   // 5) Инициализируем и сразу проверяем 7-дневный цикл Top вне запросов игроков.
   rolloverTopCycleIfDue().catch(() => {});
   // 6) Дальше проверяем rollover раз в минуту в фоне.
