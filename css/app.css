@@ -701,6 +701,16 @@
     color:rgba(255,255,255,.4);font-size:15px;font-weight:600;
     text-align:center;align-self:center;
   }
+  .round-hash{
+    max-width:calc(100% - 24px);margin:8px auto 0;padding:0;border:0;background:transparent;
+    color:rgba(255,255,255,.42);font-size:11px;font-weight:650;line-height:16px;cursor:pointer;
+    display:inline-flex;align-items:center;justify-content:center;gap:5px;font-family:inherit;
+    -webkit-tap-highlight-color:transparent;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .round-hash:active{opacity:.62}
+  .round-hash code{color:rgba(255,255,255,.62);font:inherit;letter-spacing:.25px;overflow:hidden;text-overflow:ellipsis}
+  .round-hash span{font-size:11px;color:rgba(255,255,255,.42);font-weight:650}
+  .crash-round-hash,.pvp-round-hash{display:flex;width:100%;margin-top:7px}
   .crash-player{
     display:none;width:100%;padding:10px 16px;
     align-items:center;gap:12px;
@@ -1038,7 +1048,14 @@
   .pvp-history{width:100%;padding:12px 15px;border-radius:19px;background:rgba(28,28,30,.94);border:1px solid rgba(255,255,255,.09);box-shadow:0 12px 25px rgba(0,0,0,.15)}
   .pvp-game-title{color:rgba(255,255,255,.44);font-size:13px;font-weight:750;text-align:center;margin:1px 0 8px}
   .pvp-history-row{display:flex;align-items:center;gap:11px;min-height:52px;border:0;color:#fff;font-size:14px;font-weight:700}
-  .pvp-history-avatar{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:#3b3b42;color:#d7d7da;font-size:13px;font-weight:850;overflow:hidden}.pvp-history-avatar img{width:100%;height:100%;object-fit:cover}.pvp-player-meta{display:flex;min-width:0;flex-direction:column;gap:3px}.pvp-player-name{max-width:165px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:15px}.pvp-player-chance{color:rgba(255,255,255,.46);font-size:12px;font-weight:650}.pvp-history-sum{margin-left:auto;display:flex;align-items:center;gap:5px;color:#ffcc00;font-size:15px}.pvp-history-sum img{width:17px;height:17px}.pvp-empty{min-height:86px;display:grid;place-items:center;color:rgba(255,255,255,.42);font-size:14px;font-weight:700;text-align:center}
+  .pvp-history-avatar{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:#3b3b42;color:#d7d7da;font-size:13px;font-weight:850;overflow:hidden}
+  .pvp-history-avatar img{width:100%;height:100%;object-fit:cover}
+  .pvp-player-meta{display:flex;min-width:0;flex-direction:column;gap:3px}
+  .pvp-player-name{max-width:165px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:15px}
+  .pvp-player-chance{color:rgba(255,255,255,.46);font-size:12px;font-weight:650}
+  .pvp-history-sum{margin-left:auto;display:flex;align-items:center;gap:5px;color:#ffcc00;font-size:15px}
+  .pvp-history-sum img{width:17px;height:17px;object-fit:contain}
+  .pvp-empty{min-height:86px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:rgba(255,255,255,.42);font-size:14px;font-weight:700;text-align:center}
   .pvp-bet-dock{position:absolute;left:0;right:0;bottom:76px;z-index:17;display:none;padding:16px 16px 13px;background:rgba(31,31,34,.68);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:0;border-radius:24px 24px 0 0;box-shadow:none}
   .pvp-bet-dock.open{display:block}.pvp-bet-btn{width:100%;height:51px;border:0;border-radius:15px;background:#0A84FF;color:#fff;font-family:inherit;font-size:16px;font-weight:850;box-shadow:none;cursor:pointer}.pvp-bet-btn:active{transform:scale(.985);filter:brightness(1.08)}.pvp-bet-btn:disabled{background:rgba(255,255,255,.14);color:rgba(255,255,255,.52);cursor:default;transform:none;filter:none}
   .pvp-result-overlay{position:fixed;inset:0;z-index:96;background:rgba(0,0,0,.52);opacity:0;pointer-events:none;transition:opacity .24s ease;backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}.pvp-result-overlay.open{opacity:1;pointer-events:auto}
