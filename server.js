@@ -1440,6 +1440,12 @@ let pvpLastLogSignature = '';
 let pvpSettlementInFlight = false;
 let pvpNextSettlementCheckAt = 0;
 let pvpFinalizerLastError = '';
+// PVP-state одинаков для всех зрителей. Короткий серверный кэш устраняет всплеск
+// одинаковых RPC, но не влияет на транзакционный pvp_place_bet и выбор победителя.
+const PVP_STATE_CACHE_TTL_MS = 300;
+let pvpStateCache = null;
+let pvpStateCacheAt = 0;
+let pvpStateRequestInFlight = null;
 function logPvpTransition(state) {
   const round = state?.round || {};
   const signature = [round.id, round.phase, round.countdownEndsAt || 0, state?.bank || 0, state?.lastResult?.roundId || 0].join(':');
@@ -1461,7 +1467,16 @@ async function serializePvpState() {
     ? Math.max(Date.now() + 250, deadline)
     : Date.now() + 10000;
   logPvpTransition(state);
+  pvpStateCache = state;
+  pvpStateCacheAt = Date.now();
   return state;
+}
+
+async function getPvpStateForClient() {
+  if (pvpStateCache && Date.now() - pvpStateCacheAt < PVP_STATE_CACHE_TTL_MS) return pvpStateCache;
+  if (pvpStateRequestInFlight) return pvpStateRequestInFlight;
+  pvpStateRequestInFlight = serializePvpState().finally(() => { pvpStateRequestInFlight = null; });
+  return pvpStateRequestInFlight;
 }
 
 async function finalizeDuePvpRound() {
@@ -1992,11 +2007,41 @@ async function getCrashBets(roundId) {
   return (data || []).map(mapCrashBetRow).filter(Boolean);
 }
 
+// Общий снимок текущего раунда. Множество клиентов получают одинаковые state/bets,
+// поэтому TTL 250 ms резко снижает число RPC/SELECT без влияния на денежные операции.
+const CRASH_SHARED_SNAPSHOT_TTL_MS = 250;
+let crashSharedSnapshot = null;
+let crashSharedSnapshotAt = 0;
+let crashSharedSnapshotInFlight = null;
+
+async function getCrashSharedSnapshot(force = false) {
+  const now = Date.now();
+  if (!force && crashSharedSnapshot && now - crashSharedSnapshotAt < CRASH_SHARED_SNAPSHOT_TTL_MS) {
+    return crashSharedSnapshot;
+  }
+  if (!force && crashSharedSnapshotInFlight) return crashSharedSnapshotInFlight;
+  const load = (async () => {
+    const state = await getCrashInternalState();
+    const bets = await getCrashBets(state.roundId);
+    const snapshot = { state, bets };
+    crashSharedSnapshot = snapshot;
+    crashSharedSnapshotAt = Date.now();
+    return snapshot;
+  })();
+  if (!force) crashSharedSnapshotInFlight = load;
+  try { return await load; }
+  finally { if (!force) crashSharedSnapshotInFlight = null; }
+}
+
+function invalidateCrashSharedSnapshot() {
+  crashSharedSnapshot = null;
+  crashSharedSnapshotAt = 0;
+}
+
 // CRASH BACKGROUND RECOVERY FIX: an old pending prize cannot lock future rounds.
-async function serializeCrashState(userId = null) {
-  const state = await getCrashInternalState();
-  const [bets, pendingRead] = await Promise.all([
-    getCrashBets(state.roundId),
+async function serializeCrashState(userId = null, forceSnapshot = false) {
+  const [{ state, bets }, pendingRead] = await Promise.all([
+    getCrashSharedSnapshot(forceSnapshot),
     userId ? getPendingPrize(userId) : Promise.resolve(null),
   ]);
 
@@ -2158,7 +2203,8 @@ app.get('/api/inventory', async (req, res) => {
   if (!user) return;
 
   try {
-    await serializeCrashState(user.id);
+    // Инвентарь не должен синхронизировать полный Crash-раунд. Иначе старт Mini App
+    // создаёт второй тяжёлый запрос к Crash одновременно с /api/crash/state.
     const [items, pendingPrize] = await Promise.all([
       getUserInventory(user.id),
       getPendingPrize(user.id),
@@ -2927,7 +2973,8 @@ async function getReferralLeaderboardSnapshot(userId = null, startedAtMs = 0, li
 app.get('/api/top', async (req, res) => {
   res.set('Cache-Control', 'no-store');
   try {
-    await rolloverTopCycleIfDue();
+    // Rollover выполняется фоновым таймером при старте и раз в минуту, а не в
+    // пользовательском запросе Top. Это исключает блокировку первого экрана.
     const mode = String(req.query.mode || 'deposits') === 'referrals' ? 'referrals' : 'deposits';
     const userId = parseInt(req.query.userId, 10);
 
@@ -3048,7 +3095,7 @@ app.get('/api/pvp/state', async (req, res) => {
   if (!user) return;
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   try {
-    return res.json(await serializePvpState());
+    return res.json(await getPvpStateForClient());
   } catch (error) {
     console.error('pvp state error:', error?.message || error);
     return res.status(503).json({ error: error.message || 'PVP unavailable' });
@@ -3069,6 +3116,8 @@ app.post('/api/pvp/bet', async (req, res) => {
     });
     if (error) throw new Error(error.message || 'PVP bet failed');
     const state = { ...(data || {}), serverNow: Date.now() };
+    pvpStateCache = state;
+    pvpStateCacheAt = Date.now();
     const deadline = Number(state?.round?.countdownEndsAt || 0);
     pvpNextSettlementCheckAt = state?.round?.phase === 'countdown' && deadline
       ? Math.max(Date.now() + 250, deadline)
@@ -3108,7 +3157,7 @@ app.post('/api/crash/bet', async (req, res) => {
   try {
     // Reconcile any prize orphaned by a backgrounded WebView before the DB
     // enforces the pending-prize check for this new bet.
-    await serializeCrashState(user.id);
+    await serializeCrashState(user.id, true);
 
     const { data, error } = await sb.rpc('crash_place_bet', {
       p_user_id: Number(user.id),
@@ -3117,7 +3166,8 @@ app.post('/api/crash/bet', async (req, res) => {
       p_amount: amount,
     });
     if (error) throw new Error(error.message || 'Bet failed');
-    return res.json({ ok: true, newBalance: Number(data?.newBalance || 0), state: await serializeCrashState(user.id) });
+    invalidateCrashSharedSnapshot();
+    return res.json({ ok: true, newBalance: Number(data?.newBalance || 0), state: await serializeCrashState(user.id, true) });
   } catch (error) {
     return res.status(400).json({ error: error.message || 'Bet failed' });
   }
@@ -3276,6 +3326,7 @@ app.post('/api/crash/cashout', async (req, res) => {
       throw new Error(error.message || 'Cash out failed');
     }
 
+    invalidateCrashSharedSnapshot();
     const pendingPrize = await getPendingPrize(user.id);
     const payoutKind = pendingPrize ? 'gift' : 'stars';
     console.log(
@@ -3292,7 +3343,7 @@ app.post('/api/crash/cashout', async (req, res) => {
       pendingPrize,
       awardedGift: pendingPrize,
       payoutKind,
-      state: await serializeCrashState(user.id),
+      state: await serializeCrashState(user.id, true),
     });
   } catch (error) {
     return res.status(400).json({ error: error.message || 'Cash out failed' });
@@ -4365,8 +4416,8 @@ app.listen(CONFIG.PORT, async () => {
     });
   }
 
-  // 5) Инициализируем 7-дневный цикл топа (если ещё не).
-  getTopCycleStart().catch(() => {});
-  // 6) Проверяем — пора ли катить топ — каждую минуту.
+  // 5) Инициализируем и сразу проверяем 7-дневный цикл Top вне запросов игроков.
+  rolloverTopCycleIfDue().catch(() => {});
+  // 6) Дальше проверяем rollover раз в минуту в фоне.
   setInterval(() => { rolloverTopCycleIfDue().catch(() => {}); }, 60 * 1000).unref?.();
 });
