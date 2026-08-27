@@ -40,6 +40,9 @@ const CONFIG = {
   RELAYER_INTERNAL_KEY: requireEnv('RELAYER_INTERNAL_KEY'),
   GIFT_RECEIVER_USERNAME: (process.env.GIFT_RECEIVER_USERNAME || 'GiftPepeReleyer').replace(/^@/, ''),
   CHANNEL_USERNAME: (process.env.CHANNEL_USERNAME || 'GiftPep').replace(/^@/, ''),
+  // Канал обязательной подписки для рефералов. По умолчанию использует уже заданный канал проекта.
+  REFERRAL_REQUIRED_CHANNEL: (process.env.REFERRAL_REQUIRED_CHANNEL || process.env.CHANNEL_USERNAME || 'GiftPep').replace(/^@/, ''),
+  BOT_USERNAME: (process.env.BOT_USERNAME || 'xpepegiftbot').replace(/^@/, ''),
   SUPPORT_USERNAME: (process.env.SUPPORT_USERNAME || 'GiftPepeSupport').replace(/^@/, ''),
   RELAYER_URL: process.env.RELAYER_URL || 'http://127.0.0.1:4011',
   INIT_DATA_MAX_AGE_SEC: Number(process.env.INIT_DATA_MAX_AGE_SEC || 600),
@@ -278,6 +281,149 @@ app.use('/api', async (req, res, next) => {
 function extractReferralId(startParam) {
   const match = /^ref_(\d+)$/.exec(String(startParam || '').trim());
   return match ? Number(match[1]) : null;
+}
+
+// Обязательная подписка проверяется только сервером через Telegram getChatMember.
+// При недоступности Telegram или неверной настройке канала ответ fail-closed: реферал не засчитывается.
+const referralMembershipCache = new Map();
+const REFERRAL_MEMBERSHIP_CACHE_TTL_MS = 15_000;
+
+function referralChannelUrl() {
+  return `https://t.me/${CONFIG.REFERRAL_REQUIRED_CHANNEL}`;
+}
+
+function referralBotUrl(referrerId = null) {
+  const suffix = referrerId ? `?start=ref_${Number(referrerId)}` : '';
+  return `https://t.me/${CONFIG.BOT_USERNAME}${suffix}`;
+}
+
+async function getReferralChannelMembership(userId) {
+  const numericId = Number(userId || 0);
+  if (!numericId || !CONFIG.REFERRAL_REQUIRED_CHANNEL) {
+    return { subscribed: false, reason: 'channel_not_configured' };
+  }
+  const cached = referralMembershipCache.get(numericId);
+  const now = Date.now();
+  if (cached && cached.expiresAt > now) return cached.value;
+
+  try {
+    const result = await tgApi('getChatMember', {
+      chat_id: `@${CONFIG.REFERRAL_REQUIRED_CHANNEL}`,
+      user_id: numericId,
+    }, 6000);
+    const member = result?.result || {};
+    const status = String(member.status || '');
+    const subscribed = ['creator', 'administrator', 'member'].includes(status)
+      || (status === 'restricted' && member.is_member === true);
+    const value = { subscribed, status, reason: subscribed ? null : 'not_subscribed' };
+    // Кэшируем только подтверждённую подписку: после нажатия «Подписаться» повторная
+    // проверка должна сразу увидеть вступление, а не ждать истечения старого false-кэша.
+    if (subscribed) referralMembershipCache.set(numericId, { value, expiresAt: now + REFERRAL_MEMBERSHIP_CACHE_TTL_MS });
+    else referralMembershipCache.delete(numericId);
+    return value;
+  } catch (error) {
+    console.warn(`⚠️ REF SUBSCRIPTION CHECK FAILED user=${numericId} channel=@${CONFIG.REFERRAL_REQUIRED_CHANNEL}: ${error?.message || error}`);
+    referralMembershipCache.delete(numericId);
+    return { subscribed: false, reason: 'telegram_check_failed' };
+  }
+}
+
+// Pending state is carried by the signed Telegram deep-link and callback data.
+// This intentionally avoids a new database migration: the actual referral row is
+// still created only after the live server-side getChatMember verification succeeds.
+async function storePendingReferralSubscription(userId, referrerId) {
+  return Boolean(Number(userId || 0) && Number(referrerId || 0));
+}
+
+async function markReferralSubscriptionVerified() {
+  return true;
+}
+
+async function confirmReferralAfterRequiredSubscription(userId, referrerId) {
+  const invitedId = Number(userId || 0);
+  const inviterId = Number(referrerId || 0);
+  if (!invitedId || !inviterId || invitedId === inviterId) return { verified: false, reason: 'invalid_referral' };
+
+  const membership = await getReferralChannelMembership(invitedId);
+  if (!membership.subscribed) {
+    try { await storePendingReferralSubscription(invitedId, inviterId); }
+    catch (error) { console.error('store pending referral error:', error?.message || error); }
+    console.log(`⏳ REF SUBSCRIPTION PENDING invited=${invitedId} inviter=${inviterId} reason=${membership.reason || 'not_subscribed'}`);
+    return { verified: false, reason: membership.reason || 'not_subscribed' };
+  }
+
+  const linked = await applyReferralIfNew(invitedId, inviterId);
+  try { await markReferralSubscriptionVerified(invitedId, inviterId); }
+  catch (error) { console.error('mark referral subscription error:', error?.message || error); }
+  if (linked) notifyReferrer(inviterId, invitedId, 'join').catch(() => null);
+  console.log(`✅ REF SUBSCRIPTION VERIFIED invited=${invitedId} inviter=${inviterId} linked=${linked}`);
+  return { verified: true, linked };
+}
+
+async function sendReferralSubscriptionPrompt(chatId, referrerId) {
+  const inviterId = Number(referrerId || 0);
+  return tgApi('sendMessage', {
+    chat_id: Number(chatId),
+    text: 'Чтобы реферал был засчитан и пригласитель получал 10%, подпишись на канал и нажми «Проверить подписку».',
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '📣 Подписаться на канал', url: referralChannelUrl() }],
+        [{ text: '✅ Проверить подписку', callback_data: `refcheck:${inviterId}` }],
+      ],
+    },
+  }, 6000);
+}
+
+async function handleReferralSubscriptionCallback(callback) {
+  const data = String(callback?.data || '');
+  const match = /^refcheck:(\d+)$/.exec(data);
+  if (!match) return false;
+
+  const invitedId = Number(callback?.from?.id || 0);
+  const referrerId = Number(match[1]);
+  const chatId = Number(callback?.message?.chat?.id || invitedId);
+  const messageId = Number(callback?.message?.message_id || 0);
+  if (!invitedId || !referrerId || invitedId === referrerId) {
+    await tgApi('answerCallbackQuery', {
+      callback_query_id: callback.id,
+      text: 'Реферальная ссылка некорректна.',
+      show_alert: true,
+    }, 5000);
+    return true;
+  }
+
+  const result = await confirmReferralAfterRequiredSubscription(invitedId, referrerId);
+  if (!result.verified) {
+    await tgApi('answerCallbackQuery', {
+      callback_query_id: callback.id,
+      text: 'Подписка пока не найдена. Подпишись на канал и попробуй ещё раз.',
+      show_alert: true,
+    }, 5000);
+    return true;
+  }
+
+  await tgApi('answerCallbackQuery', {
+    callback_query_id: callback.id,
+    text: 'Подписка подтверждена!',
+    show_alert: false,
+  }, 5000);
+  const openAppMarkup = { inline_keyboard: [[{
+    text: '🎮 Открыть Gift Pepe',
+    web_app: { url: `${String(CONFIG.MINI_APP_URL).replace(/\/$/, '')}?startapp=ref_${referrerId}` },
+  }]] };
+  const text = result.linked
+    ? '✅ Подписка подтверждена. Реферал засчитан, пригласитель будет получать 10%.'
+    : '✅ Подписка подтверждена. Реферальная связь уже была засчитана ранее.';
+  const edited = messageId ? await tgApi('editMessageText', {
+    chat_id: chatId,
+    message_id: messageId,
+    text,
+    reply_markup: openAppMarkup,
+  }, 5000) : null;
+  if (!edited?.ok) {
+    await tgApi('sendMessage', { chat_id: chatId, text, reply_markup: openAppMarkup }, 5000);
+  }
+  return true;
 }
 
 // Уведомление пригласителю в Telegram. kind ∈ 'join' | 'deposit' | 'fee'.
@@ -519,7 +665,7 @@ async function ensureTelegramWebhook(req = null) {
   if (!url) return { ok: false, skipped: true, description: 'Webhook URL not configured' };
   return tgApi('setWebhook', {
     url,
-    allowed_updates: ['message', 'pre_checkout_query'],
+    allowed_updates: ['message', 'callback_query', 'pre_checkout_query'],
     drop_pending_updates: false,
     secret_token: CONFIG.TELEGRAM_WEBHOOK_SECRET,
   }, 5000);
@@ -830,13 +976,10 @@ async function handleBotMessage(message) {
   const baseMiniAppUrl = String(CONFIG.MINI_APP_URL || '').trim().replace(/\/$/, '');
   const appUrl = startParam ? `${baseMiniAppUrl}?startapp=${encodeURIComponent(startParam)}` : baseMiniAppUrl;
 
-  // v8.19: deep-link вида /start ref_NNN — сразу фиксируем реферала,
-  // не дожидаясь пока новый юзер откроет mini app. Это даёт уведомление пригласителю
-  // даже если рефералу пришла обычная бот-ссылка (без app).
+  // По реферальному deep-link связь создаётся только после проверки подписки.
   try {
     const refId = extractReferralId(startParam);
     if (refId && senderId) {
-      // Убедимся что юзер есть в БД (init_user идемпотентен).
       try {
         const fromUser = message?.from || {};
         await sb.rpc('init_user', {
@@ -847,8 +990,11 @@ async function handleBotMessage(message) {
         });
       } catch (e) { console.warn('init_user from /start failed:', e?.message || e); }
 
-      const isNew = await applyReferralIfNew(senderId, refId);
-      if (isNew) notifyReferrer(refId, senderId, 'join').catch(() => null);
+      const result = await confirmReferralAfterRequiredSubscription(senderId, refId);
+      if (!result.verified) {
+        await sendReferralSubscriptionPrompt(chatId, refId);
+        return null;
+      }
     }
   } catch (e) {
     console.error('/start referral handling error:', e?.message || e);
@@ -1892,15 +2038,39 @@ app.post('/api/init', async (req, res) => {
 
   const referrerId = extractReferralId(context.startParam);
   const currentUserId = Number(user.id);
+  const profile = data?.[0] ?? {};
 
   if (referrerId) {
-    const isNew = await applyReferralIfNew(currentUserId, referrerId);
-    if (isNew) {
-      notifyReferrer(referrerId, user.id, 'join').catch(() => null);
+    try {
+      const result = await confirmReferralAfterRequiredSubscription(currentUserId, referrerId);
+      if (!result.verified) {
+        // Пользователь сначала открыл Mini App. Переводим его в бота для подписки.
+        return res.json({
+          ...profile,
+          referralGate: {
+            required: true,
+            referrerId,
+            channelUrl: referralChannelUrl(),
+            botUrl: referralBotUrl(referrerId),
+          },
+        });
+      }
+    } catch (error) {
+      console.error('init referral subscription error:', error?.message || error);
+      // Fail closed: без успешной проверки реферал не создаётся.
+      return res.json({
+        ...profile,
+        referralGate: {
+          required: true,
+          referrerId,
+          channelUrl: referralChannelUrl(),
+          botUrl: referralBotUrl(referrerId),
+        },
+      });
     }
   }
 
-  res.json(data?.[0] ?? {});
+  res.json(profile);
 });
 
 app.get('/api/balance', async (req, res) => {
@@ -3149,6 +3319,12 @@ app.post('/webhook', async (req, res) => {
       // Обычные messages обрабатываем best-effort и всегда подтверждаем 200.
 
 
+    if (u.callback_query) {
+      try { await handleReferralSubscriptionCallback(u.callback_query); }
+      catch (error) { console.error('bot callback error:', error?.message || error); }
+      return res.sendStatus(200);
+    }
+
     if (u.message?.text) {
       try { await handleBotMessage(u.message); }
       catch (error) { console.error('bot message error:', error?.message || error); }
@@ -3168,7 +3344,7 @@ app.post('/api/set-webhook', async (req, res) => {
   }
   res.json(await tgApi('setWebhook', {
     url: req.body.url,
-    allowed_updates: ['message', 'pre_checkout_query'],
+    allowed_updates: ['message', 'callback_query', 'pre_checkout_query'],
     secret_token: CONFIG.TELEGRAM_WEBHOOK_SECRET,
   }));
 });
