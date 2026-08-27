@@ -114,16 +114,13 @@
       currentLang==='en'?'Loading your game data':'Загружаем данные игры'
     );
     try{
-      // Не показываем экран с нулевыми заглушками: весь критичный UI грузится до первого кадра.
+      // На первом экране грузим только то, что влияет на игры. Top, рефералы,
+      // инвентарь и админка создавали очередь Supabase и оставляли Crash/PVP пустыми.
       await bootTask(()=>initUser());
       await Promise.allSettled([
-        bootTask(()=>refreshBalance()),
-        bootTask(()=>refreshInventory(true)),
-        bootTask(()=>refreshReferral(true)),
-        bootTask(()=>refreshTop(true)),
-        bootTask(()=>refreshMarketPrices()),
-        bootTask(()=>refreshCrashState(true,false,crashViewSession,true)),
-        bootTask(()=>refreshPvpState(true)),
+        bootTask(()=>refreshBalance(),6500),
+        bootTask(()=>refreshCrashState(true,false,crashViewSession,true),6500),
+        bootTask(()=>refreshPvpState(true),6500),
         preloadImage('assets/Crash_banner.png'),
         preloadImage('assets/PVP_Arena_banner.png'),
         preloadImage('assets/Upgrade_banner.png'),
@@ -135,8 +132,15 @@
       }
       hideBootState();
 
-      // Кошелёк и тяжёлые анимации не влияют на первый экран — запускаем только после отображения UI.
+      // Второстепенные данные запускаем лишь после первого нарисованного экрана.
+      runAfterFirstPaint(()=>Promise.allSettled([
+        refreshInventory(true),
+        refreshReferral(true),
+        refreshTop(true),
+        refreshMarketPrices(),
+      ]));
       runAfterFirstPaint(()=>ensureTonConnect().then(()=>{syncTopupWalletUI();syncTopupSubmitLabel();}));
+      runAfterFirstPaint(()=>initAdmin());
     }catch(e){
       console.error('Bootstrap failed:',e);
       hideBootState();
@@ -879,7 +883,7 @@
     const sections=overlay?.querySelectorAll('.admin-section')||[];
     verifyAdminAccess(btn);
 
-    // initAdmin может вызваться повторно после загрузки DOM; обработчики вешаем строго один раз.
+    // initAdmin вызывается после первого экрана bootstrapApp; обработчики вешаем строго один раз.
     if(btn.dataset.adminBound==='1')return;
     btn.dataset.adminBound='1';
 
@@ -1169,8 +1173,5 @@
       }
     });
   }
-  if(document.readyState==='loading'){
-    document.addEventListener('DOMContentLoaded', initAdmin);
-  } else {
-    initAdmin();
-  }
+  // Админская проверка запускается bootstrapApp только после первого отображения UI.
+  // Не добавляем её в очередь запуска Crash/PVP.
