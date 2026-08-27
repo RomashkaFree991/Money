@@ -328,33 +328,83 @@ async function getReferralChannelMembership(userId) {
   }
 }
 
-// Pending state is carried by the signed Telegram deep-link and callback data.
-// This intentionally avoids a new database migration: the actual referral row is
-// still created only after the live server-side getChatMember verification succeeds.
+// Первый переход по реферальной ссылке записывается в БД. Это не даёт аккаунту,
+// который уже существовал до реферального запуска, прикрепиться задним числом.
 async function storePendingReferralSubscription(userId, referrerId) {
-  return Boolean(Number(userId || 0) && Number(referrerId || 0));
-}
-
-async function markReferralSubscriptionVerified() {
+  const invitedId = Number(userId || 0);
+  const inviterId = Number(referrerId || 0);
+  if (!invitedId || !inviterId || invitedId === inviterId) return false;
+  const { error } = await sb.from('giftpep_referral_subscription_requests').upsert({
+    user_id: invitedId,
+    referrer_id: inviterId,
+    status: 'pending',
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'user_id' });
+  if (error) throw new Error(error.message || 'Unable to save pending referral');
   return true;
 }
 
-async function confirmReferralAfterRequiredSubscription(userId, referrerId) {
+async function getPendingReferralSubscription(userId, referrerId) {
+  const invitedId = Number(userId || 0);
+  const inviterId = Number(referrerId || 0);
+  const { data, error } = await sb
+    .from('giftpep_referral_subscription_requests')
+    .select('user_id,referrer_id,status')
+    .eq('user_id', invitedId)
+    .eq('referrer_id', inviterId)
+    .maybeSingle();
+  if (error) throw new Error(error.message || 'Unable to read pending referral');
+  return data || null;
+}
+
+async function markReferralSubscriptionVerified(userId, referrerId) {
+  const { error } = await sb.from('giftpep_referral_subscription_requests').update({
+    status: 'verified',
+    verified_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }).eq('user_id', Number(userId)).eq('referrer_id', Number(referrerId));
+  if (error) throw new Error(error.message || 'Unable to confirm referral subscription');
+}
+
+async function getUserCreatedAt(userId) {
+  const { data, error } = await sb.from('users').select('created_at').eq('id', Number(userId)).maybeSingle();
+  if (error) throw new Error(error.message || 'Unable to read user creation time');
+  return data?.created_at ? new Date(data.created_at).getTime() : 0;
+}
+
+async function isNewReferralSignup(userId, graceMs = 90_000) {
+  const createdAt = await getUserCreatedAt(userId);
+  return Boolean(createdAt && Date.now() - createdAt <= graceMs);
+}
+
+async function confirmReferralAfterRequiredSubscription(userId, referrerId, options = {}) {
   const invitedId = Number(userId || 0);
   const inviterId = Number(referrerId || 0);
   if (!invitedId || !inviterId || invitedId === inviterId) return { verified: false, reason: 'invalid_referral' };
 
+  let pending = await getPendingReferralSubscription(invitedId, inviterId);
+  if (!pending && options.allowFirstOpen) {
+    // Только самый первый короткий запуск после создания аккаунта получает право
+    // открыть ожидание. Уже зарегистрированный игрок рефералом не становится.
+    if (!(await isNewReferralSignup(invitedId))) {
+      console.log(`↩️ REF EXISTING USER BLOCKED invited=${invitedId} inviter=${inviterId}`);
+      return { verified: false, reason: 'existing_user' };
+    }
+    await storePendingReferralSubscription(invitedId, inviterId);
+    pending = { user_id: invitedId, referrer_id: inviterId, status: 'pending' };
+  }
+
+  if (!pending) return { verified: false, reason: 'no_pending_referral' };
+  if (pending.status === 'verified') return { verified: true, linked: false, alreadyVerified: true };
+
   const membership = await getReferralChannelMembership(invitedId);
   if (!membership.subscribed) {
-    try { await storePendingReferralSubscription(invitedId, inviterId); }
-    catch (error) { console.error('store pending referral error:', error?.message || error); }
     console.log(`⏳ REF SUBSCRIPTION PENDING invited=${invitedId} inviter=${inviterId} reason=${membership.reason || 'not_subscribed'}`);
     return { verified: false, reason: membership.reason || 'not_subscribed' };
   }
 
   const linked = await applyReferralIfNew(invitedId, inviterId);
-  try { await markReferralSubscriptionVerified(invitedId, inviterId); }
-  catch (error) { console.error('mark referral subscription error:', error?.message || error); }
+  await markReferralSubscriptionVerified(invitedId, inviterId);
   if (linked) notifyReferrer(inviterId, invitedId, 'join').catch(() => null);
   console.log(`✅ REF SUBSCRIPTION VERIFIED invited=${invitedId} inviter=${inviterId} linked=${linked}`);
   return { verified: true, linked };
