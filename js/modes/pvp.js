@@ -243,8 +243,8 @@
     if(winnerIsCurrentUser)playAppSound('reward');
     const winnerColor=pvpColor({colorIndex:result.winningColorIndex});
     if(pvpResultAvatar){pvpResultAvatar.style.background=winnerColor;if(winner.photoUrl||winner.photo_url){pvpResultAvatar.src=winner.photoUrl||winner.photo_url;pvpResultAvatar.style.padding='0';}else{pvpResultAvatar.removeAttribute('src');pvpResultAvatar.style.padding='12px';}}
-    if(pvpResultHeading)pvpResultHeading.textContent='You won';
-    if(pvpResultName)pvpResultName.textContent=winner.firstName||winner.first_name||'Победитель';
+    if(pvpResultHeading)pvpResultHeading.textContent='Вы выиграли';
+    if(pvpResultName)pvpResultName.textContent=winner.firstName||winner.first_name||'Игрок';
     if(pvpResultChance)pvpResultChance.textContent='Шанс '+String(result.winnerChance||0)+'%';
     if(pvpResultPrize)pvpResultPrize.textContent='+'+String(result.prize||0);
     if(pvpResultHideTimer)clearTimeout(pvpResultHideTimer);
