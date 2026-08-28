@@ -71,6 +71,37 @@
     openBet('pvp');
   });
   pvpResultClose?.addEventListener('click',closePvpResult);
+  const pvpHistoryOverlay=document.getElementById('pvpHistoryOverlay');
+  const pvpHistoryList=document.getElementById('pvpHistoryModalList');
+  function renderPvpHistoryRows(rounds){
+    if(!pvpHistoryList)return;
+    pvpHistoryList.replaceChildren();
+    if(!rounds?.length){const empty=document.createElement('div');empty.className='admin-muted';empty.textContent='История пока пуста';pvpHistoryList.append(empty);return;}
+    for(const round of rounds){
+      const card=document.createElement('div');card.className='pvp-history-modal-round';
+      const title=document.createElement('div');title.className='pvp-history-modal-round-title';
+      const label=document.createElement('span');label.textContent='Игра #'+round.roundId;
+      const bank=document.createElement('span');bank.textContent='Банк +'+Number(round.totalBank||0)+' ⭐';title.append(label,bank);card.append(title);
+      for(const bet of (round.bets||[])){
+        const row=document.createElement('div');row.className='pvp-history-modal-row';
+        const avatar=document.createElement('img');avatar.alt='';avatar.src=bet.photoUrl||'assets/avatar_placeholder.png';
+        const name=document.createElement('span');name.className='name';name.textContent=bet.firstName||'User';
+        const total=Number(round.totalBank||0);const chance=total?Number(bet.amount||0)*100/total:0;
+        const info=document.createElement('span');info.className='bet';info.textContent=Number(bet.amount||0)+' ⭐ · '+chance.toFixed(2)+'%';
+        const win=document.createElement('span');win.className='bank';win.textContent=Number(bet.userId)===Number(round.winnerUserId)?'+'+Number(round.totalBank||0)+' ⭐':'';
+        row.append(avatar,name,info,win);card.append(row);
+      }
+      pvpHistoryList.append(card);
+    }
+  }
+  async function openPvpHistory(){
+    pvpHistoryOverlay?.classList.add('open');
+    if(pvpHistoryList){pvpHistoryList.textContent='Загрузка…';}
+    try{const r=await fetch(API_BASE+'/api/pvp/history',{headers:{'x-init-data':tg?.initData||''}});const data=await r.json();if(!r.ok)throw new Error(data.error||'History failed');renderPvpHistoryRows(data.rounds||[]);}catch(e){if(pvpHistoryList)pvpHistoryList.textContent='Не удалось загрузить историю';}
+  }
+  document.getElementById('pvpHistoryOpen')?.addEventListener('click',openPvpHistory);
+  document.getElementById('pvpHistoryClose')?.addEventListener('click',()=>pvpHistoryOverlay?.classList.remove('open'));
+  pvpHistoryOverlay?.addEventListener('click',e=>{if(e.target===pvpHistoryOverlay)pvpHistoryOverlay.classList.remove('open');});
 
   const appRoot=document.querySelector('.app');
   const bootScreen=document.getElementById('bootScreen');
@@ -374,6 +405,7 @@
     if(amount>balance){showBetError('Недостаточно Stars');return;}
     if(pvpBetSubmitBusy)return;
     pvpBetSubmitBusy=true;
+    const balanceMutation=beginBalanceMutation();
     try{
       const response=await fetch(API_BASE+'/api/pvp/bet',{
         method:'POST',
@@ -382,13 +414,13 @@
       });
       const data=await readApiJson(response);
       if(!response.ok)throw new Error(data.error||'PVP bet failed');
-      if(Number.isFinite(Number(data.newBalance)))updateBalance(Number(data.newBalance));
+      if(Number.isFinite(Number(data.newBalance))&&canApplyBalanceMutation(balanceMutation)){updateBalance(Number(data.newBalance));saveProfileWarmState();}
       applyPvpState(data);
       dismissKeyboard(betAmountInput);
       closeBet();
       try{tg?.HapticFeedback?.notificationOccurred?.('success');}catch(_){}
     }catch(error){showBetError(error?.message||'PVP bet failed');}
-    finally{pvpBetSubmitBusy=false;}
+    finally{pvpBetSubmitBusy=false;endBalanceMutation(balanceMutation);}
   }
   async function submitCrashBet(ev){
     ev?.preventDefault?.();
@@ -571,10 +603,13 @@
   // ─── BACKEND HELPERS ─────────────────────────────────────────────────────────
   async function refreshBalance(){
     if(!tg?.initData)return null;
+    // Снимок версии берётся до запроса. Если за время сети прошла продажа,
+    // ставка или выплата, ответ относится к старому балансу и отбрасывается.
+    const requestRevision=getBalanceRefreshRevision();
     try{
       const resp=await fetch(API_BASE+'/api/balance?ts='+Date.now(),{headers:{'x-init-data':tg.initData}});
       const data=await resp.json();
-      if(data.balance!==undefined){
+      if(data.balance!==undefined&&canApplyBalanceRefresh(requestRevision)){
         updateBalance(data.balance);
         saveProfileWarmState();
         return data;
@@ -1179,6 +1214,23 @@
         polMsg.classList.add('err'); polMsg.textContent='❌ '+(e.message||'Ошибка');
       }
     });
+    // ───── NFT MANAGEMENT ─────
+    const giftUid=document.getElementById('adm_giftUserId');
+    const giftsLoad=document.getElementById('adm_giftsLoad');
+    const giftsTable=document.getElementById('adm_giftsTable');
+    const giftsMsg=document.getElementById('adm_giftsMsg');
+    async function loadAdminUserGifts(){
+      const userId=Number(giftUid?.value||0); if(!userId){giftsMsg.textContent='Введите User ID';return;}
+      giftsMsg.textContent='Загрузка…';giftsTable.replaceChildren();
+      try{const r=await fetch(API_BASE+'/api/admin/user-gifts?userId='+encodeURIComponent(userId),{headers:{'x-init-data':tg?.initData||''}});const data=await r.json();if(!r.ok)throw new Error(data.error||'Не удалось загрузить NFT');
+        for(const gift of (data.items||[])){const tr=document.createElement('tr');
+          for(const value of [gift.id,gift.gift_name||gift.gift_id,Number(gift.gift_price||0)+' ⭐']){const td=document.createElement('td');td.textContent=String(value);tr.append(td);}
+          const td=document.createElement('td');const btn=document.createElement('button');btn.textContent='Удалить';btn.addEventListener('click',async()=>{if(userId===8411885533){giftsMsg.textContent='Защищённый пользователь';return;}if(!confirm('Удалить этот NFT?'))return;btn.disabled=true;try{const rr=await fetch(API_BASE+'/api/admin/gift/delete',{method:'POST',headers:{'Content-Type':'application/json','x-init-data':tg?.initData||''},body:JSON.stringify({userId,giftId:Number(gift.id)})});const jj=await rr.json();if(!rr.ok)throw new Error(jj.error||'Удаление не удалось');await loadAdminUserGifts();}catch(e){giftsMsg.textContent='❌ '+e.message;btn.disabled=false;}});td.append(btn);tr.append(td);giftsTable.append(tr);
+        }
+        giftsMsg.textContent=(data.items||[]).length?'':'У пользователя NFT нет';
+      }catch(e){giftsMsg.textContent='❌ '+e.message;}
+    }
+    giftsLoad?.addEventListener('click',loadAdminUserGifts);
   }
   // Админская проверка запускается bootstrapApp только после первого отображения UI.
   // Не добавляем её в очередь запуска Crash/PVP.
