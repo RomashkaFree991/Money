@@ -657,11 +657,12 @@
     if(state==='loss') crashPlayer.classList.add('loss-state');
   }
 
-  function renderCrashPlayerWin(amount,gift=null){
+  function renderCrashPlayerWin(amount,gift=null,showPreview=true){
     const explicitGift=gift?normalizeCrashPrizeGift(gift):null;
-    // A red/lost card keeps the same preview NFT that was shown during the round.
-    // If the value is below the cheapest NFT, getCrashPreviewGift() correctly returns null.
-    const sourceGift=explicitGift||(crashPrizePending||crashBetSettled?crashPrizeGift:null)||getCrashPreviewGift(amount);
+    // Проигранная либо ещё не подтверждённая сервером карточка не должна
+    // показывать NFT. Иначе превью текущей выплаты смешивалось с суммой ставки
+    // и после проигрыша могло переключаться на другой подарок.
+    const sourceGift=explicitGift||(crashPrizePending||crashBetSettled?crashPrizeGift:null)||(showPreview?getCrashPreviewGift(amount):null);
     const displayGift=withCrashGiftValue(sourceGift,amount);
     crashRenderedWinGift=displayGift?{...displayGift}:null;
     crashRenderedWinAmount=Number(amount||0);
@@ -810,7 +811,9 @@
     crashBetSettled=true;
     crashSettledPayout=Number(payout||0);
     crashRoundLocked=true;
-    crashLocalBetRoundId=Number(crashRealtimeState?.roundId||crashLocalBetRoundId||0);
+    // Ответ cashout может прийти уже после открытия следующего раунда.
+    // Сохраняем ID именно оплаченной ставки, а не текущего отображаемого round.
+    crashLocalBetRoundId=Number(options.roundId||crashLocalBetRoundId||crashRealtimeState?.roundId||0);
     crashBetAmount=Number(betAmount||crashBetAmount||0);
     if(crashBetAmount>0){
       renderCrashPlayerCard(crashBetAmount);
@@ -949,7 +952,7 @@
         pendingPrize,
         Number(viewerBet?.displayAmount||viewerBet?.payout||crashSettledPayout||0),
         Number(viewerBet?.amount||crashBetAmount||0),
-        { autoOpen:false }
+        { autoOpen:false, roundId:Number(viewerBet?.roundId||stateRoundId||0) }
       );
       return;
     }
@@ -966,12 +969,12 @@
         // rejection can never flash green and then turn into a loss.
         setCrashPlayerState(crashBetSettled?'win':null);
         renderCrashPlayerCard(crashBetAmount);
-        renderCrashPlayerWin(crashSettledPayout||crashRenderedWinAmount||crashBetAmount,crashPrizeGift||crashRenderedWinGift);
+        renderCrashPlayerWin(crashSettledPayout||crashRenderedWinAmount||crashBetAmount,crashPrizeGift||crashRenderedWinGift,false);
         return;
       }
       if(crashResultState==='loss'&&crashBetAmount>0&&!crashPrizePending){
         renderCrashPlayerCard(crashBetAmount);
-        renderCrashPlayerWin(crashSettledPayout||crashBetAmount,null);
+        renderCrashPlayerWin(crashSettledPayout||crashBetAmount,null,false);
         setCrashPlayerState('loss');
         return;
       }
@@ -985,7 +988,7 @@
       if(crashBetAmount>0){
         setCrashPlayerState(null);
         renderCrashPlayerCard(crashBetAmount);
-        renderCrashPlayerWin(crashSettledPayout||crashRenderedWinAmount||crashBetAmount,crashPrizeGift||crashRenderedWinGift);
+        renderCrashPlayerWin(crashSettledPayout||crashRenderedWinAmount||crashBetAmount,crashPrizeGift||crashRenderedWinGift,false);
       }
       return;
     }
@@ -1019,7 +1022,7 @@
       if(crashCashoutBusy){
         // Stale poll while cashout is pending: stay neutral until HTTP confirmation.
         setCrashPlayerState(null);
-        renderCrashPlayerWin(crashSettledPayout||crashRenderedWinAmount||crashBetAmount,crashPrizeGift||crashRenderedWinGift);
+        renderCrashPlayerWin(crashSettledPayout||crashRenderedWinAmount||crashBetAmount,crashPrizeGift||crashRenderedWinGift,false);
         return;
       }
       crashCashoutBusy=false;
@@ -1077,7 +1080,7 @@
       crashPrizeGift=null;
       setCrashPlayerState('loss');
       renderCrashPlayerCard(crashBetAmount);
-      renderCrashPlayerWin(crashBetAmount,null);
+      renderCrashPlayerWin(crashBetAmount,null,false);
       const betBtn=document.getElementById('crashBetBtn');
       betBtn.classList.add('dim');
       betBtn.textContent=t('placeBet');
@@ -1210,8 +1213,8 @@
       renderCrashPlayerWin(crashSettledPayout||crashBetAmount,crashPrizeGift);
     }else if(!crashPrizePending && crashBetAmount>0){
       renderCrashPlayerCard(crashBetAmount);
-      renderCrashPlayerWin(crashBetAmount,null);
-      setCrashPlayerState('loss');
+        renderCrashPlayerWin(crashBetAmount,null,false);
+        setCrashPlayerState('loss');
     }
     if(crashPrizePending){ crashLivePill.textContent=t('giftReady'); closeBet(); }
     else crashLivePill.textContent=t('waiting');
@@ -1646,7 +1649,7 @@
       if(finalPrize){
         // A gift cashout must NOT visually credit Stars. The balance only changes
         // after the player explicitly chooses Sell in the prize modal.
-        enterPendingCrashPrize(finalPrize,win,crashBetAmount,{force:true,autoOpen:false});
+        enterPendingCrashPrize(finalPrize,win,crashBetAmount,{force:true,autoOpen:false,roundId});
         return;
       }
 
