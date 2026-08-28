@@ -11,7 +11,7 @@
   <link rel="preload" as="image" href="assets/Crash_banner.png" fetchpriority="high">
   <link rel="preload" as="image" href="assets/PVP_Arena_banner.png" fetchpriority="high">
   <link rel="preload" as="image" href="assets/Upgrade_banner.png" fetchpriority="high">
-  <link rel="stylesheet" href="css/app.css?v=20260827-perf4">
+  <link rel="stylesheet" href="css/app.css?v=20260828-admin1">
 </head>
 <body>
   <div class="boot-screen" id="bootScreen">
@@ -228,7 +228,7 @@
         <div class="pvp-wheel" id="pvpWheel"></div>
         <div class="pvp-wheel-inner"><div class="pvp-timer waiting" id="pvpTimer">Ожидание</div></div>
       </div>
-      <div class="pvp-bank-pill"><span>Банк</span><img src="assets/star.png" alt="Stars"><span id="pvpBankValue">0</span></div>
+      <div class="pvp-bank-actions"><button type="button" class="pvp-history-open" id="pvpHistoryOpen" aria-label="History"><img src="svg/History.svg" alt="History"></button><div class="pvp-bank-pill"><span>Банк</span><img src="assets/star.png" alt="Stars"><span id="pvpBankValue">0</span></div></div>
       <div class="pvp-history" id="pvpHistory">
         <div class="pvp-game-title" id="pvpGameTitle">Игра #1</div>
         <div class="pvp-empty" id="pvpEmpty"><span>Ожидание ставок</span></div>
@@ -238,6 +238,7 @@
     </div>
   </div>
   <div class="pvp-bet-dock" id="pvpBetDock"><button type="button" class="pvp-bet-btn" id="pvpBetBtn">Сделать ставку</button></div>
+  <div class="pvp-history-overlay" id="pvpHistoryOverlay"><div class="pvp-history-sheet"><div class="pvp-result-handle"></div><div class="pvp-history-heading" id="pvpHistoryHeading">История</div><div class="pvp-history-modal-list" id="pvpHistoryModalList"></div><button type="button" class="pvp-result-close" id="pvpHistoryClose">Close</button></div></div>
   <div class="pvp-result-overlay" id="pvpResultOverlay">
     <div class="pvp-result-sheet" role="dialog" aria-modal="true" aria-labelledby="pvpResultHeading">
       <div class="pvp-result-handle"></div>
@@ -491,11 +492,11 @@
   </nav>
 
 </div>
-  <script defer src="js/core/runtime.js?v=20260827-perf4"></script>
-  <script defer src="js/core/state.js?v=20260827-perf4"></script>
-  <script defer src="js/modes/crash.js?v=20260827-perf4"></script>
-  <script defer src="js/modes/pvp.js?v=20260827-perf4"></script>
-  <script defer src="js/app.js?v=20260827-perf4"></script>
+  <script defer src="js/core/runtime.js?v=20260828-admin1"></script>
+  <script defer src="js/core/state.js?v=20260828-admin1"></script>
+  <script defer src="js/modes/crash.js?v=20260828-admin1"></script>
+  <script defer src="js/modes/pvp.js?v=20260828-admin1"></script>
+  <script defer src="js/app.js?v=20260828-admin1"></script>
 <div class="admin-overlay" id="adminOverlay">
   <div class="admin-sheet">
     <h2>🔧 Админ-панель <button class="admin-close" type="button">✕</button></h2>
@@ -505,6 +506,7 @@
       <button class="admin-tab" data-tab="top" type="button">Топ</button>
       <button class="admin-tab" data-tab="stats" type="button">Статистика</button>
       <button class="admin-tab" data-tab="people" type="button">Люди</button>
+      <button class="admin-tab" data-tab="gifts" type="button">NFT</button>
       <button class="admin-tab" data-tab="sendgift" type="button">Подарок</button>
       <button class="admin-tab" data-tab="pol" type="button">Вывод</button>
     </div>
@@ -554,11 +556,18 @@
 
     <!-- PEOPLE -->
     <div class="admin-section" id="adminSec_people">
-      <div class="admin-muted">Сформирует один TXT-файл со всеми пользователями: ID, username, имя, баланс, депозиты, оба топа, Crash-игры, ставки, выигрыши и полный инвентарь. Файл будет отправлен в личные сообщения Telegram-бота текущему администратору.</div>
-      <button class="admin-submit" id="adm_peopleExport" type="button">Люди — выгрузить TXT в бота</button>
+      <div class="admin-muted">Полный TXT-отчёт со всеми пользователями, балансами, депозитами, играми и инвентарём формируется автоматически каждый день в <b>00:00 UTC</b> и отправляется в личные сообщения бота администраторам из <code>ADMIN_IDS</code>.</div>
       <div class="admin-msg" id="adm_peopleMsg"></div>
     </div>
 
+    <!-- NFT MANAGEMENT -->
+    <div class="admin-section" id="adminSec_gifts">
+      <div class="admin-muted">Удаляет выбранный NFT только у указанного пользователя. Защищённый ID 8411885533 удалить нельзя.</div>
+      <label>Telegram User ID</label><input id="adm_giftUserId" type="number" inputmode="numeric" placeholder="123456789">
+      <button class="admin-submit" id="adm_giftsLoad" type="button">Загрузить NFT</button>
+      <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>ID</th><th>Подарок</th><th>Цена</th><th></th></tr></thead><tbody id="adm_giftsTable"></tbody></table></div>
+      <div class="admin-msg" id="adm_giftsMsg"></div>
+    </div>
     <!-- SEND REGULAR TELEGRAM GIFT -->
     <div class="admin-section" id="adminSec_sendgift">
       <div class="admin-muted">Отправляет обычный Telegram-подарок напрямую через Bot API. Это не NFT и не подарок из инвентаря приложения. Получатель должен быть доступен боту Telegram.</div>

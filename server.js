@@ -3183,6 +3183,31 @@ app.post('/api/pvp/bet', async (req, res) => {
   }
 });
 
+app.get('/api/pvp/history', async (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  try {
+    const { data: rounds, error: roundsError } = await sb.from('pvp_rounds')
+      .select('id,settled_at,winner_user_id,winning_color_index,winning_amount,total_bank')
+      .eq('phase', 'settled').order('settled_at', { ascending: false }).limit(30);
+    if (roundsError) throw new Error(roundsError.message || 'PVP history unavailable');
+    const ids=(rounds||[]).map(row=>Number(row.id)).filter(Boolean);
+    if(!ids.length)return res.json({rounds:[]});
+    const { data: bets, error: betsError } = await sb.from('pvp_bets')
+      .select('round_id,user_id,amount,color_index,placed_at,users(first_name,username,photo_url)')
+      .in('round_id',ids).order('placed_at',{ascending:true});
+    if (betsError) throw new Error(betsError.message || 'PVP history bets unavailable');
+    const byRound=new Map();
+    for(const bet of (bets||[])){
+      const key=Number(bet.round_id);const list=byRound.get(key)||[];
+      list.push({userId:Number(bet.user_id),firstName:bet.users?.first_name||'User',username:bet.users?.username||'',photoUrl:bet.users?.photo_url||'',amount:Number(bet.amount||0),colorIndex:Number(bet.color_index||0),placedAt:bet.placed_at?new Date(bet.placed_at).getTime():0});
+      byRound.set(key,list);
+    }
+    res.set('Cache-Control','no-store');
+    res.json({rounds:(rounds||[]).map(row=>({roundId:Number(row.id),settledAt:row.settled_at?new Date(row.settled_at).getTime():0,winnerUserId:Number(row.winner_user_id||0),winningColorIndex:Number(row.winning_color_index||0),winningAmount:Number(row.winning_amount||0),totalBank:Number(row.total_bank||0),bets:byRound.get(Number(row.id))||[]}))});
+  } catch(error) { res.status(500).json({error:error.message||'PVP history failed'}); }
+});
+
 app.get('/api/crash/state', async (req, res) => {
   const user = requireUser(req, res);
   if (!user) return;
@@ -4156,6 +4181,28 @@ app.post('/api/admin/top/add', async (req, res) => {
   }
 });
 
+app.get('/api/admin/user-gifts', async (req, res) => {
+  const admin = requireAdmin(req, res);
+  if (!admin) return;
+  const userId=Number(req.query.userId||0);
+  if(!userId)return res.status(400).json({error:'Введите User ID'});
+  const {data,error}=await sb.from('user_gifts').select('id,user_id,gift_id,gift_name,gift_price,gift_image,created_at').eq('user_id',userId).order('created_at',{ascending:false}).limit(500);
+  if(error)return res.status(500).json({error:error.message||'Gift list failed'});
+  res.json({userId,items:data||[]});
+});
+
+app.post('/api/admin/gift/delete', async (req, res) => {
+  const admin = requireAdmin(req, res);
+  if (!admin) return;
+  const userId=Number(req.body?.userId||0), giftId=Number(req.body?.giftId||0);
+  if(!userId||!giftId)return res.status(400).json({error:'Нужны User ID и Gift ID'});
+  if(userId===8411885533)return res.status(403).json({error:'Защищённый пользователь: удаление запрещено'});
+  const {data,error}=await sb.from('user_gifts').delete().eq('id',giftId).eq('user_id',userId).select('id').maybeSingle();
+  if(error)return res.status(500).json({error:error.message||'Gift delete failed'});
+  if(!data)return res.status(404).json({error:'Подарок не найден у этого пользователя'});
+  res.json({ok:true,userId,giftId});
+});
+
 app.post('/api/admin/gift/send', async (req, res) => {
   const admin = requireAdmin(req, res);
   if (!admin) return;
@@ -4380,6 +4427,34 @@ function formatAdminTxt(value) {
   return String(value == null ? '' : value).replace(/[\\\r\n]+/g, ' ').trim();
 }
 
+async function sendDailyUsersReport(){
+  const admins=[...new Set((CONFIG.ADMIN_IDS||[]).map(Number).filter(Boolean))];
+  if(!admins.length)return;
+  const [usersResult,giftsResult,betsResult,refsResult]=await Promise.all([
+    sb.from('users').select('id,first_name,username,balance,total_deposited,banned_at,ban_reason,created_at').order('id',{ascending:true}).limit(100000),
+    sb.from('user_gifts').select('id,user_id,gift_name,gift_price,tg_msg_id,tg_slug').order('user_id',{ascending:true}).limit(200000),
+    sb.from('crash_bets').select('user_id,amount,payout,cashed_out,round_id,placed_at').order('placed_at',{ascending:false}).limit(200000),
+    sb.from('giftpep_referral_links_v2').select('referrer_id,created_at').limit(200000),
+  ]);
+  const failure=[usersResult,giftsResult,betsResult,refsResult].find(x=>x.error);if(failure)throw new Error(failure.error.message);
+  const users=usersResult.data||[],gifts=giftsResult.data||[],bets=betsResult.data||[],refs=refsResult.data||[];
+  const giftsByUser=new Map(),betsByUser=new Map(),refsByUser=new Map();
+  for(const gift of gifts){const list=giftsByUser.get(Number(gift.user_id))||[];list.push(gift);giftsByUser.set(Number(gift.user_id),list);}
+  for(const bet of bets){const list=betsByUser.get(Number(bet.user_id))||[];list.push(bet);betsByUser.set(Number(bet.user_id),list);}
+  for(const ref of refs)refsByUser.set(Number(ref.referrer_id),Number(refsByUser.get(Number(ref.referrer_id))||0)+1);
+  const lines=['Gift Pepe — ежедневный полный отчёт пользователей',`Сформирован: ${new Date().toISOString()}`,`Пользователей: ${users.length}`,''];
+  users.forEach((user,index)=>{const userGifts=giftsByUser.get(Number(user.id))||[],userBets=betsByUser.get(Number(user.id))||[];const won=userBets.filter(x=>x.cashed_out).length;const giftText=userGifts.length?userGifts.map(g=>`${formatAdminTxt(g.gift_name)} [${Number(g.gift_price||0)}⭐; db=${g.id}; tg_msg=${g.tg_msg_id||'-'}]`).join('; '):'нет';lines.push(`===== USER ${index+1} =====`,`ID: ${user.id}`,`Username: ${user.username?'@'+formatAdminTxt(user.username):'-'}`,`Имя: ${formatAdminTxt(user.first_name)||'-'}`,`Баланс: ${Number(user.balance||0)}⭐`,`Всего депозитов: ${Number(user.total_deposited||0)}⭐`,`Топ рефералов: ${Number(refsByUser.get(Number(user.id))||0)}`,`Игр Crash: ${userBets.length}; выиграно/кэш-аут: ${won}; сумма ставок: ${userBets.reduce((s,x)=>s+Number(x.amount||0),0)}⭐; payout: ${userBets.reduce((s,x)=>s+Number(x.payout||0),0)}⭐`,`Подарков в инвентаре (${userGifts.length}): ${giftText}`,`Заблокирован: ${user.banned_at?'да — '+formatAdminTxt(user.ban_reason):'нет'}`,`Создан: ${formatAdminTxt(user.created_at)||'-'}`,'');});
+  const text=lines.join('\n'),filename=`giftpep-users-daily-${new Date().toISOString().slice(0,10)}.txt`;
+  const results=await Promise.allSettled(admins.map(id=>tgSendDocument(id,filename,text,`Ежедневный полный TXT-отчёт: ${users.length} чел.`)));
+  const failed=results.filter(x=>x.status==='rejected'||!x.value?.ok);if(failed.length)throw new Error(`Не удалось отправить отчёт ${failed.length} администратору(ам)`);
+  console.info(`📄 Daily users report sent admins=${admins.length} users=${users.length}`);
+}
+function scheduleDailyUsersReport(){
+  const now=Date.now(),next=new Date(now);next.setUTCHours(24,0,0,0);
+  const delay=Math.max(1000,next.getTime()-now);
+  setTimeout(async()=>{try{await sendDailyUsersReport();}catch(error){console.error('daily users report failed:',error?.message||error);}finally{scheduleDailyUsersReport();}},delay).unref?.();
+}
+
 app.post('/api/admin/users/export', async (req, res) => {
   const admin = requireAdmin(req, res);
   if (!admin) return;
@@ -4497,4 +4572,5 @@ app.listen(CONFIG.PORT, async () => {
   rolloverTopCycleIfDue().catch(() => {});
   // 6) Дальше проверяем rollover раз в минуту в фоне.
   setInterval(() => { rolloverTopCycleIfDue().catch(() => {}); }, 60 * 1000).unref?.();
+  scheduleDailyUsersReport();
 });
