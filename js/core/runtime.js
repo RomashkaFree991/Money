@@ -692,6 +692,7 @@
     if(e.target.closest('[data-action="sell"]')){
       const prevItems=[...inventoryItems];
       const prevBalance=balance;
+      const balanceMutation=beginBalanceMutation();
       inventoryItems=inventoryItems.filter(entry=>String(entry.id)!==String(item.id));
       renderInventory();
       updateBalance(balance+Number(item.price||0));
@@ -704,13 +705,15 @@
         const data=await resp.json().catch(()=>({}));
         if(!resp.ok) throw new Error(data.error||'Sell failed');
         if(Array.isArray(data.items)) inventoryItems=data.items.map(item=>normalizeInventoryGift(item)).filter(Boolean);
-        if(Number.isFinite(Number(data.newBalance))) updateBalance(Number(data.newBalance));
+        if(Number.isFinite(Number(data.newBalance))&&canApplyBalanceMutation(balanceMutation)){updateBalance(Number(data.newBalance));saveProfileWarmState();}
         renderInventory();
       }catch(err){
         inventoryItems=prevItems;
         updateBalance(prevBalance);
         renderInventory();
         tg?.showAlert?tg.showAlert(err.message):alert(err.message);
+      }finally{
+        endBalanceMutation(balanceMutation);
       }
       return;
     }
@@ -781,6 +784,7 @@
     if(!inventoryItems.length)return;
     const prevItems=[...inventoryItems];
     const prevBalance=balance;
+    const balanceMutation=beginBalanceMutation();
     const soldTotal=inventoryItems.reduce((sum,item)=>sum+Number(item.price||0),0);
     inventoryItems=[];
     renderInventory();
@@ -793,13 +797,15 @@
       const data=await resp.json().catch(()=>({}));
       if(!resp.ok) throw new Error(data.error||'Sell all failed');
       inventoryItems=Array.isArray(data.items)?data.items.map(item=>normalizeInventoryGift(item)).filter(Boolean):[];
-      if(Number.isFinite(Number(data.newBalance))) updateBalance(Number(data.newBalance));
+      if(Number.isFinite(Number(data.newBalance))&&canApplyBalanceMutation(balanceMutation)){updateBalance(Number(data.newBalance));saveProfileWarmState();}
       renderInventory();
     }catch(err){
       inventoryItems=prevItems;
       updateBalance(prevBalance);
       renderInventory();
       tg?.showAlert?tg.showAlert(err.message):alert(err.message);
+    }finally{
+      endBalanceMutation(balanceMutation);
     }
   });
 

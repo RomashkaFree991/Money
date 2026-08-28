@@ -1,5 +1,18 @@
   // Balance
   let balance=0;
+  // Каждое локальное или серверное изменение увеличивает версию. Ответ
+  // /api/balance, начатый раньше, нельзя применять поверх этой новой версии.
+  let balanceRevision=0;
+  let balanceMutationDepth=0;
+  let balanceMutationSerial=0;
+  function beginBalanceMutation(){
+    balanceMutationDepth+=1;
+    return ++balanceMutationSerial;
+  }
+  function endBalanceMutation(){balanceMutationDepth=Math.max(0,balanceMutationDepth-1);}
+  function getBalanceRefreshRevision(){return balanceRevision;}
+  function canApplyBalanceRefresh(revision){return balanceMutationDepth===0&&Number(revision)===balanceRevision;}
+  function canApplyBalanceMutation(token){return Number(token)===balanceMutationSerial;}
   let topMode='deposits';
   let topCache={leaders:[],myRank:null,myScore:0};
   let referralTopCache={leaders:[],myRank:null,myScore:0};
@@ -7,6 +20,7 @@
   const topRefreshedAt={deposits:0,referrals:0};
   function updateBalance(v){
     balance=Number(v||0);
+    balanceRevision+=1;
     document.getElementById('balanceText').textContent=formatStars(balance);
     updateInventorySummary();
   }
