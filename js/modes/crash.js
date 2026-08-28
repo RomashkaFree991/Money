@@ -1336,6 +1336,7 @@
     const phase=deriveCrashDisplayPhase(crashRealtimeState);
     if(phase!=='countdown') return false;
     const prevBalance=balance;
+    const balanceMutation=beginBalanceMutation();
     const prevPrizePending=crashPrizePending;
     const prevPrizeGift=crashPrizeGift;
     const prevBetActive=crashBetActive;
@@ -1392,7 +1393,7 @@
         // интерфейс ещё на несколько секунд при медленном Supabase.
         refreshCrashState(true).catch(()=>{});
       }
-      if(Number.isFinite(Number(data?.newBalance))) updateBalance(Number(data.newBalance));
+      if(Number.isFinite(Number(data?.newBalance))&&canApplyBalanceMutation(balanceMutation)){updateBalance(Number(data.newBalance));saveProfileWarmState();}
       crashBetSyncPending=false;
       return true;
     }catch(e){
@@ -1418,6 +1419,8 @@
       refreshCrashState(true);
       tg?.showAlert?tg.showAlert(e.message):alert(e.message);
       return false;
+    }finally{
+      endBalanceMutation(balanceMutation);
     }
   }
 
@@ -1429,6 +1432,7 @@
 
     const prize=normalizeInventoryGift(crashPrizeGift,'temp_claim_'+Date.now());
     const prevBalance=balance;
+    const balanceMutation=beginBalanceMutation();
     const prevItems=[...inventoryItems];
     const prevPrizePending=crashPrizePending;
     const prevPrizeGift=crashPrizeGift;
@@ -1470,7 +1474,7 @@
       crashPrizeModalAutoKey='';
       crashPrizeResolveToken='';
       if(mode==='sell'){
-        if(Number.isFinite(Number(data.newBalance))) updateBalance(Number(data.newBalance));
+        if(Number.isFinite(Number(data.newBalance))&&canApplyBalanceMutation(balanceMutation)){updateBalance(Number(data.newBalance));saveProfileWarmState();}
       }else{
         const confirmedGift=normalizeInventoryGift({
           ...prize,
@@ -1536,6 +1540,7 @@
       return false;
     }finally{
       crashPrizeResolveBusy=false;
+      endBalanceMutation(balanceMutation);
     }
   }
 
@@ -1562,6 +1567,7 @@
     crashCashoutRequestedRoundId=roundId;
     const betBtn=document.getElementById('crashBetBtn');
     const prevBalance=balance;
+    const balanceMutation=beginBalanceMutation();
     const prevPrizePending=crashPrizePending;
     const prevPrizeGift=crashPrizeGift;
     const prevBetActive=crashBetActive;
@@ -1654,8 +1660,8 @@
       }
 
       // Fallback cashout without a gift: use the authoritative server balance.
-      if(Number.isFinite(Number(data.newBalance))) updateBalance(Number(data.newBalance));
-      else updateBalance(prevBalance);
+      if(Number.isFinite(Number(data.newBalance))&&canApplyBalanceMutation(balanceMutation)){updateBalance(Number(data.newBalance));saveProfileWarmState();}
+      else if(canApplyBalanceMutation(balanceMutation)) updateBalance(prevBalance);
 
       crashPrizeGift=null;
       hideCrashPrize();
@@ -1689,6 +1695,8 @@
       }
       updateBalance(prevBalance);
       tg?.showAlert?tg.showAlert(e.message):alert(e.message);
+    }finally{
+      endBalanceMutation(balanceMutation);
     }
   }
 

@@ -92,15 +92,19 @@
     const total=pvpTotalBank();
     if(!total){pvpWheelEl.style.background='repeating-conic-gradient(from -18deg,#46474d 0deg 36deg,#1b1c20 36deg 72deg)';return;}
     let cursor=0;const stops=[];
-    for(const player of pvpPlayers){
+    const orderedPlayers=[...pvpPlayers].sort((a,b)=>Number(a.colorIndex||0)-Number(b.colorIndex||0));
+    for(const player of orderedPlayers){
       const part=Math.max(0,Number(player.amount||0))/total*360;
       stops.push(pvpColor(player)+' '+cursor+'deg '+(cursor+part)+'deg');
+      // conic-gradient считает 0° сверху и идёт по часовой стрелке. У CSS
+      // координат x/y другая система, поэтому прежние cos/sin сдвигали аватар
+      // примерно на четверть колеса — он оказывался на чужом цвете.
       const centerDeg=cursor+part/2-90;
       const radians=centerDeg*Math.PI/180;
       const marker=document.createElement('span');
       marker.className='pvp-wheel-avatar';
-      marker.style.left=(50+Math.cos(radians)*33.5)+'%';
-      marker.style.top=(50+Math.sin(radians)*33.5)+'%';
+      marker.style.left=(50+Math.sin(radians)*33.5)+'%';
+      marker.style.top=(50-Math.cos(radians)*33.5)+'%';
       marker.style.background=pvpColor(player);
       if(player.photoUrl){
         const image=document.createElement('img');image.src=player.photoUrl;image.alt='';marker.append(image);
@@ -190,8 +194,9 @@
       cursor+=sector;
     }
     if(center===null)return 0;
-    // Sectors start at -90deg and the pointer is also at the top (-90deg).
-    const target=((-center)%360+360)%360;
+    // CSS conic-gradient starts at the top; the pointer is also at the top.
+    // Наши секторы начинаются с from -90deg, поэтому нужен сдвиг +90°.
+    const target=((90-center)%360+360)%360;
     pvpWheelEl.classList.remove('running');
     pvpWheelEl.style.transition='none';
     pvpWheelEl.style.transform='rotate(0deg)';
