@@ -2039,12 +2039,31 @@ const CRASH_SHARED_SNAPSHOT_TTL_MS = 250;
 let crashSharedSnapshot = null;
 let crashSharedSnapshotAt = 0;
 let crashSharedSnapshotInFlight = null;
+// Недавние неизменяемые таймлайны нужны только для проверки нажатия,
+// пришедшего до crashAt. Их нельзя отдавать как текущий state интерфейса.
+const crashRoundTimeline = new Map();
+const CRASH_ROUND_TIMELINE_TTL_MS = 60_000;
+function rememberCrashRoundTimeline(state) {
+  const roundId = Number(state?.roundId || 0);
+  if (!roundId) return;
+  crashRoundTimeline.set(roundId, { state: { ...state }, savedAt: Date.now() });
+  for (const [id, entry] of crashRoundTimeline) {
+    if (Date.now() - Number(entry?.savedAt || 0) > CRASH_ROUND_TIMELINE_TTL_MS) crashRoundTimeline.delete(id);
+  }
+}
+function getRememberedCrashRoundTimeline(roundId) {
+  const entry = crashRoundTimeline.get(Number(roundId));
+  if (!entry || Date.now() - Number(entry.savedAt || 0) > CRASH_ROUND_TIMELINE_TTL_MS) return null;
+  const state = entry.state || null;
+  return state?.liveStartAt && state?.crashAt ? state : null;
+}
 
 function refreshCrashSharedSnapshot() {
   if (!crashSharedSnapshotInFlight) {
     crashSharedSnapshotInFlight = (async () => {
       const state = await getCrashInternalState();
       const bets = await getCrashBets(state.roundId);
+      rememberCrashRoundTimeline(state);
       const snapshot = { state, bets };
       crashSharedSnapshot = snapshot;
       crashSharedSnapshotAt = Date.now();
@@ -3250,14 +3269,16 @@ app.post('/api/crash/cashout', async (req, res) => {
       return res.status(400).json({ error: 'Bad round', code: 'BAD_ROUND' });
     }
 
-    // Load the bet BEFORE validating the current phase. This makes cashout
-    // idempotent: a delayed duplicate request after a successful cashout returns
-    // the original result instead of "Round is not live".
-    const { data: betRow, error: betError } = await sb.from('crash_bets')
+    // Начинаем оба независимых чтения сразу. При медленном Supabase прежняя
+    // последовательность select → crash_sync_state задерживала cashout почти вдвое.
+    const betPromise = sb.from('crash_bets')
       .select('round_id,user_id,amount,cashed_out,payout,awarded_gift,cashed_out_at')
       .eq('round_id', roundId)
       .eq('user_id', Number(user.id))
       .maybeSingle();
+    const rememberedState = getRememberedCrashRoundTimeline(roundId);
+    const statePromise = rememberedState ? Promise.resolve(rememberedState) : getCrashInternalState();
+    const [{ data: betRow, error: betError }, state] = await Promise.all([betPromise, statePromise]);
 
     if (betError) throw new Error(betError.message);
     if (!betRow) {
@@ -3265,25 +3286,20 @@ app.post('/api/crash/cashout', async (req, res) => {
     }
 
     if (betRow.cashed_out) {
-      const [pendingPrize, currentBalance, state] = await Promise.all([
-        getPendingPrize(user.id),
-        getUserBalance(user.id),
-        serializeCrashState(user.id),
-      ]);
+      // Этот путь выполняется только для повторного запроса. Проверяем, что
+      // приз ещё не забран, чтобы не показать один NFT второй раз.
+      const pendingPrize = await getPendingPrize(user.id);
       const awardedGift = betRow.awarded_gift ? normalizeGift(betRow.awarded_gift) : null;
       return res.json({
         ok: true,
         alreadySettled: true,
         payout: Number(betRow.payout || 0),
-        newBalance: Number(currentBalance || 0),
+        newBalance: null,
         pendingPrize,
         awardedGift: pendingPrize || awardedGift,
         payoutKind: awardedGift ? 'gift' : 'stars',
-        state,
       });
     }
-
-    const state = await getCrashInternalState();
     if (roundId !== state.roundId || !state.liveStartAt || !state.crashAt
         || requestReceivedAtMs < state.liveStartAt || requestReceivedAtMs >= state.crashAt) {
       console.warn('🚀 CRASH cashout rejected', {
@@ -3371,28 +3387,26 @@ app.post('/api/crash/cashout', async (req, res) => {
         .maybeSingle();
 
       if (after?.cashed_out) {
-        const [pendingPrize, currentBalance, currentState] = await Promise.all([
-          getPendingPrize(user.id),
-          getUserBalance(user.id),
-          serializeCrashState(user.id),
-        ]);
+        const pendingPrize = await getPendingPrize(user.id);
         const finalGift = after.awarded_gift ? normalizeGift(after.awarded_gift) : null;
         return res.json({
           ok: true,
           alreadySettled: true,
           payout: Number(after.payout || 0),
-          newBalance: Number(currentBalance || 0),
+          newBalance: null,
           pendingPrize,
           awardedGift: pendingPrize || finalGift,
           payoutKind: finalGift ? 'gift' : 'stars',
-          state: currentState,
         });
       }
       throw new Error(error.message || 'Cash out failed');
     }
 
     invalidateCrashSharedSnapshot();
-    const pendingPrize = await getPendingPrize(user.id);
+    // Не ждём state/pending-prize SELECT перед ответом игроку. Ставка уже
+    // атомарно зафиксирована RPC, а общий снимок обновится отдельно.
+    refreshCrashSharedSnapshot().catch(() => {});
+    const pendingPrize = awardedGift ? normalizeGift(awardedGift) : null;
     const payoutKind = pendingPrize ? 'gift' : 'stars';
     console.log(
       `🎁 CRASH CASHOUT user=${user.id} round=${roundId} requested=${Number(req.body?.requestedPayout || 0)} `
@@ -3408,7 +3422,6 @@ app.post('/api/crash/cashout', async (req, res) => {
       pendingPrize,
       awardedGift: pendingPrize,
       payoutKind,
-      state: await serializeCrashState(user.id, true),
     });
   } catch (error) {
     return res.status(400).json({ error: error.message || 'Cash out failed' });
