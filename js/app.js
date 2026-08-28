@@ -81,14 +81,14 @@
       const card=document.createElement('div');card.className='pvp-history-modal-round';
       const title=document.createElement('div');title.className='pvp-history-modal-round-title';
       const label=document.createElement('span');label.textContent='Игра #'+round.roundId;
-      const bank=document.createElement('span');bank.textContent='Банк +'+Number(round.totalBank||0)+' ⭐';title.append(label,bank);card.append(title);
+      const bank=document.createElement('span');bank.className='history-bank-value';bank.textContent='Банк +'+Number(round.totalBank||0);const bankStar=document.createElement('img');bankStar.src='assets/star.png';bankStar.alt='Stars';bank.append(bankStar);title.append(label,bank);card.append(title);
       for(const bet of (round.bets||[])){
         const row=document.createElement('div');row.className='pvp-history-modal-row';
         const avatar=document.createElement('img');avatar.alt='';avatar.src=bet.photoUrl||'assets/avatar_placeholder.png';
         const name=document.createElement('span');name.className='name';name.textContent=bet.firstName||'User';
         const total=Number(round.totalBank||0);const chance=total?Number(bet.amount||0)*100/total:0;
-        const info=document.createElement('span');info.className='bet';info.textContent=Number(bet.amount||0)+' ⭐ · '+chance.toFixed(2)+'%';
-        const win=document.createElement('span');win.className='bank';win.textContent=Number(bet.userId)===Number(round.winnerUserId)?'+'+Number(round.totalBank||0)+' ⭐':'';
+        const info=document.createElement('span');info.className='bet';info.textContent=Number(bet.amount||0)+' · '+chance.toFixed(2)+'%';const infoStar=document.createElement('img');infoStar.src='assets/star.png';infoStar.alt='Stars';info.append(infoStar);
+        const win=document.createElement('span');win.className='bank';if(Number(bet.userId)===Number(round.winnerUserId)){win.textContent='+'+Number(round.totalBank||0);const winStar=document.createElement('img');winStar.src='assets/star.png';winStar.alt='Stars';win.append(winStar);}
         row.append(avatar,name,info,win);card.append(row);
       }
       pvpHistoryList.append(card);
