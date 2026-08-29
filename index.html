@@ -226,18 +226,18 @@
         <div class="admin-cases-group">
           <h2 class="admin-cases-title">Лимитированные кейсы</h2>
           <div class="admin-cases-grid">
-            <article class="admin-case-card" role="button" tabindex="0" data-case-open="true"><img src="assets/spiderman_case.png" alt="Spider-man кейс" loading="lazy"><div class="admin-case-name">Spider-man</div><div class="admin-case-price"><span>0</span><img src="assets/star.png" alt="Stars"></div></article>
-            <article class="admin-case-card" role="button" tabindex="0" data-case-open="true"><img src="assets/holiday_case.png" alt="Каникулы кейс" loading="lazy"><div class="admin-case-name">Каникулы</div><div class="admin-case-price"><span>0</span><img src="assets/star.png" alt="Stars"></div></article>
-            <article class="admin-case-card" role="button" tabindex="0" data-case-open="true"><img src="assets/farm_case.png" alt="FARM кейс" loading="lazy"><div class="admin-case-name">FARM</div><div class="admin-case-price"><span>0</span><img src="assets/star.png" alt="Stars"></div></article>
+            <article class="admin-case-card" role="button" tabindex="0" data-case-open="true"><img src="assets/farm_case.png" alt="FARM кейс" loading="lazy"><div class="admin-case-name">FARM</div><div class="admin-case-price"><span>67</span><img src="assets/star.png" alt="Stars"></div></article>
+            <article class="admin-case-card" role="button" tabindex="0" data-case-open="true"><img src="assets/holiday_case.png" alt="Каникулы кейс" loading="lazy"><div class="admin-case-name">Каникулы</div><div class="admin-case-price"><span>169</span><img src="assets/star.png" alt="Stars"></div></article>
+            <article class="admin-case-card" role="button" tabindex="0" data-case-open="true"><img src="assets/spiderman_case.png" alt="Spider-man кейс" loading="lazy"><div class="admin-case-name">Spider-man</div><div class="admin-case-price"><span>349</span><img src="assets/star.png" alt="Stars"></div></article>
           </div>
         </div>
         <div class="admin-cases-group">
           <h2 class="admin-cases-title">Обычные кейсы</h2>
           <div class="admin-cases-grid">
-            <article class="admin-case-card" role="button" tabindex="0" data-case-open="true"><img src="assets/econom_case.png" alt="Эконом кейс" loading="lazy"><div class="admin-case-name">Эконом</div><div class="admin-case-price"><span>0</span><img src="assets/star.png" alt="Stars"></div></article>
-            <article class="admin-case-card" role="button" tabindex="0" data-case-open="true"><img src="assets/worker_case.png" alt="Работяга кейс" loading="lazy"><div class="admin-case-name">Работяга</div><div class="admin-case-price"><span>0</span><img src="assets/star.png" alt="Stars"></div></article>
-            <article class="admin-case-card" role="button" tabindex="0" data-case-open="true"><img src="assets/oligarch_case.png" alt="Олигарх кейс" loading="lazy"><div class="admin-case-name">Олигарх</div><div class="admin-case-price"><span>0</span><img src="assets/star.png" alt="Stars"></div></article>
-            <article class="admin-case-card" role="button" tabindex="0" data-case-open="true"><img src="assets/standard_case.png" alt="Стандартный кейс" loading="lazy"><div class="admin-case-name">Стандартный</div><div class="admin-case-price"><span>0</span><img src="assets/star.png" alt="Stars"></div></article>
+            <article class="admin-case-card" role="button" tabindex="0" data-case-open="true"><img src="assets/standard_case.png" alt="Стандартный кейс" loading="lazy"><div class="admin-case-name">Стандартный</div><div class="admin-case-price"><span>50</span><img src="assets/star.png" alt="Stars"></div></article>
+            <article class="admin-case-card" role="button" tabindex="0" data-case-open="true"><img src="assets/econom_case.png" alt="Эконом кейс" loading="lazy"><div class="admin-case-name">Эконом</div><div class="admin-case-price"><span>149</span><img src="assets/star.png" alt="Stars"></div></article>
+            <article class="admin-case-card" role="button" tabindex="0" data-case-open="true"><img src="assets/worker_case.png" alt="Работяга кейс" loading="lazy"><div class="admin-case-name">Работяга</div><div class="admin-case-price"><span>360</span><img src="assets/star.png" alt="Stars"></div></article>
+            <article class="admin-case-card" role="button" tabindex="0" data-case-open="true"><img src="assets/oligarch_case.png" alt="Олигарх кейс" loading="lazy"><div class="admin-case-name">Олигарх</div><div class="admin-case-price"><span>899</span><img src="assets/star.png" alt="Stars"></div></article>
           </div>
         </div>
       </section>
@@ -250,15 +250,26 @@
       <div class="case-header-row">
         <div class="case-title" id="caseTitle">Кейс</div>
       </div>
-      <div class="case-nickname" id="caseNickname">@user</div>
       <div class="case-strip-wrap" aria-label="Подарки кейса">
         <img class="case-strip-arrow case-strip-arrow--top" src="svg/up.svg" alt="">
-        <div class="case-strip" id="caseStrip"></div>
+        <div class="case-strip"><div class="case-strip-track" id="caseStrip"></div></div>
         <img class="case-strip-arrow case-strip-arrow--bottom" src="svg/up.svg" alt="">
       </div>
-      <button type="button" class="case-open-btn" id="caseOpenBtn">Открыть</button>
+      <button type="button" class="case-open-btn" id="caseOpenBtn"><span>Открыть</span><span class="case-open-price" id="caseOpenPrice">0 <img src="assets/star.png" alt="Stars"></span></button>
       <div class="case-gifts-heading">Подарки в кейсе</div>
       <div class="case-gifts-grid" id="caseGiftsGrid"></div>
+    </div>
+  </div>
+
+  <div class="case-result-overlay" id="caseResultOverlay" aria-hidden="true">
+    <div class="case-result-modal" role="dialog" aria-modal="true" aria-labelledby="caseResultTitle">
+      <button type="button" class="case-result-close" id="caseResultClose" aria-label="Закрыть">×</button>
+      <div class="case-result-kicker">Поздравляем</div>
+      <div class="case-result-title" id="caseResultTitle">Твой приз</div>
+      <img class="case-result-image" id="caseResultImage" src="assets/star.png" alt="Приз">
+      <div class="case-result-name" id="caseResultName">Подарок</div>
+      <div class="case-result-value" id="caseResultValue">0 ⭐</div>
+      <button type="button" class="case-result-btn" id="caseResultBtn">Забрать</button>
     </div>
   </div>
 
