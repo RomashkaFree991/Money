@@ -73,13 +73,13 @@
   // без списания баланса и без серверной транзакции.
   const CASE_CONFIGS={
     'Ежедневный':{price:0,targets:[3000,1000,700,500,369,100,50,15],starsOnly:true},
-    'Эконом':{price:149,targets:[900,700,575,500,450,420,399,350]},
-    'Работяга':{price:360,targets:[2000,1500,1200,1000,900,700,575,500]},
-    'Олигарх':{price:899,targets:[10000,7000,5000,3000,2500,2000,1500,1000]},
-    'Стандартный':{price:50,targets:[500,450,420,399,380,365,350,340]},
-    'Spider-man':{price:349,targets:[2500,2000,1500,1000,900,700,500,399]},
-    'FARM':{price:67,targets:[700,575,500,450,399,380,360,340]},
-    'Каникулы':{price:169,targets:[1200,1000,900,800,700,575,500,400]},
+    'Эконом':{price:149,targets:[900,700,575,500,450,420,399,380,365,350,340,339,100,50,25,15]},
+    'Работяга':{price:360,targets:[2000,1500,1200,1000,900,700,575,500,450,420,399,350,100,50,25,15]},
+    'Олигарх':{price:899,targets:[10000,7000,5000,3000,2500,2000,1500,1200,1000,900,700,500,450,420,399,350,100,50,25,15]},
+    'Стандартный':{price:50,targets:[500,450,420,399,380,365,350,340,339,338,337,336,100,50,25,15]},
+    'Spider-man':{price:349,targets:[2500,2000,1500,1200,1000,900,700,500,450,420,399,350,100,50,25,15]},
+    'FARM':{price:67,targets:[700,575,500,450,420,399,380,365,350,340,339,338,100,50,25,15]},
+    'Каникулы':{price:169,targets:[1200,1000,900,800,700,575,500,450,420,399,380,350,100,50,25,15]},
   };
   const caseTitleEl=document.getElementById('caseTitle');
   const caseStripEl=document.getElementById('caseStrip');
@@ -131,7 +131,7 @@
       return daily.sort((a,b)=>Number(b.price||0)-Number(a.price||0));
     }
     const catalogGifts=(config.targets||[]).map(price=>giftClosestTo(price,used));
-    return [...catalogGifts,STAR_REWARDS[0],STAR_REWARDS[1]].sort((a,b)=>Number(b.price||0)-Number(a.price||0));
+    return [...catalogGifts,...STAR_REWARDS].sort((a,b)=>Number(b.price||0)-Number(a.price||0));
   }
   function caseGiftMarkup(gift,index,center=false){
     const name=String(gift.name||'Подарок');
