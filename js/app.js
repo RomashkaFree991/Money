@@ -94,6 +94,10 @@
   const caseResultValue=document.getElementById('caseResultValue');
   const caseResultClose=document.getElementById('caseResultClose');
   const caseResultBtn=document.getElementById('caseResultBtn');
+  const caseResultSell=document.getElementById('caseResultSell');
+  const caseResultSellValue=document.getElementById('caseResultSellValue');
+  const caseResultUpgrade=document.getElementById('caseResultUpgrade');
+  let activeCaseResult=null;
   let activeCaseConfig=null;
   let activeCaseGifts=[];
   let activeCaseCard=null;
@@ -115,7 +119,7 @@
     const used=new Set();
     const catalogGifts=(config.starsOnly?[]:(config.targets||[]).map(price=>giftClosestTo(price,used))).slice(0,4);
     const starGifts=config.starsOnly?STAR_REWARDS.slice(0,6):[STAR_REWARDS[0],STAR_REWARDS[1]];
-    return [...catalogGifts,...starGifts];
+    return [...catalogGifts,...starGifts].sort((a,b)=>Number(b.price||0)-Number(a.price||0));
   }
   function weightedCasePrize(gifts){
     const pool=[...gifts,...(activeCaseConfig?.starsOnly?[]:STAR_REWARDS.slice(2))];
@@ -155,20 +159,61 @@
   caseBackBtn?.addEventListener('click',()=>activateTab('game',true));
   function closeCaseResult(){caseResultOverlay?.classList.remove('open');caseResultOverlay?.setAttribute('aria-hidden','true');}
   caseResultClose?.addEventListener('click',closeCaseResult);
-  caseResultBtn?.addEventListener('click',closeCaseResult);
+  caseResultBtn?.addEventListener('click',()=>{closeCaseResult();refreshInventory(true).catch(()=>{});});
+  caseResultSell?.addEventListener('click',async()=>{
+    if(!activeCaseResult?.inventoryId)return;
+    caseResultSell.disabled=true;
+    try{
+      const resp=await fetch(API_BASE+'/api/inventory/sell',{method:'POST',headers:{'Content-Type':'application/json','x-init-data':tg?.initData||''},body:JSON.stringify({giftId:activeCaseResult.inventoryId})});
+      const data=await resp.json().catch(()=>({}));
+      if(!resp.ok)throw new Error(data.error||'Продажа не удалась');
+      if(Number.isFinite(Number(data.newBalance)))updateBalance(Number(data.newBalance));
+      closeCaseResult();await refreshInventory(true);
+    }catch(error){tg?.showAlert?tg.showAlert(error.message):alert(error.message);}
+    finally{caseResultSell.disabled=false;}
+  });
+  caseResultUpgrade?.addEventListener('click',()=>{
+    if(!activeCaseResult?.inventoryId)return;
+    closeCaseResult();
+    refreshInventory(true).then(()=>{
+      const item=inventoryItems.find(entry=>String(entry.id)===String(activeCaseResult.inventoryId));
+      if(item){upgradeSourceGift=normalizeInventoryGift(item,item.id);renderUpgradeUI();activateTab('upgrade',true);}
+    }).catch(()=>{});
+  });
   caseResultOverlay?.addEventListener('click',event=>{if(event.target===caseResultOverlay)closeCaseResult();});
-  caseOpenBtn?.addEventListener('click',()=>{
-    if(caseIsOpening||!activeCaseConfig)return;
+  caseOpenBtn?.addEventListener('click',async()=>{
+    if(caseIsOpening||!activeCaseConfig||!activeCaseCard)return;
     caseIsOpening=true;
-    playAppSound('spin');
     caseOpenBtn.disabled=true;
+    if(caseOpenLabel)caseOpenLabel.textContent='Проверяем…';
+    let transaction;
+    try{
+      const response=await fetch(API_BASE+'/api/cases/open',{method:'POST',headers:{'Content-Type':'application/json','x-init-data':tg?.initData||''},body:JSON.stringify({caseName:activeCaseCard.querySelector('.admin-case-name')?.textContent?.trim()||'Ежедневный'})});
+      transaction=await response.json().catch(()=>({}));
+      if(!response.ok||!transaction.ok)throw new Error(transaction.error||'Не удалось открыть кейс');
+    }catch(error){
+      caseOpenBtn.disabled=false;caseIsOpening=false;
+      if(caseOpenLabel)caseOpenLabel.textContent='Открыть';
+      tg?.showAlert?tg.showAlert(error.message):alert(error.message);
+      return;
+    }
+    const prize=transaction.gift||{};
+    activeCaseResult={...prize,inventoryId:Number(transaction.inventoryId||0)};
+    if(Number.isFinite(Number(transaction.newBalance)))updateBalance(Number(transaction.newBalance));
+    if(caseResultSellValue)caseResultSellValue.textContent=formatStars(prize.price||0);
+    playAppSound('spin');
     if(caseOpenLabel)caseOpenLabel.textContent='Крутится…';
-    const prize=weightedCasePrize(activeCaseGifts);
-    const winnerIndex=12;
+    const winnerIndex=18;
     const cellWidth=(caseStripEl?.parentElement?.clientWidth||300)/6;
     const offset=(winnerIndex-2.5)*cellWidth;
     if(caseStripEl){
-      caseStripEl.style.transition='transform 1.35s cubic-bezier(.12,.78,.16,1)';
+      const filler=Array.from({length:30},(_,index)=>activeCaseGifts[index%Math.max(1,activeCaseGifts.length)]);
+      filler[winnerIndex]=prize;
+      caseStripEl.style.transition='none';
+      caseStripEl.style.transform='translateX(0)';
+      caseStripEl.innerHTML=filler.map((gift,index)=>`<div class="case-strip-cell${index===winnerIndex?' is-center':''}"><img src="${gift.image||'assets/star.png'}" alt="${gift.name||'Подарок'}"></div>`).join('');
+      void caseStripEl.offsetWidth;
+      caseStripEl.style.transition='transform 10s cubic-bezier(.08,.72,.12,1)';
       caseStripEl.style.transform=`translateX(-${offset}px)`;
     }
     setTimeout(()=>{
@@ -181,7 +226,8 @@
       caseOpenBtn.disabled=false;
       if(caseOpenLabel)caseOpenLabel.textContent='Открыть';
       caseIsOpening=false;
-    },1450);
+      refreshInventory(true).catch(()=>{});
+    },10050);
   });
   pvpBetBtn?.addEventListener('click',()=>{
     if(!pvpCanAcceptBets()){showBetError('Ставки закрыты: таймер уже закончился');return;}
