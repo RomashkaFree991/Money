@@ -3111,14 +3111,14 @@ app.get('/api/top', async (req, res) => {
 
 
 const SERVER_CASE_CONFIGS = {
-  'Ежедневный': { price: 0, targets: [25, 15, 10, 5], starsOnly: true },
-  'FARM': { price: 67, targets: [100, 50, 25, 15] },
-  'Каникулы': { price: 169, targets: [350, 250, 100, 50] },
-  'Spider-man': { price: 349, targets: [500, 250, 100, 50] },
-  'Стандартный': { price: 50, targets: [100, 50, 25, 15] },
-  'Эконом': { price: 149, targets: [150, 100, 50, 25] },
-  'Работяга': { price: 360, targets: [500, 360, 250, 100] },
-  'Олигарх': { price: 899, targets: [3000, 1500, 899, 500] },
+  'Ежедневный': { price: 0, targets: [3000, 1000, 700, 500, 369, 100, 50, 15], starsOnly: true },
+  'FARM': { price: 67, targets: [700, 575, 500, 450, 399, 380, 360, 340] },
+  'Каникулы': { price: 169, targets: [1200, 1000, 900, 800, 700, 575, 500, 400] },
+  'Spider-man': { price: 349, targets: [2500, 2000, 1500, 1000, 900, 700, 500, 399] },
+  'Стандартный': { price: 50, targets: [500, 450, 420, 399, 380, 365, 350, 340] },
+  'Эконом': { price: 149, targets: [900, 700, 575, 500, 450, 420, 399, 350] },
+  'Работяга': { price: 360, targets: [2000, 1500, 1200, 1000, 900, 700, 575, 500] },
+  'Олигарх': { price: 899, targets: [10000, 7000, 5000, 3000, 2500, 2000, 1500, 1000] },
 };
 const SERVER_STAR_REWARDS = [
   { id: 'stars:5', name: '5 звёзд', price: 5, image: 'assets/star.png', weight: 55, type: 'stars', stars: 5 },
@@ -3136,15 +3136,15 @@ function serverGiftForPrice(price, used, label = null, weight = 18) {
 function serverDailyPrizes() {
   const used = new Set();
   return [
-    serverGiftForPrice(3000, used, 'Сигара', 1),
-    serverGiftForPrice(1000, used, 'Подарок за 1000 ⭐', 2),
-    serverGiftForPrice(700, used, 'Подарок за 700 ⭐', 4),
-    serverGiftForPrice(500, used, 'Подарок за 500 ⭐', 7),
-    serverGiftForPrice(369, used, 'Подарок за 369 ⭐', 10),
-    serverGiftForPrice(100, used, 'Кубок', 16),
-    serverGiftForPrice(100, used, 'Алмаз', 16),
-    serverGiftForPrice(50, used, 'Торт', 24),
-    serverGiftForPrice(15, used, 'Мишка', 55),
+    serverGiftForPrice(3000, used, null, 1),
+    serverGiftForPrice(1000, used, null, 2),
+    serverGiftForPrice(700, used, null, 4),
+    serverGiftForPrice(500, used, null, 7),
+    serverGiftForPrice(369, used, null, 10),
+    serverGiftForPrice(100, used, null, 16),
+    serverGiftForPrice(100, used, null, 16),
+    serverGiftForPrice(50, used, null, 24),
+    serverGiftForPrice(15, used, null, 55),
     SERVER_STAR_REWARDS.find((gift) => gift.price === 10),
     SERVER_STAR_REWARDS.find((gift) => gift.price === 5),
   ].filter(Boolean).sort((a, b) => Number(b.price || 0) - Number(a.price || 0));
