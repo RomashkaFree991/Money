@@ -1,5 +1,5 @@
   let currentTab='game';
-  const embeddedGameTabs=new Set(['crash','pvp','upgrade','case']);
+  const embeddedGameTabs=new Set(['crash','pvp','upgrade','case','caseResult']);
   function handleTelegramBack(){
     if(embeddedGameTabs.has(currentTab))activateTab('game',false);
   }
@@ -72,14 +72,14 @@
   // Настройки кейсов. Цены указаны в звёздах; призы пока выдаются локально,
   // без списания баланса и без серверной транзакции.
   const CASE_CONFIGS={
-    'Ежедневный':{price:0,targets:[5,10,15,25],starsOnly:true},
-    'Эконом':{price:149,targets:[25,50,100,150]},
-    'Работяга':{price:360,targets:[100,250,360,500]},
-    'Олигарх':{price:899,targets:[500,899,1500,3000]},
-    'Стандартный':{price:50,targets:[15,25,50,100]},
-    'Spider-man':{price:349,targets:[50,100,250,500]},
-    'FARM':{price:67,targets:[15,25,50,100]},
-    'Каникулы':{price:169,targets:[50,100,250,350]},
+    'Ежедневный':{price:0,targets:[3000,1000,700,500,369,100,50,15],starsOnly:true},
+    'Эконом':{price:149,targets:[900,700,575,500,450,420,399,350]},
+    'Работяга':{price:360,targets:[2000,1500,1200,1000,900,700,575,500]},
+    'Олигарх':{price:899,targets:[10000,7000,5000,3000,2500,2000,1500,1000]},
+    'Стандартный':{price:50,targets:[500,450,420,399,380,365,350,340]},
+    'Spider-man':{price:349,targets:[2500,2000,1500,1000,900,700,500,399]},
+    'FARM':{price:67,targets:[700,575,500,450,399,380,360,340]},
+    'Каникулы':{price:169,targets:[1200,1000,900,800,700,575,500,400]},
   };
   const caseTitleEl=document.getElementById('caseTitle');
   const caseStripEl=document.getElementById('caseStrip');
@@ -88,7 +88,7 @@
   const caseOpenBtn=document.getElementById('caseOpenBtn');
   const caseOpenLabel=caseOpenBtn?.querySelector('span:first-child');
   const caseOpenPriceEl=document.getElementById('caseOpenPrice');
-  const caseResultOverlay=document.getElementById('caseResultOverlay');
+  const caseResultPage=document.getElementById('caseResultPage');
   const caseResultImage=document.getElementById('caseResultImage');
   const caseResultName=document.getElementById('caseResultName');
   const caseResultValue=document.getElementById('caseResultValue');
@@ -122,15 +122,15 @@
     const used=new Set();
     if(config.starsOnly){
       const daily=[
-        giftClosestTo(3000,used,'Сигара',1),giftClosestTo(1000,used,'Подарок за 1000 ⭐',2),
-        giftClosestTo(700,used,'Подарок за 700 ⭐',4),giftClosestTo(500,used,'Подарок за 500 ⭐',7),
-        giftClosestTo(369,used,'Подарок за 369 ⭐',10),giftClosestTo(100,used,'Кубок',16),
-        giftClosestTo(100,used,'Алмаз',16),giftClosestTo(50,used,'Торт',24),
-        giftClosestTo(15,used,'Мишка',55),{...STAR_REWARDS[1]},{...STAR_REWARDS[0]},
+        giftClosestTo(3000,used,null,1),giftClosestTo(1000,used,null,2),
+        giftClosestTo(700,used,null,4),giftClosestTo(500,used,null,7),
+        giftClosestTo(369,used,null,10),giftClosestTo(100,used,null,16),
+        giftClosestTo(100,used,null,16),giftClosestTo(50,used,null,24),
+        giftClosestTo(15,used,null,55),{...STAR_REWARDS[1]},{...STAR_REWARDS[0]},
       ];
       return daily.sort((a,b)=>Number(b.price||0)-Number(a.price||0));
     }
-    const catalogGifts=(config.targets||[]).map(price=>giftClosestTo(price,used)).slice(0,4);
+    const catalogGifts=(config.targets||[]).map(price=>giftClosestTo(price,used));
     return [...catalogGifts,STAR_REWARDS[0],STAR_REWARDS[1]].sort((a,b)=>Number(b.price||0)-Number(a.price||0));
   }
   function caseGiftMarkup(gift,index,center=false){
@@ -200,7 +200,7 @@
     card.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();open();}});
   });
   caseBackBtn?.addEventListener('click',()=>activateTab('game',true));
-  function closeCaseResult(){caseResultOverlay?.classList.remove('open');caseResultOverlay?.setAttribute('aria-hidden','true');}
+  function closeCaseResult(){activateTab('case',true);}
   caseResultClose?.addEventListener('click',closeCaseResult);
   caseResultBtn?.addEventListener('click',()=>{closeCaseResult();refreshInventory(true).catch(()=>{});});
   caseResultSell?.addEventListener('click',async()=>{
@@ -223,7 +223,6 @@
       if(item){upgradeSourceGift=normalizeInventoryGift(item,item.id);renderUpgradeUI();activateTab('upgrade',true);}
     }).catch(()=>{});
   });
-  caseResultOverlay?.addEventListener('click',event=>{if(event.target===caseResultOverlay)closeCaseResult();});
   caseOpenBtn?.addEventListener('click',async()=>{
     if(caseIsOpening||!activeCaseConfig||!activeCaseCard)return;
     caseIsOpening=true;
@@ -260,17 +259,14 @@
       caseStripEl.style.transform='translateX(0)';
       caseStripEl.innerHTML=filler.map((gift,index)=>caseGiftMarkup(gift,index,index===winnerIndex)).join('');
       void caseStripEl.offsetWidth;
-      const firstStop=offset*.82;
-      caseStripEl.style.transition='transform 5s cubic-bezier(.16,.06,.7,.2)';
-      caseStripEl.style.transform=`translateX(-${firstStop}px)`;
+      const firstStop=offset*.78;
+      caseStripEl.style.transition='transform 3s cubic-bezier(.55,.04,.9,.25)';
+      caseStripEl.style.transform=`translate3d(-${firstStop}px,0,0)`;
       setTimeout(()=>{
         if(!caseStripEl)return;
-        caseStripEl.style.transition='none';
-        caseStripEl.style.transform=`translateX(-${firstStop}px)`;
-        void caseStripEl.offsetWidth;
-        caseStripEl.style.transition='transform 3s cubic-bezier(.05,.72,.1,1)';
-        caseStripEl.style.transform=`translateX(-${offset}px)`;
-      },7000);
+        caseStripEl.style.transition='transform 3s cubic-bezier(.08,.72,.12,1)';
+        caseStripEl.style.transform=`translate3d(-${offset}px,0,0)`;
+      },3000);
     }
     setTimeout(()=>{
       playAppSound('reward');
@@ -278,13 +274,12 @@
       if(caseResultName)caseResultName.textContent=prize.name||'Подарок';
       if(caseResultValue)caseResultValue.innerHTML=`${formatStars(prize.price||0)} <img src="assets/star.png" alt="Stars">`;
       if(activeCaseConfig?.starsOnly&&transaction.dailyNextOpenAt)startDailyTimer(transaction.dailyNextOpenAt);
-      caseResultOverlay?.classList.add('open');
-      caseResultOverlay?.setAttribute('aria-hidden','false');
+      activateTab('caseResult',true);
       if(!(activeCaseConfig?.starsOnly&&dailyNextOpenAt))caseOpenBtn.disabled=false;
       if(caseOpenLabel)caseOpenLabel.textContent='Открыть';
       caseIsOpening=false;
       refreshInventory(true).catch(()=>{});
-    },10050);
+    },6100);
   });
   pvpBetBtn?.addEventListener('click',()=>{
     if(!pvpCanAcceptBets()){showBetError('Ставки закрыты: таймер уже закончился');return;}
