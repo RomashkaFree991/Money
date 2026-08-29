@@ -78,6 +78,8 @@
       userHandle=u.username?'@'+u.username:'@user';
       photoUrl=u.photo_url||'';
       tgUserId=u.id;
+      const balanceEl=document.getElementById('balanceText');
+      if(balanceEl)balanceEl.textContent='…';
       applyUserToUI();
       // Пользовательский кэш показывается только для того же Telegram ID.
       restoreProfileWarmState();
@@ -110,7 +112,7 @@
         userHandle=data.username?'@'+data.username:userHandle;
         photoUrl=data.photo_url||photoUrl;
         tgUserId=data.id;
-        updateBalance(data.balance??0);
+        if(data.balance!==undefined&&data.balance!==null&&Number.isFinite(Number(data.balance)))updateBalance(Number(data.balance));
         applyUserToUI();
         // init уже прошёл проверку подписи Telegram и сервер определил роль.
         // Это влияет только на видимость кнопки; все admin API всё равно защищены.
@@ -290,7 +292,8 @@
       if(!cached||Date.now()-Number(cached.savedAt||0)>PROFILE_WARM_STATE_MAX_AGE_MS){
         localStorage.removeItem(key);return false;
       }
-      if(Number.isFinite(Number(cached.balance)))updateBalance(Number(cached.balance));
+      // Нулевой старый кэш не выдаём за подтверждённый баланс: сервер ответит фактическим значением.
+      if(Number(cached.balance)>0)updateBalance(Number(cached.balance));
       if(Array.isArray(cached.items)){
         inventoryItems=cached.items.map(item=>normalizeInventoryGift(item)).filter(Boolean);
         renderInventory();
