@@ -11,7 +11,7 @@
   <link rel="preload" as="image" href="assets/Crash_banner.png" fetchpriority="high">
   <link rel="preload" as="image" href="assets/PVP_Arena_banner.png" fetchpriority="high">
   <link rel="preload" as="image" href="assets/Upgrade_banner.png" fetchpriority="high">
-  <link rel="stylesheet" href="css/app.css?v=20260828-history2">
+  <link rel="stylesheet" href="css/app.css?v=20260829-cases1">
 </head>
 <body>
   <div class="boot-screen" id="bootScreen">
@@ -216,7 +216,31 @@
       <button class="game-banner" type="button" data-game-target="upgrade" aria-label="Open Upgrade game">
         <img src="assets/Upgrade_banner.png" alt="Upgrade" decoding="async" fetchpriority="high">
       </button>
-      <div class="game-section-divider" aria-label="Кейсы">Кейсы</div>
+      <section class="admin-cases-section" id="adminCasesSection" aria-label="Бесплатные кейсы">
+        <div class="admin-cases-group">
+          <h2 class="admin-cases-title">Бесплатные кейсы</h2>
+          <div class="admin-cases-grid">
+            <article class="admin-case-card"><img src="assets/daily_case.png" alt="Ежедневный кейс" loading="lazy"><div class="admin-case-name">Ежедневный</div><div class="admin-case-price"><span>0</span><img src="assets/star.png" alt="Stars"></div></article>
+          </div>
+        </div>
+        <div class="admin-cases-group">
+          <h2 class="admin-cases-title">Лимитированные кейсы</h2>
+          <div class="admin-cases-grid">
+            <article class="admin-case-card"><img src="assets/spiderman_case.png" alt="Spider-man кейс" loading="lazy"><div class="admin-case-name">Spider-man</div><div class="admin-case-price"><span>0</span><img src="assets/star.png" alt="Stars"></div></article>
+            <article class="admin-case-card"><img src="assets/holiday_case.png" alt="Каникулы кейс" loading="lazy"><div class="admin-case-name">Каникулы</div><div class="admin-case-price"><span>0</span><img src="assets/star.png" alt="Stars"></div></article>
+            <article class="admin-case-card"><img src="assets/farm_case.png" alt="FARM кейс" loading="lazy"><div class="admin-case-name">FARM</div><div class="admin-case-price"><span>0</span><img src="assets/star.png" alt="Stars"></div></article>
+          </div>
+        </div>
+        <div class="admin-cases-group">
+          <h2 class="admin-cases-title">Обычные кейсы</h2>
+          <div class="admin-cases-grid">
+            <article class="admin-case-card"><img src="assets/econom_case.png" alt="Эконом кейс" loading="lazy"><div class="admin-case-name">Эконом</div><div class="admin-case-price"><span>0</span><img src="assets/star.png" alt="Stars"></div></article>
+            <article class="admin-case-card"><img src="assets/worker_case.png" alt="Работяга кейс" loading="lazy"><div class="admin-case-name">Работяга</div><div class="admin-case-price"><span>0</span><img src="assets/star.png" alt="Stars"></div></article>
+            <article class="admin-case-card"><img src="assets/oligarch_case.png" alt="Олигарх кейс" loading="lazy"><div class="admin-case-name">Олигарх</div><div class="admin-case-price"><span>0</span><img src="assets/star.png" alt="Stars"></div></article>
+            <article class="admin-case-card"><img src="assets/standard_case.png" alt="Стандартный кейс" loading="lazy"><div class="admin-case-name">Стандартный</div><div class="admin-case-price"><span>0</span><img src="assets/star.png" alt="Stars"></div></article>
+          </div>
+        </div>
+      </section>
     </div>
   </div>
 
@@ -492,7 +516,7 @@
   </nav>
 
 </div>
-  <script defer src="js/core/runtime.js?v=20260829-inventory2"></script>
+  <script defer src="js/core/runtime.js?v=20260829-cases1"></script>
   <script defer src="js/core/state.js?v=20260828-history2"></script>
   <script defer src="js/modes/crash.js?v=20260828-history2"></script>
   <script defer src="js/modes/pvp.js?v=20260828-history2"></script>
