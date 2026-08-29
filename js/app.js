@@ -1,5 +1,5 @@
   let currentTab='game';
-  const embeddedGameTabs=new Set(['crash','pvp','upgrade']);
+  const embeddedGameTabs=new Set(['crash','pvp','upgrade','case']);
   function handleTelegramBack(){
     if(embeddedGameTabs.has(currentTab))activateTab('game',false);
   }
@@ -39,6 +39,8 @@
       refreshTop();
     }else if(tab==='upgrade'){
       ensureUpgradeRedo();
+    }else if(tab==='case'){
+      if(typeof renderCaseOpening==='function' && !caseStripEl?.children.length)renderCaseOpening();
     }else if(tab==='profile'){
       ensureProfileLottie();
       // Последний профиль уже показан из кэша при initUser. Не ждём второй
@@ -65,6 +67,39 @@
   items.forEach(item=>item.addEventListener('click',()=>{playAppSound('tab');activateTab(item.dataset.tab,true)}));
   document.querySelectorAll('[data-game-target]').forEach(banner=>{
     banner.addEventListener('click',()=>{playAppSound('tab');activateTab(banner.dataset.gameTarget,true)});
+  });
+
+  // Бесплатные кейсы пока работают как визуальный прототип: призы берутся из общего каталога,
+  // а стоимость каждой карточки намеренно показывается как 0.
+  const caseGifts=[...(typeof GIFT_CATALOG!=='undefined'?GIFT_CATALOG:[])].sort((a,b)=>Number(b?.price||0)-Number(a?.price||0)).slice(0,6);
+  const caseTitleEl=document.getElementById('caseTitle');
+  const caseNicknameEl=document.getElementById('caseNickname');
+  const caseBalanceEl=document.getElementById('caseBalanceText');
+  const caseStripEl=document.getElementById('caseStrip');
+  const caseGiftsGridEl=document.getElementById('caseGiftsGrid');
+  const caseBackBtn=document.getElementById('caseBackBtn');
+  const caseOpenBtn=document.getElementById('caseOpenBtn');
+  function renderCaseOpening(card){
+    const name=card?.querySelector('.admin-case-name')?.textContent?.trim()||'Кейс';
+    if(caseTitleEl)caseTitleEl.textContent=name;
+    if(caseNicknameEl)caseNicknameEl.textContent=typeof userHandle!=='undefined'?userHandle:'@user';
+    if(caseBalanceEl)caseBalanceEl.textContent=document.getElementById('balanceText')?.textContent||'0';
+    const gifts=caseGifts.length?caseGifts:Array.from({length:6},(_,i)=>({name:'Подарок '+(i+1),image:'assets/star.png'}));
+    if(caseStripEl)caseStripEl.innerHTML=gifts.map((gift,index)=>`<div class="case-strip-cell${index===2?' is-center':''}"><img src="${gift.image||'assets/star.png'}" alt="${gift.name||'Подарок'}"></div>`).join('');
+    if(caseGiftsGridEl)caseGiftsGridEl.innerHTML=gifts.map(gift=>`<article class="case-gift-card"><img class="case-gift-image" src="${gift.image||'assets/star.png'}" alt="${gift.name||'Подарок'}" loading="lazy"><div class="case-gift-name">${gift.name||'Подарок'}</div><div class="case-gift-price"><span>0</span><img src="assets/star.png" alt="Stars"></div></article>`).join('');
+  }
+  document.querySelectorAll('[data-case-open="true"]').forEach(card=>{
+    const open=()=>{playAppSound('tab');renderCaseOpening(card);activateTab('case',true);};
+    card.addEventListener('click',open);
+    card.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();open();}});
+  });
+  caseBackBtn?.addEventListener('click',()=>activateTab('game',true));
+  caseOpenBtn?.addEventListener('click',()=>{
+    caseOpenBtn.classList.remove('is-opening');
+    void caseOpenBtn.offsetWidth;
+    caseOpenBtn.classList.add('is-opening');
+    caseOpenBtn.textContent='Открыто';
+    setTimeout(()=>{if(caseOpenBtn)caseOpenBtn.textContent='Открыть';},900);
   });
   pvpBetBtn?.addEventListener('click',()=>{
     if(!pvpCanAcceptBets()){showBetError('Ставки закрыты: таймер уже закончился');return;}
