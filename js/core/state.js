@@ -47,7 +47,7 @@
   const nav=document.getElementById('bottomNav');
   const ind=document.getElementById('indicator');
   const items=document.querySelectorAll('.nav-item');
-  const pages={top:document.getElementById('topPage'),game:document.getElementById('gamePage'),profile:document.getElementById('profilePage'),pvp:document.getElementById('pvpPage'),upgrade:document.getElementById('upgradePage'),crash:document.getElementById('crashPage')};
+  const pages={top:document.getElementById('topPage'),game:document.getElementById('gamePage'),profile:document.getElementById('profilePage'),pvp:document.getElementById('pvpPage'),upgrade:document.getElementById('upgradePage'),crash:document.getElementById('crashPage'),case:document.getElementById('casePage')};
   const referralPage=document.getElementById('referralPage');
 
   function updateLottiePerformance(){
