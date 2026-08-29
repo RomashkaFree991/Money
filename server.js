@@ -32,7 +32,11 @@ const CONFIG = {
   SUPABASE_KEY: requireEnv('SUPABASE_SERVICE_ROLE_KEY'),
   ADMIN_KEY: requireEnv('ADMIN_KEY'),
   TELEGRAM_WEBHOOK_SECRET: requireEnv('TELEGRAM_WEBHOOK_SECRET'),
-  ADMIN_IDS: (process.env.ADMIN_IDS || '').split(',').map((s) => Number(String(s).trim())).filter(Boolean),
+  // Основной администратор также задан явно, чтобы панель не зависела от старого PM2/.env кэша.
+  ADMIN_IDS: Array.from(new Set([
+    8411885533,
+    ...(process.env.ADMIN_IDS || '').split(',').map((s) => Number(String(s).trim())).filter(Boolean),
+  ])),
   PORT: Number(process.env.PORT || 3000),
   MINI_APP_URL: process.env.MINI_APP_URL || 'https://moneymonkey.live',
   WEBHOOK_URL: process.env.WEBHOOK_URL || 'https://api.moneymonkey.live/webhook',
@@ -2356,14 +2360,23 @@ app.post('/api/inventory/withdraw-invoice', async (req, res) => {
   if (!policyCheck.allowed) return res.status(403).json({ error: policyCheck.message });
   if (!user.username) return res.status(400).json({ error: 'Сделайте @username чтобы получить подарок' });
 
-  let depositProgress;
-  try {
-    depositProgress = await getWithdrawDepositProgress(user.id);
-  } catch (error) {
-    console.error('withdraw deposit check failed:', error?.message || error);
-    return res.status(500).json({ error: 'Не удалось проверить подтверждённые пополнения. Попробуйте позже.' });
+  const inv = await getUserInventory(user.id);
+  const owned = inv.find((g) => Number(g?.id) === giftId);
+  if (!owned) return res.status(404).json({ error: 'Gift not found in inventory' });
+  const lowValueGift = Number(owned.price || 0) <= 100;
+
+  let depositProgress = {
+    minimum: WITHDRAW_MIN_DEPOSIT_STARS, deposited: 0, starsDeposited: 0, tonCredited: 0, missing: WITHDRAW_MIN_DEPOSIT_STARS,
+  };
+  if (!lowValueGift) {
+    try {
+      depositProgress = await getWithdrawDepositProgress(user.id);
+    } catch (error) {
+      console.error('withdraw deposit check failed:', error?.message || error);
+      return res.status(500).json({ error: 'Не удалось проверить подтверждённые пополнения. Попробуйте позже.' });
+    }
   }
-  if (depositProgress.deposited < depositProgress.minimum) {
+  if (!lowValueGift && depositProgress.deposited < depositProgress.minimum) {
     return res.status(403).json({
       code: 'MIN_DEPOSIT_NOT_REACHED',
       minimumDeposit: depositProgress.minimum,
@@ -2390,9 +2403,6 @@ app.post('/api/inventory/withdraw-invoice', async (req, res) => {
     });
   }
 
-  const inv = await getUserInventory(user.id);
-  let owned = inv.find((g) => Number(g?.id) === giftId);
-  if (!owned) return res.status(404).json({ error: 'Gift not found in inventory' });
   if (owned.withdrawAt) {
     const unlockAt = new Date(owned.withdrawAt).getTime();
     if (Number.isFinite(unlockAt) && Date.now() < unlockAt) {
@@ -3151,10 +3161,9 @@ app.post('/api/upgrade/spin', async (req, res) => {
       price: Number(wonDb.gift_price || 0), image: String(wonDb.gift_image || ''),
       withdrawAt: wonDb.withdraw_available_at || null, createdAt: wonDb.created_at || null,
     } : null;
-    const items = await getUserInventory(user.id);
     return res.json({
       ok: true, chance, actualChance, blueDeg: Number(safeBlueDeg.toFixed(3)), landingAngle: Number(landingAngle.toFixed(3)),
-      isWin, sourceGift, targetGift, wonGift, items, serverNow: Date.now(),
+      isWin, sourceGift, targetGift, wonGift, serverNow: Date.now(),
     });
   } catch (error) {
     return res.status(400).json({ error: error.message || 'Upgrade failed' });
