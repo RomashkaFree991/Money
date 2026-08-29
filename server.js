@@ -3110,6 +3110,63 @@ app.get('/api/top', async (req, res) => {
 });
 
 
+const SERVER_CASE_CONFIGS = {
+  'Ежедневный': { price: 0, targets: [25, 15, 10, 5], starsOnly: true },
+  'FARM': { price: 67, targets: [100, 50, 25, 15] },
+  'Каникулы': { price: 169, targets: [350, 250, 100, 50] },
+  'Spider-man': { price: 349, targets: [500, 250, 100, 50] },
+  'Стандартный': { price: 50, targets: [100, 50, 25, 15] },
+  'Эконом': { price: 149, targets: [150, 100, 50, 25] },
+  'Работяга': { price: 360, targets: [500, 360, 250, 100] },
+  'Олигарх': { price: 899, targets: [3000, 1500, 899, 500] },
+};
+const SERVER_STAR_REWARDS = [
+  { id: 'stars:5', name: '5 звёзд', price: 5, image: 'assets/star.png', weight: 2, type: 'stars', stars: 5 },
+  { id: 'stars:10', name: '10 звёзд', price: 10, image: 'assets/star.png', weight: 2, type: 'stars', stars: 10 },
+  { id: 'stars:50', name: '50 звёзд', price: 50, image: 'assets/star.png', weight: 1, type: 'stars', stars: 50 },
+  { id: 'stars:100', name: '100 звёзд', price: 100, image: 'assets/star.png', weight: 1, type: 'stars', stars: 100 },
+];
+function serverGiftForPrice(price, used) {
+  const gifts = GIFT_CATALOG.filter((gift) => !used.has(String(gift.id)));
+  gifts.sort((a, b) => Math.abs(Number(a.price || 0) - price) - Math.abs(Number(b.price || 0) - price));
+  const gift = gifts[0] || { id: `gift:${price}`, name: 'Подарок', price, image: '' };
+  used.add(String(gift.id));
+  return { ...gift, type: 'gift', weight: 18 };
+}
+function serverCasePrizes(config) {
+  const used = new Set();
+  const gifts = config.starsOnly ? [] : config.targets.map((price) => serverGiftForPrice(price, used));
+  return [...gifts, ...SERVER_STAR_REWARDS].sort((a, b) => Number(b.price || 0) - Number(a.price || 0));
+}
+function weightedServerPrize(prizes) {
+  const total = prizes.reduce((sum, prize) => sum + Number(prize.weight || 1), 0);
+  let roll = secureRandomUnit() * total;
+  return prizes.find((prize) => { roll -= Number(prize.weight || 1); return roll <= 0; }) || prizes[prizes.length - 1];
+}
+app.post('/api/cases/open', async (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const caseName = String(req.body?.caseName || '').trim();
+  const config = SERVER_CASE_CONFIGS[caseName];
+  if (!config) return res.status(400).json({ error: 'Unknown case' });
+  try {
+    const prize = weightedServerPrize(serverCasePrizes(config));
+    const { data, error } = await sb.rpc('open_case_atomic', {
+      p_user_id: Number(user.id), p_price: Number(config.price),
+      p_gift_id: String(prize.id), p_gift_name: String(prize.name),
+      p_gift_price: Number(prize.price || 0), p_gift_image: String(prize.image || ''),
+    });
+    if (error) throw new Error(error.message || 'Case transaction failed');
+    const row = data?.gift || data?.wonGift || data;
+    return res.json({ ok: true, caseName, casePrice: config.price, newBalance: Number(data?.newBalance || 0),
+      inventoryId: Number(row?.id || 0), gift: prize, serverNow: Date.now() });
+  } catch (error) {
+    const message = String(error?.message || 'Case opening failed');
+    const status = /balance|stars|insufficient|недостат/i.test(message) ? 402 : 400;
+    return res.status(status).json({ error: message });
+  }
+});
+
 app.post('/api/upgrade/spin', async (req, res) => {
   const user = requireUser(req, res);
   if (!user) return;
