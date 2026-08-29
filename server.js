@@ -32,11 +32,8 @@ const CONFIG = {
   SUPABASE_KEY: requireEnv('SUPABASE_SERVICE_ROLE_KEY'),
   ADMIN_KEY: requireEnv('ADMIN_KEY'),
   TELEGRAM_WEBHOOK_SECRET: requireEnv('TELEGRAM_WEBHOOK_SECRET'),
-  // Основной администратор также задан явно, чтобы панель не зависела от старого PM2/.env кэша.
-  ADMIN_IDS: Array.from(new Set([
-    8411885533,
-    ...(process.env.ADMIN_IDS || '').split(',').map((s) => Number(String(s).trim())).filter(Boolean),
-  ])),
+  // Доступ к админке берётся только из ADMIN_IDS в .env.
+  ADMIN_IDS: (process.env.ADMIN_IDS || '').split(',').map((s) => Number(String(s).trim())).filter(Boolean),
   PORT: Number(process.env.PORT || 3000),
   MINI_APP_URL: process.env.MINI_APP_URL || 'https://moneymonkey.live',
   WEBHOOK_URL: process.env.WEBHOOK_URL || 'https://api.moneymonkey.live/webhook',
