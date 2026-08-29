@@ -67,6 +67,18 @@
     }
   }
 
+  async function revealAdminCasesFromServer(){
+    try{
+      const resp=await fetch(API_BASE+'/api/admin/me',{headers:{'x-init-data':tg?.initData||''},cache:'no-store'});
+      const data=await resp.json().catch(()=>({}));
+      if(resp.ok&&data.isAdmin===true){
+        const adminButton=document.getElementById('adminPanelBtn');
+        const adminCases=document.getElementById('adminCasesSection');
+        if(adminButton)adminButton.style.display='flex';
+        if(adminCases)adminCases.style.display='block';
+      }
+    }catch(_){ }
+  }
   async function initUser(){
     if(!tg)return;
     tg.ready();tg.expand();
@@ -122,7 +134,9 @@
         if(adminCases&&data.isAdmin===true)adminCases.style.display='block';
         saveProfileWarmState();
       }
-    }catch(e){console.warn('Backend init failed:',e.message)}
+      // Отдельная проверка нужна для старого production `/api/init`, где isAdmin мог отсутствовать.
+      revealAdminCasesFromServer();
+    }catch(e){console.warn('Backend init failed:',e.message); revealAdminCasesFromServer();}
   }
 
   // === BAN OVERLAY (v8.13) ===
