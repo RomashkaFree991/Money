@@ -73,6 +73,9 @@
   pvpResultClose?.addEventListener('click',closePvpResult);
   const pvpHistoryOverlay=document.getElementById('pvpHistoryOverlay');
   const pvpHistoryList=document.getElementById('pvpHistoryModalList');
+  const pvpHistoryCacheKey='giftpep:pvp-history:v1';
+  let pvpHistoryCache=null;
+  try{const saved=JSON.parse(localStorage.getItem(pvpHistoryCacheKey)||'null');if(Array.isArray(saved))pvpHistoryCache=saved;}catch(_){ }
   function renderPvpHistoryRows(rounds){
     if(!pvpHistoryList)return;
     pvpHistoryList.replaceChildren();
@@ -94,11 +97,16 @@
       pvpHistoryList.append(card);
     }
   }
-  async function openPvpHistory(){
-    pvpHistoryOverlay?.classList.add('open');
-    if(pvpHistoryList){pvpHistoryList.textContent='Загрузка…';}
-    try{const r=await fetch(API_BASE+'/api/pvp/history',{headers:{'x-init-data':tg?.initData||''}});const data=await r.json();if(!r.ok)throw new Error(data.error||'History failed');renderPvpHistoryRows(data.rounds||[]);}catch(e){if(pvpHistoryList)pvpHistoryList.textContent='Не удалось загрузить историю';}
+  async function refreshPvpHistory(){
+    try{const r=await fetch(API_BASE+'/api/pvp/history',{headers:{'x-init-data':tg?.initData||''}});const data=await r.json();if(!r.ok)throw new Error(data.error||'History failed');pvpHistoryCache=data.rounds||[];try{localStorage.setItem(pvpHistoryCacheKey,JSON.stringify(pvpHistoryCache));}catch(_){ }if(pvpHistoryOverlay?.classList.contains('open'))renderPvpHistoryRows(pvpHistoryCache);}catch(_){ }
   }
+  function openPvpHistory(){
+    pvpHistoryOverlay?.classList.add('open');
+    if(pvpHistoryCache)renderPvpHistoryRows(pvpHistoryCache);
+    else if(pvpHistoryList){pvpHistoryList.replaceChildren();pvpHistoryList.style.minHeight='210px';}
+    refreshPvpHistory();
+  }
+  refreshPvpHistory();
   document.getElementById('pvpHistoryOpen')?.addEventListener('click',openPvpHistory);
   document.getElementById('pvpHistoryClose')?.addEventListener('click',()=>pvpHistoryOverlay?.classList.remove('open'));
   pvpHistoryOverlay?.addEventListener('click',e=>{if(e.target===pvpHistoryOverlay)pvpHistoryOverlay.classList.remove('open');});
@@ -312,6 +320,11 @@
       if(!resp.ok) throw new Error(data.error||'Upgrade failed');
       const serverDisplayChance=Number(data.chance||chance);
       const isWin=!!data.isWin;
+      // Инвентарь обновляем сразу после атомарного ответа, а не после 8-секундной анимации.
+      const sourceId=String(upgradeSourceGift.id);
+      inventoryItems=inventoryItems.filter(item=>String(item.id)!==sourceId);
+      if(isWin&&data.wonGift){const won=normalizeInventoryGift(data.wonGift,data.wonGift.id||('upgrade_'+Date.now()));if(won)inventoryItems.unshift(won);}
+      renderInventory();
       const landingAngle=((Number(data.landingAngle)||0)%360+360)%360;
       // TEST MATH MODE: keep the VISIBLE mathematical sector unchanged while spinning.
       // data.actualChance is server-only test probability and must not resize the wheel.
@@ -323,7 +336,6 @@
       const delta=((targetAbs-currentMod)%360+360)%360;
       const finalRotation=upgradeWheelRotation + 360*8 + delta;
       await animateUpgradeRotation(finalRotation,8200);
-      inventoryItems=Array.isArray(data.items)?data.items.map(item=>normalizeInventoryGift(item)).filter(Boolean):inventoryItems;
       if(isWin && data.wonGift){
         openUpgradeResultModal(normalizeInventoryGift(data.wonGift,data.wonGift?.id||('upgrade_'+Date.now())));
       } else {
