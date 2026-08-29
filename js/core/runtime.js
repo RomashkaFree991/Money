@@ -44,12 +44,12 @@
     if(context.state==='suspended'){context.resume().catch(()=>{});return;}
     const now=context.currentTime;
     if(kind==='tab'){
-      playAppTone(520,now,.045,.052,'sine');playAppTone(700,now+.045,.055,.044,'sine');
+      playAppTone(520,now,.045,.082,'sine');playAppTone(700,now+.045,.055,.070,'sine');
     }else if(kind==='spin'){
       if(Date.now()-appSpinSoundAt<105)return;
-      appSpinSoundAt=Date.now();playAppTone(340,now,.025,.036,'square');
+      appSpinSoundAt=Date.now();playAppTone(340,now,.025,.055,'square');
     }else if(kind==='reward'){
-      playAppTone(523,now,.08,.065,'sine');playAppTone(659,now+.08,.09,.068,'sine');playAppTone(784,now+.17,.16,.075,'sine');
+      playAppTone(523,now,.08,.085,'sine');playAppTone(659,now+.08,.09,.088,'sine');playAppTone(784,now+.17,.16,.095,'sine');
     }
   }
   document.addEventListener('pointerdown',unlockAppAudio,{once:true,passive:true});
