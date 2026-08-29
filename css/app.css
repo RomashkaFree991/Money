@@ -1017,7 +1017,7 @@
   .nav-item.active .nav-icon img{opacity:1;filter:brightness(0) saturate(100%) invert(42%) sepia(99%) saturate(2698%) hue-rotate(200deg) brightness(104%) contrast(104%)}
 
   /* === GAME HUB === */
-  .games-page{
+  .admin-cases-section{display:none;margin:8px 0 24px;padding:0 2px}.admin-cases-group{margin-top:18px}.admin-cases-title{margin:0 0 10px;color:#fff;font-size:17px;font-weight:800;text-align:left}.admin-cases-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.admin-case-card{min-width:0;padding:12px 10px 11px;border:0;border-radius:18px;background:rgba(28,28,30,.88);text-align:center;box-shadow:none}.admin-case-card>img{display:block;width:100%;height:116px;object-fit:contain;margin:0 auto 7px}.admin-case-name{min-height:20px;color:#fff;font-size:14px;font-weight:600;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.admin-case-price{display:inline-flex;align-items:center;justify-content:center;gap:4px;margin-top:8px;min-width:48px;height:28px;padding:0 10px;border-radius:999px;background:#0a84ff;color:#fff;font-size:13px;font-weight:750}.admin-case-price img{width:15px;height:15px;object-fit:contain;border:0;background:transparent}.games-page{
     min-height:100%;padding:0 0 6px;
     display:flex;flex-direction:column;align-items:stretch;gap:5px;
   }
