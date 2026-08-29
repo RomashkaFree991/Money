@@ -3112,13 +3112,13 @@ app.get('/api/top', async (req, res) => {
 
 const SERVER_CASE_CONFIGS = {
   'Ежедневный': { price: 0, targets: [3000, 1000, 700, 500, 369, 100, 50, 15], starsOnly: true },
-  'FARM': { price: 67, targets: [700, 575, 500, 450, 399, 380, 360, 340] },
-  'Каникулы': { price: 169, targets: [1200, 1000, 900, 800, 700, 575, 500, 400] },
-  'Spider-man': { price: 349, targets: [2500, 2000, 1500, 1000, 900, 700, 500, 399] },
-  'Стандартный': { price: 50, targets: [500, 450, 420, 399, 380, 365, 350, 340] },
-  'Эконом': { price: 149, targets: [900, 700, 575, 500, 450, 420, 399, 350] },
-  'Работяга': { price: 360, targets: [2000, 1500, 1200, 1000, 900, 700, 575, 500] },
-  'Олигарх': { price: 899, targets: [10000, 7000, 5000, 3000, 2500, 2000, 1500, 1000] },
+  'FARM': { price: 67, targets: [700, 575, 500, 450, 420, 399, 380, 365, 350, 340, 339, 338, 100, 50, 25, 15] },
+  'Каникулы': { price: 169, targets: [1200, 1000, 900, 800, 700, 575, 500, 450, 420, 399, 380, 350, 100, 50, 25, 15] },
+  'Spider-man': { price: 349, targets: [2500, 2000, 1500, 1200, 1000, 900, 700, 500, 450, 420, 399, 350, 100, 50, 25, 15] },
+  'Стандартный': { price: 50, targets: [500, 450, 420, 399, 380, 365, 350, 340, 339, 338, 337, 336, 100, 50, 25, 15] },
+  'Эконом': { price: 149, targets: [900, 700, 575, 500, 450, 420, 399, 380, 365, 350, 340, 339, 100, 50, 25, 15] },
+  'Работяга': { price: 360, targets: [2000, 1500, 1200, 1000, 900, 700, 575, 500, 450, 420, 399, 350, 100, 50, 25, 15] },
+  'Олигарх': { price: 899, targets: [10000, 7000, 5000, 3000, 2500, 2000, 1500, 1200, 1000, 900, 700, 500, 450, 420, 399, 350, 100, 50, 25, 15] },
 };
 const SERVER_STAR_REWARDS = [
   { id: 'stars:5', name: '5 звёзд', price: 5, image: 'assets/star.png', weight: 55, type: 'stars', stars: 5 },
@@ -3149,12 +3149,23 @@ function serverDailyPrizes() {
     SERVER_STAR_REWARDS.find((gift) => gift.price === 5),
   ].filter(Boolean).sort((a, b) => Number(b.price || 0) - Number(a.price || 0));
 }
+function caseGiftWeight(price) {
+  if (price <= 500) return 32;
+  if (price <= 900) return 22;
+  if (price <= 1500) return 12;
+  if (price <= 3000) return 5;
+  if (price <= 7000) return 2;
+  return 0.8;
+}
+function serverPaidStarRewards() {
+  return SERVER_STAR_REWARDS.map((gift) => ({ ...gift, weight: gift.price <= 10 ? 0.35 : 0.15 }));
+}
 function serverCasePrizes(config) {
   const used = new Set();
   const gifts = config.starsOnly
     ? serverDailyPrizes()
-    : config.targets.map((price) => serverGiftForPrice(price, used));
-  return [...gifts, ...(config.starsOnly ? [] : SERVER_STAR_REWARDS)].sort((a, b) => Number(b.price || 0) - Number(a.price || 0));
+    : config.targets.map((price) => serverGiftForPrice(price, used, null, caseGiftWeight(price)));
+  return [...gifts, ...(config.starsOnly ? [] : serverPaidStarRewards())].sort((a, b) => Number(b.price || 0) - Number(a.price || 0));
 }
 function weightedServerPrize(prizes) {
   const total = prizes.reduce((sum, prize) => sum + Number(prize.weight || 1), 0);
