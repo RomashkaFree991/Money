@@ -115,7 +115,9 @@
         // init уже прошёл проверку подписи Telegram и сервер определил роль.
         // Это влияет только на видимость кнопки; все admin API всё равно защищены.
         const adminButton=document.getElementById('adminPanelBtn');
+        const adminCases=document.getElementById('adminCasesSection');
         if(adminButton&&data.isAdmin===true)adminButton.style.display='flex';
+        if(adminCases&&data.isAdmin===true)adminCases.style.display='block';
         saveProfileWarmState();
       }
     }catch(e){console.warn('Backend init failed:',e.message)}
