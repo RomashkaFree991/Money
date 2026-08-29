@@ -3121,28 +3121,63 @@ const SERVER_CASE_CONFIGS = {
   'Олигарх': { price: 899, targets: [3000, 1500, 899, 500] },
 };
 const SERVER_STAR_REWARDS = [
-  { id: 'stars:5', name: '5 звёзд', price: 5, image: 'assets/star.png', weight: 2, type: 'stars', stars: 5 },
-  { id: 'stars:10', name: '10 звёзд', price: 10, image: 'assets/star.png', weight: 2, type: 'stars', stars: 10 },
-  { id: 'stars:50', name: '50 звёзд', price: 50, image: 'assets/star.png', weight: 1, type: 'stars', stars: 50 },
-  { id: 'stars:100', name: '100 звёзд', price: 100, image: 'assets/star.png', weight: 1, type: 'stars', stars: 100 },
+  { id: 'stars:5', name: '5 звёзд', price: 5, image: 'assets/star.png', weight: 55, type: 'stars', stars: 5 },
+  { id: 'stars:10', name: '10 звёзд', price: 10, image: 'assets/star.png', weight: 42, type: 'stars', stars: 10 },
+  { id: 'stars:50', name: '50 звёзд', price: 50, image: 'assets/star.png', weight: 8, type: 'stars', stars: 50 },
+  { id: 'stars:100', name: '100 звёзд', price: 100, image: 'assets/star.png', weight: 4, type: 'stars', stars: 100 },
 ];
-function serverGiftForPrice(price, used) {
+function serverGiftForPrice(price, used, label = null, weight = 18) {
   const gifts = GIFT_CATALOG.filter((gift) => !used.has(String(gift.id)));
   gifts.sort((a, b) => Math.abs(Number(a.price || 0) - price) - Math.abs(Number(b.price || 0) - price));
   const gift = gifts[0] || { id: `gift:${price}`, name: 'Подарок', price, image: '' };
   used.add(String(gift.id));
-  return { ...gift, type: 'gift', weight: 18 };
+  return { ...gift, name: label || gift.name, price: Number(price), type: 'gift', weight };
+}
+function serverDailyPrizes() {
+  const used = new Set();
+  return [
+    serverGiftForPrice(3000, used, 'Сигара', 1),
+    serverGiftForPrice(1000, used, 'Подарок за 1000 ⭐', 2),
+    serverGiftForPrice(700, used, 'Подарок за 700 ⭐', 4),
+    serverGiftForPrice(500, used, 'Подарок за 500 ⭐', 7),
+    serverGiftForPrice(369, used, 'Подарок за 369 ⭐', 10),
+    serverGiftForPrice(100, used, 'Кубок', 16),
+    serverGiftForPrice(100, used, 'Алмаз', 16),
+    serverGiftForPrice(50, used, 'Торт', 24),
+    serverGiftForPrice(15, used, 'Мишка', 55),
+    SERVER_STAR_REWARDS.find((gift) => gift.price === 10),
+    SERVER_STAR_REWARDS.find((gift) => gift.price === 5),
+  ].filter(Boolean).sort((a, b) => Number(b.price || 0) - Number(a.price || 0));
 }
 function serverCasePrizes(config) {
   const used = new Set();
-  const gifts = config.starsOnly ? [] : config.targets.map((price) => serverGiftForPrice(price, used));
-  return [...gifts, ...SERVER_STAR_REWARDS].sort((a, b) => Number(b.price || 0) - Number(a.price || 0));
+  const gifts = config.starsOnly
+    ? serverDailyPrizes()
+    : config.targets.map((price) => serverGiftForPrice(price, used));
+  return [...gifts, ...(config.starsOnly ? [] : SERVER_STAR_REWARDS)].sort((a, b) => Number(b.price || 0) - Number(a.price || 0));
 }
 function weightedServerPrize(prizes) {
   const total = prizes.reduce((sum, prize) => sum + Number(prize.weight || 1), 0);
   let roll = secureRandomUnit() * total;
   return prizes.find((prize) => { roll -= Number(prize.weight || 1); return roll <= 0; }) || prizes[prizes.length - 1];
 }
+app.get('/api/cases/status', async (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const caseName = String(req.query?.caseName || '').trim();
+  if (!SERVER_CASE_CONFIGS[caseName]) return res.status(400).json({ error: 'Unknown case' });
+  if (caseName !== 'Ежедневный') return res.json({ nextOpenAt: null });
+  try {
+    const { data, error } = await sb.from('case_openings').select('last_opened_at').eq('user_id', Number(user.id)).eq('case_name', caseName).maybeSingle();
+    if (error) throw new Error(error.message || 'Case status failed');
+    const last = data?.last_opened_at ? new Date(data.last_opened_at).getTime() : 0;
+    const nextOpenAt = last ? new Date(last + 24 * 60 * 60 * 1000).toISOString() : null;
+    return res.json({ nextOpenAt: nextOpenAt && new Date(nextOpenAt).getTime() > Date.now() ? nextOpenAt : null });
+  } catch (error) {
+    return res.status(503).json({ error: error.message || 'Case status unavailable' });
+  }
+});
+
 app.post('/api/cases/open', async (req, res) => {
   const user = requireUser(req, res);
   if (!user) return;
@@ -3152,16 +3187,22 @@ app.post('/api/cases/open', async (req, res) => {
   try {
     const prize = weightedServerPrize(serverCasePrizes(config));
     const { data, error } = await sb.rpc('open_case_atomic', {
-      p_user_id: Number(user.id), p_price: Number(config.price),
+      p_user_id: Number(user.id), p_case_name: caseName, p_price: Number(config.price),
       p_gift_id: String(prize.id), p_gift_name: String(prize.name),
       p_gift_price: Number(prize.price || 0), p_gift_image: String(prize.image || ''),
     });
     if (error) throw new Error(error.message || 'Case transaction failed');
     const row = data?.gift || data?.wonGift || data;
     return res.json({ ok: true, caseName, casePrice: config.price, newBalance: Number(data?.newBalance || 0),
+      dailyNextOpenAt: data?.dailyNextOpenAt || (caseName === 'Ежедневный' ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() : null),
       inventoryId: Number(row?.id || 0), gift: prize, serverNow: Date.now() });
   } catch (error) {
     const message = String(error?.message || 'Case opening failed');
+    const cooldownMatch = message.match(/DAILY_CASE_COOLDOWN:([^]+)$/i);
+    if(cooldownMatch){
+      const nextOpenAt=String(cooldownMatch[1]).trim();
+      return res.status(429).json({error:'Ежедневный кейс уже открыт. Попробуйте позже.',code:'DAILY_CASE_COOLDOWN',nextOpenAt});
+    }
     const status = /balance|stars|insufficient|недостат/i.test(message) ? 402 : 400;
     return res.status(status).json({ error: message });
   }

@@ -256,6 +256,7 @@
         <img class="case-strip-arrow case-strip-arrow--bottom" src="svg/up.svg" alt="">
       </div>
       <button type="button" class="case-open-btn" id="caseOpenBtn"><span>Открыть</span><span class="case-open-price" id="caseOpenPrice">0 <img src="assets/star.png" alt="Stars"></span></button>
+      <div class="case-daily-timer" id="caseDailyTimer" hidden>Следующее открытие через <strong>24:00:00</strong></div>
       <div class="case-gifts-heading">Подарки в кейсе</div>
       <div class="case-gifts-grid" id="caseGiftsGrid"></div>
     </div>
@@ -263,12 +264,9 @@
 
   <div class="case-result-overlay" id="caseResultOverlay" aria-hidden="true">
     <div class="case-result-modal" role="dialog" aria-modal="true" aria-labelledby="caseResultTitle">
-      <button type="button" class="case-result-close" id="caseResultClose" aria-label="Закрыть">×</button>
-      <div class="case-result-kicker">Поздравляем</div>
-      <div class="case-result-title" id="caseResultTitle">Твой приз</div>
       <img class="case-result-image" id="caseResultImage" src="assets/star.png" alt="Приз">
       <div class="case-result-name" id="caseResultName">Подарок</div>
-      <div class="case-result-value" id="caseResultValue">0 ⭐</div>
+      <div class="case-result-value" id="caseResultValue">0 <img src="assets/star.png" alt="Stars"></div>
       <button type="button" class="case-result-btn" id="caseResultBtn">Забрать</button>
       <div class="case-result-actions">
         <button type="button" class="case-result-secondary" id="caseResultSell">Продать <span id="caseResultSellValue">0</span><img src="assets/star.png" alt="Stars"></button>
