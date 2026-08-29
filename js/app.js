@@ -97,6 +97,9 @@
   const caseResultSell=document.getElementById('caseResultSell');
   const caseResultSellValue=document.getElementById('caseResultSellValue');
   const caseResultUpgrade=document.getElementById('caseResultUpgrade');
+  const caseDailyTimerEl=document.getElementById('caseDailyTimer');
+  let dailyNextOpenAt=null;
+  let dailyTimerInterval=null;
   let activeCaseResult=null;
   let activeCaseConfig=null;
   let activeCaseGifts=[];
@@ -108,18 +111,57 @@
     {name:'50 звёзд',price:50,stars:50,image:'assets/star.png',weight:1,type:'stars'},
     {name:'100 звёзд',price:100,stars:100,image:'assets/star.png',weight:1,type:'stars'},
   ];
-  function giftClosestTo(price,used){
+  function giftClosestTo(price,used,label=null,weight=18){
     const candidates=[...(typeof GIFT_CATALOG!=='undefined'?GIFT_CATALOG:[])].filter(g=>!used.has(String(g.id)));
     candidates.sort((a,b)=>Math.abs(Number(a.price||0)-price)-Math.abs(Number(b.price||0)-price));
     const gift=candidates[0]||{name:'Подарок',price:price,image:'assets/star.png',id:String(price)};
     used.add(String(gift.id));
-    return {...gift,weight:18,type:'gift'};
+    return {...gift,name:label||gift.name,price:Number(price),weight,type:'gift'};
   }
   function getCaseGifts(config){
     const used=new Set();
-    const catalogGifts=(config.starsOnly?[]:(config.targets||[]).map(price=>giftClosestTo(price,used))).slice(0,4);
-    const starGifts=config.starsOnly?STAR_REWARDS.slice(0,6):[STAR_REWARDS[0],STAR_REWARDS[1]];
-    return [...catalogGifts,...starGifts].sort((a,b)=>Number(b.price||0)-Number(a.price||0));
+    if(config.starsOnly){
+      const daily=[
+        giftClosestTo(3000,used,'Сигара',1),giftClosestTo(1000,used,'Подарок за 1000 ⭐',2),
+        giftClosestTo(700,used,'Подарок за 700 ⭐',4),giftClosestTo(500,used,'Подарок за 500 ⭐',7),
+        giftClosestTo(369,used,'Подарок за 369 ⭐',10),giftClosestTo(100,used,'Кубок',16),
+        giftClosestTo(100,used,'Алмаз',16),giftClosestTo(50,used,'Торт',24),
+        giftClosestTo(15,used,'Мишка',55),{...STAR_REWARDS[1]},{...STAR_REWARDS[0]},
+      ];
+      return daily.sort((a,b)=>Number(b.price||0)-Number(a.price||0));
+    }
+    const catalogGifts=(config.targets||[]).map(price=>giftClosestTo(price,used)).slice(0,4);
+    return [...catalogGifts,STAR_REWARDS[0],STAR_REWARDS[1]].sort((a,b)=>Number(b.price||0)-Number(a.price||0));
+  }
+  function caseGiftMarkup(gift,index,center=false){
+    const name=String(gift.name||'Подарок');
+    const price=formatStars(gift.price||0);
+    return `<div class="case-strip-cell${center?' is-center':''}"><img src="${gift.image||'assets/star.png'}" alt="${name}"><div class="case-strip-gift-name">${name}</div><div class="case-strip-gift-price">${price} <img src="assets/star.png" alt="Stars"></div></div>`;
+  }
+  function renderDailyTimer(){
+    if(!caseDailyTimerEl)return;
+    const remaining=dailyNextOpenAt?Math.max(0,new Date(dailyNextOpenAt).getTime()-Date.now()):0;
+    if(remaining<=0){caseDailyTimerEl.hidden=true;caseOpenBtn?.removeAttribute('disabled');return;}
+    const totalSeconds=Math.ceil(remaining/1000);
+    const hh=String(Math.floor(totalSeconds/3600)).padStart(2,'0');
+    const mm=String(Math.floor((totalSeconds%3600)/60)).padStart(2,'0');
+    const ss=String(totalSeconds%60).padStart(2,'0');
+    caseDailyTimerEl.hidden=false;
+    caseDailyTimerEl.innerHTML=`Следующее открытие через <strong>${hh}:${mm}:${ss}</strong>`;
+    if(activeCaseConfig?.starsOnly)caseOpenBtn?.setAttribute('disabled','true');
+  }
+  function startDailyTimer(nextOpenAt){
+    dailyNextOpenAt=nextOpenAt||null;
+    if(dailyTimerInterval)clearInterval(dailyTimerInterval);
+    renderDailyTimer();
+    if(dailyNextOpenAt)dailyTimerInterval=setInterval(renderDailyTimer,1000);
+  }
+  async function loadDailyStatus(){
+    try{
+      const response=await fetch(API_BASE+'/api/cases/status?caseName='+encodeURIComponent('Ежедневный'),{headers:{'x-init-data':tg?.initData||''},cache:'no-store'});
+      const data=await response.json().catch(()=>({}));
+      if(response.ok)startDailyTimer(data.nextOpenAt||null);
+    }catch(_){ }
   }
   function weightedCasePrize(gifts){
     const pool=[...gifts,...(activeCaseConfig?.starsOnly?[]:STAR_REWARDS.slice(2))];
@@ -143,11 +185,12 @@
     activeCaseGifts=getCaseGifts(activeCaseConfig);
     if(caseTitleEl)caseTitleEl.textContent=name;
     if(caseOpenPriceEl)caseOpenPriceEl.innerHTML=`${formatStars(activeCaseConfig.price)} <img src="assets/star.png" alt="Stars">`;
+    if(activeCaseConfig.starsOnly)loadDailyStatus(); else {dailyNextOpenAt=null;renderDailyTimer();}
     if(caseStripEl){
       const reel=Array.from({length:24},(_,index)=>activeCaseGifts[index%activeCaseGifts.length]);
       caseStripEl.style.transition='none';
       caseStripEl.style.transform='translateX(0)';
-      caseStripEl.innerHTML=reel.map((gift,index)=>`<div class="case-strip-cell${index===12?' is-center':''}"><img src="${gift.image||'assets/star.png'}" alt="${gift.name||'Подарок'}"></div>`).join('');
+      caseStripEl.innerHTML=reel.map((gift,index)=>caseGiftMarkup(gift,index,index===12)).join('');
     }
     if(caseGiftsGridEl)caseGiftsGridEl.innerHTML=activeCaseGifts.map(gift=>`<article class="case-gift-card"><img class="case-gift-image" src="${gift.image||'assets/star.png'}" alt="${gift.name||'Подарок'}" loading="lazy"><div class="case-gift-name">${gift.name||'Подарок'}</div><div class="case-gift-price"><span>${formatStars(gift.price||0)}</span><img src="assets/star.png" alt="Stars"></div></article>`).join('');
   }
@@ -190,9 +233,13 @@
     try{
       const response=await fetch(API_BASE+'/api/cases/open',{method:'POST',headers:{'Content-Type':'application/json','x-init-data':tg?.initData||''},body:JSON.stringify({caseName:activeCaseCard.querySelector('.admin-case-name')?.textContent?.trim()||'Ежедневный'})});
       transaction=await response.json().catch(()=>({}));
-      if(!response.ok||!transaction.ok)throw new Error(transaction.error||'Не удалось открыть кейс');
+      if(!response.ok||!transaction.ok){
+        if(transaction.code==='DAILY_CASE_COOLDOWN'&&transaction.nextOpenAt)startDailyTimer(transaction.nextOpenAt);
+        throw new Error(transaction.error||'Не удалось открыть кейс');
+      }
     }catch(error){
-      caseOpenBtn.disabled=false;caseIsOpening=false;
+      if(!(activeCaseConfig?.starsOnly&&dailyNextOpenAt))caseOpenBtn.disabled=false;
+      caseIsOpening=false;
       if(caseOpenLabel)caseOpenLabel.textContent='Открыть';
       tg?.showAlert?tg.showAlert(error.message):alert(error.message);
       return;
@@ -211,19 +258,29 @@
       filler[winnerIndex]=prize;
       caseStripEl.style.transition='none';
       caseStripEl.style.transform='translateX(0)';
-      caseStripEl.innerHTML=filler.map((gift,index)=>`<div class="case-strip-cell${index===winnerIndex?' is-center':''}"><img src="${gift.image||'assets/star.png'}" alt="${gift.name||'Подарок'}"></div>`).join('');
+      caseStripEl.innerHTML=filler.map((gift,index)=>caseGiftMarkup(gift,index,index===winnerIndex)).join('');
       void caseStripEl.offsetWidth;
-      caseStripEl.style.transition='transform 10s cubic-bezier(.08,.72,.12,1)';
-      caseStripEl.style.transform=`translateX(-${offset}px)`;
+      const firstStop=offset*.82;
+      caseStripEl.style.transition='transform 5s cubic-bezier(.16,.06,.7,.2)';
+      caseStripEl.style.transform=`translateX(-${firstStop}px)`;
+      setTimeout(()=>{
+        if(!caseStripEl)return;
+        caseStripEl.style.transition='none';
+        caseStripEl.style.transform=`translateX(-${firstStop}px)`;
+        void caseStripEl.offsetWidth;
+        caseStripEl.style.transition='transform 3s cubic-bezier(.05,.72,.1,1)';
+        caseStripEl.style.transform=`translateX(-${offset}px)`;
+      },7000);
     }
     setTimeout(()=>{
       playAppSound('reward');
       if(caseResultImage)caseResultImage.src=prize.image||'assets/star.png';
       if(caseResultName)caseResultName.textContent=prize.name||'Подарок';
-      if(caseResultValue)caseResultValue.textContent=`${formatStars(prize.price||0)} ⭐`;
+      if(caseResultValue)caseResultValue.innerHTML=`${formatStars(prize.price||0)} <img src="assets/star.png" alt="Stars">`;
+      if(activeCaseConfig?.starsOnly&&transaction.dailyNextOpenAt)startDailyTimer(transaction.dailyNextOpenAt);
       caseResultOverlay?.classList.add('open');
       caseResultOverlay?.setAttribute('aria-hidden','false');
-      caseOpenBtn.disabled=false;
+      if(!(activeCaseConfig?.starsOnly&&dailyNextOpenAt))caseOpenBtn.disabled=false;
       if(caseOpenLabel)caseOpenLabel.textContent='Открыть';
       caseIsOpening=false;
       refreshInventory(true).catch(()=>{});
