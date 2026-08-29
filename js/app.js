@@ -74,7 +74,6 @@
   const caseGifts=[...(typeof GIFT_CATALOG!=='undefined'?GIFT_CATALOG:[])].sort((a,b)=>Number(b?.price||0)-Number(a?.price||0)).slice(0,6);
   const caseTitleEl=document.getElementById('caseTitle');
   const caseNicknameEl=document.getElementById('caseNickname');
-  const caseBalanceEl=document.getElementById('caseBalanceText');
   const caseStripEl=document.getElementById('caseStrip');
   const caseGiftsGridEl=document.getElementById('caseGiftsGrid');
   const caseBackBtn=document.getElementById('caseBackBtn');
@@ -83,10 +82,9 @@
     const name=card?.querySelector('.admin-case-name')?.textContent?.trim()||'Кейс';
     if(caseTitleEl)caseTitleEl.textContent=name;
     if(caseNicknameEl)caseNicknameEl.textContent=typeof userHandle!=='undefined'?userHandle:'@user';
-    if(caseBalanceEl)caseBalanceEl.textContent=document.getElementById('balanceText')?.textContent||'0';
     const gifts=caseGifts.length?caseGifts:Array.from({length:6},(_,i)=>({name:'Подарок '+(i+1),image:'assets/star.png'}));
     if(caseStripEl)caseStripEl.innerHTML=gifts.map((gift,index)=>`<div class="case-strip-cell${index===2?' is-center':''}"><img src="${gift.image||'assets/star.png'}" alt="${gift.name||'Подарок'}"></div>`).join('');
-    if(caseGiftsGridEl)caseGiftsGridEl.innerHTML=gifts.map(gift=>`<article class="case-gift-card"><img class="case-gift-image" src="${gift.image||'assets/star.png'}" alt="${gift.name||'Подарок'}" loading="lazy"><div class="case-gift-name">${gift.name||'Подарок'}</div><div class="case-gift-price"><span>0</span><img src="assets/star.png" alt="Stars"></div></article>`).join('');
+    if(caseGiftsGridEl)caseGiftsGridEl.innerHTML=gifts.map(gift=>`<article class="case-gift-card"><img class="case-gift-image" src="${gift.image||'assets/star.png'}" alt="${gift.name||'Подарок'}" loading="lazy"><div class="case-gift-name">${gift.name||'Подарок'}</div><div class="case-gift-price"><span>${formatStars(gift.price||0)}</span><img src="assets/star.png" alt="Stars"></div></article>`).join('');
   }
   document.querySelectorAll('[data-case-open="true"]').forEach(card=>{
     const open=()=>{playAppSound('tab');renderCaseOpening(card);activateTab('case',true);};
@@ -195,8 +193,10 @@
       // первичные данные в стартовом экране: профиль не должен открываться с
       // нулевым балансом и пустым инвентарём, которые через секунды «прыгают».
       await bootTask(()=>initUser());
-      await Promise.allSettled([
-        // /api/init уже применяет data.balance; не создаём второй медленный SELECT users.
+      // Баланс и профиль уже применены внутри initUser()/warm-cache.
+      // Не блокируем первый экран тяжёлыми игровыми запросами и загрузкой баннеров.
+      hideBootState();
+      Promise.allSettled([
         bootTask(()=>refreshCrashState(true,false,crashViewSession,true),6500),
         bootTask(()=>refreshPvpState(true),6500),
         bootTask(()=>refreshInventory(true),6500),
