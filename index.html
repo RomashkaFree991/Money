@@ -220,27 +220,47 @@
         <div class="admin-cases-group">
           <h2 class="admin-cases-title">Бесплатные кейсы</h2>
           <div class="admin-cases-grid">
-            <article class="admin-case-card"><img src="assets/daily_case.png" alt="Ежедневный кейс" loading="lazy"><div class="admin-case-name">Ежедневный</div><div class="admin-case-price"><span>0</span><img src="assets/star.png" alt="Stars"></div></article>
+            <article class="admin-case-card" role="button" tabindex="0" data-case-open="true"><img src="assets/daily_case.png" alt="Ежедневный кейс" loading="lazy"><div class="admin-case-name">Ежедневный</div><div class="admin-case-price"><span>0</span><img src="assets/star.png" alt="Stars"></div></article>
           </div>
         </div>
         <div class="admin-cases-group">
           <h2 class="admin-cases-title">Лимитированные кейсы</h2>
           <div class="admin-cases-grid">
-            <article class="admin-case-card"><img src="assets/spiderman_case.png" alt="Spider-man кейс" loading="lazy"><div class="admin-case-name">Spider-man</div><div class="admin-case-price"><span>0</span><img src="assets/star.png" alt="Stars"></div></article>
-            <article class="admin-case-card"><img src="assets/holiday_case.png" alt="Каникулы кейс" loading="lazy"><div class="admin-case-name">Каникулы</div><div class="admin-case-price"><span>0</span><img src="assets/star.png" alt="Stars"></div></article>
-            <article class="admin-case-card"><img src="assets/farm_case.png" alt="FARM кейс" loading="lazy"><div class="admin-case-name">FARM</div><div class="admin-case-price"><span>0</span><img src="assets/star.png" alt="Stars"></div></article>
+            <article class="admin-case-card" role="button" tabindex="0" data-case-open="true"><img src="assets/spiderman_case.png" alt="Spider-man кейс" loading="lazy"><div class="admin-case-name">Spider-man</div><div class="admin-case-price"><span>0</span><img src="assets/star.png" alt="Stars"></div></article>
+            <article class="admin-case-card" role="button" tabindex="0" data-case-open="true"><img src="assets/holiday_case.png" alt="Каникулы кейс" loading="lazy"><div class="admin-case-name">Каникулы</div><div class="admin-case-price"><span>0</span><img src="assets/star.png" alt="Stars"></div></article>
+            <article class="admin-case-card" role="button" tabindex="0" data-case-open="true"><img src="assets/farm_case.png" alt="FARM кейс" loading="lazy"><div class="admin-case-name">FARM</div><div class="admin-case-price"><span>0</span><img src="assets/star.png" alt="Stars"></div></article>
           </div>
         </div>
         <div class="admin-cases-group">
           <h2 class="admin-cases-title">Обычные кейсы</h2>
           <div class="admin-cases-grid">
-            <article class="admin-case-card"><img src="assets/econom_case.png" alt="Эконом кейс" loading="lazy"><div class="admin-case-name">Эконом</div><div class="admin-case-price"><span>0</span><img src="assets/star.png" alt="Stars"></div></article>
-            <article class="admin-case-card"><img src="assets/worker_case.png" alt="Работяга кейс" loading="lazy"><div class="admin-case-name">Работяга</div><div class="admin-case-price"><span>0</span><img src="assets/star.png" alt="Stars"></div></article>
-            <article class="admin-case-card"><img src="assets/oligarch_case.png" alt="Олигарх кейс" loading="lazy"><div class="admin-case-name">Олигарх</div><div class="admin-case-price"><span>0</span><img src="assets/star.png" alt="Stars"></div></article>
-            <article class="admin-case-card"><img src="assets/standard_case.png" alt="Стандартный кейс" loading="lazy"><div class="admin-case-name">Стандартный</div><div class="admin-case-price"><span>0</span><img src="assets/star.png" alt="Stars"></div></article>
+            <article class="admin-case-card" role="button" tabindex="0" data-case-open="true"><img src="assets/econom_case.png" alt="Эконом кейс" loading="lazy"><div class="admin-case-name">Эконом</div><div class="admin-case-price"><span>0</span><img src="assets/star.png" alt="Stars"></div></article>
+            <article class="admin-case-card" role="button" tabindex="0" data-case-open="true"><img src="assets/worker_case.png" alt="Работяга кейс" loading="lazy"><div class="admin-case-name">Работяга</div><div class="admin-case-price"><span>0</span><img src="assets/star.png" alt="Stars"></div></article>
+            <article class="admin-case-card" role="button" tabindex="0" data-case-open="true"><img src="assets/oligarch_case.png" alt="Олигарх кейс" loading="lazy"><div class="admin-case-name">Олигарх</div><div class="admin-case-price"><span>0</span><img src="assets/star.png" alt="Stars"></div></article>
+            <article class="admin-case-card" role="button" tabindex="0" data-case-open="true"><img src="assets/standard_case.png" alt="Стандартный кейс" loading="lazy"><div class="admin-case-name">Стандартный</div><div class="admin-case-price"><span>0</span><img src="assets/star.png" alt="Stars"></div></article>
           </div>
         </div>
       </section>
+    </div>
+  </div>
+
+  <!-- CASE OPENING -->
+  <div class="page" id="casePage">
+    <div class="case-page">
+      <div class="case-header-row">
+        <button type="button" class="case-back-btn" id="caseBackBtn" aria-label="Назад">‹</button>
+        <div class="case-title" id="caseTitle">Кейс</div>
+        <div class="case-header-balance"><span id="caseBalanceText">0</span><img src="assets/star.png" alt="Stars"></div>
+      </div>
+      <div class="case-nickname" id="caseNickname">@user</div>
+      <div class="case-strip-wrap" aria-label="Подарки кейса">
+        <img class="case-strip-arrow case-strip-arrow--top" src="svg/up.svg" alt="">
+        <div class="case-strip" id="caseStrip"></div>
+        <img class="case-strip-arrow case-strip-arrow--bottom" src="svg/up.svg" alt="">
+      </div>
+      <button type="button" class="case-open-btn" id="caseOpenBtn">Открыть</button>
+      <div class="case-gifts-heading">Подарки в кейсе</div>
+      <div class="case-gifts-grid" id="caseGiftsGrid"></div>
     </div>
   </div>
 
