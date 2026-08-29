@@ -1137,3 +1137,41 @@
     .admin-tab{min-width:0;width:100%;padding:10px 3px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .admin-table{min-width:560px}
   }
+
+  /* === CASE OPENING === */
+  .admin-cases-section{margin-top:-10px}
+  .admin-cases-group{margin-top:12px}
+  .admin-cases-group:first-child{margin-top:0}
+  .admin-cases-title{margin-top:0;margin-bottom:8px}
+  .admin-case-card{cursor:pointer;transition:transform .18s ease,filter .18s ease}
+  .admin-case-card:active{transform:scale(.975);filter:brightness(1.08)}
+  .case-page{min-height:100%;padding:0 0 34px;display:flex;flex-direction:column;align-items:stretch}
+  .case-header-row{display:flex;align-items:center;justify-content:center;position:relative;min-height:42px;margin:-5px 0 0}
+  .case-back-btn{position:absolute;left:0;width:38px;height:38px;border:0;border-radius:50%;background:rgba(255,255,255,.1);color:#fff;font:32px/32px inherit;font-weight:300;cursor:pointer;padding:0 0 4px}
+  .case-title{color:#fff;font-size:20px;font-weight:850;line-height:1.1}
+  .case-header-balance{position:absolute;right:0;display:flex;align-items:center;gap:4px;color:#fff;font-size:13px;font-weight:800}
+  .case-header-balance img{width:17px;height:17px;object-fit:contain;filter:drop-shadow(0 0 3px rgba(255,200,0,.4))}
+  .case-nickname{margin:2px 0 12px;text-align:center;color:rgba(255,255,255,.46);font-size:13px;font-weight:650}
+  .case-strip-wrap{position:relative;margin:0 0 14px;padding:24px 0;overflow:visible}
+  .case-strip{height:92px;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));border-radius:24px;overflow:hidden;background:rgba(28,28,30,.94);border:1px solid rgba(255,255,255,.1);box-shadow:0 12px 30px rgba(0,0,0,.2)}
+  .case-strip-cell{position:relative;display:flex;align-items:center;justify-content:center;min-width:0;background:rgba(255,255,255,.035);border-right:1px solid rgba(255,255,255,.12)}
+  .case-strip-cell:last-child{border-right:0}
+  .case-strip-cell:nth-child(odd){background:rgba(255,255,255,.055)}
+  .case-strip-cell img{width:54px;height:54px;object-fit:contain;filter:drop-shadow(0 8px 12px rgba(0,0,0,.28))}
+  .case-strip-cell.is-center{background:rgba(10,132,255,.16);box-shadow:inset 0 0 0 1px rgba(10,132,255,.5)}
+  .case-strip-cell.is-center::after{content:'';position:absolute;inset:8px;border:1px solid rgba(10,132,255,.45);border-radius:15px;pointer-events:none}
+  .case-strip-arrow{position:absolute;z-index:3;left:50%;width:24px;height:24px;object-fit:contain;filter:brightness(0) invert(1) drop-shadow(0 3px 5px rgba(0,0,0,.55));transform:translateX(-50%);pointer-events:none}
+  .case-strip-arrow--top{top:0}
+  .case-strip-arrow--bottom{bottom:0;transform:translateX(-50%) rotate(180deg)}
+  .case-open-btn{width:100%;height:52px;border:0;border-radius:999px;background:#007AFF;color:#fff;font:inherit;font-size:16px;font-weight:850;cursor:pointer;box-shadow:0 8px 22px rgba(0,122,255,.25);transition:transform .18s ease,filter .18s ease}
+  .case-open-btn:active{transform:scale(.985);filter:brightness(1.08)}
+  .case-gifts-heading{margin:20px 0 10px;color:#fff;font-size:17px;font-weight:800}
+  .case-gifts-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding-bottom:10px}
+  .case-gift-card{min-width:0;padding:12px 10px 11px;border:1px solid rgba(255,255,255,.08);border-radius:18px;background:rgba(28,28,30,.94);text-align:center;box-shadow:none}
+  .case-gift-image{display:block;width:100%;height:116px;object-fit:contain;margin:0 auto 7px;filter:drop-shadow(0 10px 16px rgba(0,0,0,.26))}
+  .case-gift-name{min-height:20px;color:#fff;font-size:13px;font-weight:700;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .case-gift-price{display:inline-flex;align-items:center;justify-content:center;gap:4px;margin-top:8px;min-width:48px;height:28px;padding:0 10px;border-radius:999px;background:#0A84FF;color:#fff;font-size:13px;font-weight:800}
+  .case-gift-price img{width:15px;height:15px;object-fit:contain}
+  @media (max-width:380px){.case-strip-cell img{width:45px;height:45px}.case-strip{height:82px}.case-title{font-size:18px}}
+  .case-open-btn.is-opening{animation:caseOpenPulse .9s ease both}
+  @keyframes caseOpenPulse{0%{filter:brightness(1);box-shadow:0 8px 22px rgba(0,122,255,.25)}35%{filter:brightness(1.18);box-shadow:0 0 0 7px rgba(0,122,255,.16),0 10px 28px rgba(0,122,255,.4)}100%{filter:brightness(1);box-shadow:0 8px 22px rgba(0,122,255,.25)}}
