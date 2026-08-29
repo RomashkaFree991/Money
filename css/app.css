@@ -1175,3 +1175,21 @@
   @media (max-width:380px){.case-strip-cell img{width:45px;height:45px}.case-strip{height:82px}.case-title{font-size:18px}}
   .case-open-btn.is-opening{animation:caseOpenPulse .9s ease both}
   @keyframes caseOpenPulse{0%{filter:brightness(1);box-shadow:0 8px 22px rgba(0,122,255,.25)}35%{filter:brightness(1.18);box-shadow:0 0 0 7px rgba(0,122,255,.16),0 10px 28px rgba(0,122,255,.4)}100%{filter:brightness(1);box-shadow:0 8px 22px rgba(0,122,255,.25)}}
+
+  /* === CASE OPENING REFINEMENTS === */
+  .case-header-row{min-height:34px;margin:-8px 0 0}
+  .case-nickname{margin:0 0 14px}
+  .case-strip-wrap{padding:28px 0;margin-bottom:16px}
+  .case-strip{height:112px}
+  .case-strip-cell{background:rgba(255,255,255,.035)!important;box-shadow:none!important}
+  .case-strip-cell:nth-child(odd){background:rgba(255,255,255,.055)!important}
+  .case-strip-cell.is-center{background:rgba(255,255,255,.055)!important;box-shadow:none!important}
+  .case-strip-cell.is-center::after{display:none}
+  .case-strip-cell img{width:48px;height:48px}
+  .case-gifts-heading{margin-top:16px;margin-bottom:8px}
+  .case-gift-card{padding:8px 8px 9px;border-radius:15px}
+  .case-gift-image{height:82px;margin-bottom:5px}
+  .case-gift-name{font-size:12px;min-height:18px}
+  .case-gift-price{height:24px;min-width:42px;margin-top:5px;padding:0 8px;font-size:12px}
+  .case-gift-price img{width:13px;height:13px}
+  @media (max-width:380px){.case-strip{height:100px}.case-strip-cell img{width:42px;height:42px}.case-gift-image{height:74px}}
