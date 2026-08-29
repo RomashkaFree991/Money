@@ -1214,3 +1214,15 @@
   .case-result-btn{width:100%;height:46px;margin-top:18px;border:0;border-radius:999px;background:#007AFF;color:#fff;font:inherit;font-size:15px;font-weight:850;cursor:pointer}
   .case-strip-wrap{padding:10px 0 18px;margin-top:0}
   .case-strip{height:112px}
+
+  /* === SERVER CASE RESULT === */
+  .case-result-overlay{align-items:flex-start;padding:14vh 14px 24px;background:rgba(0,0,0,.58) url('../assets/background_pepe.png') center top/cover no-repeat;overflow-y:auto}
+  .case-result-modal{width:min(100%,360px);margin:0 auto;padding:22px 18px 16px;border-radius:26px 26px 20px 20px;background:rgba(28,28,30,.96)}
+  .case-result-image{width:132px;height:132px;margin:12px auto 6px}
+  .case-result-btn{margin-top:14px}
+  .case-result-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+  .case-result-secondary{height:42px;display:flex;align-items:center;justify-content:center;gap:4px;padding:0 8px;border:1px solid rgba(255,255,255,.1);border-radius:999px;background:rgba(255,255,255,.09);color:#fff;font:inherit;font-size:12px;font-weight:800;cursor:pointer}
+  .case-result-secondary img{width:15px;height:15px;object-fit:contain}
+  .case-result-secondary:active,.case-result-btn:active{filter:brightness(1.12);transform:scale(.985)}
+  .case-strip-track .case-strip-cell{background:rgba(255,255,255,.04)!important}
+  .case-strip-track .case-strip-cell.is-center{background:rgba(255,255,255,.08)!important}
