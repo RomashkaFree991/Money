@@ -69,22 +69,83 @@
     banner.addEventListener('click',()=>{playAppSound('tab');activateTab(banner.dataset.gameTarget,true)});
   });
 
-  // Бесплатные кейсы пока работают как визуальный прототип: призы берутся из общего каталога,
-  // а стоимость каждой карточки намеренно показывается как 0.
-  const caseGifts=[...(typeof GIFT_CATALOG!=='undefined'?GIFT_CATALOG:[])].sort((a,b)=>Number(b?.price||0)-Number(a?.price||0)).slice(0,6);
+  // Настройки кейсов. Цены указаны в звёздах; призы пока выдаются локально,
+  // без списания баланса и без серверной транзакции.
+  const CASE_CONFIGS={
+    'Ежедневный':{price:0,targets:[5,10,15,25],starsOnly:true},
+    'Эконом':{price:149,targets:[25,50,100,150]},
+    'Работяга':{price:360,targets:[100,250,360,500]},
+    'Олигарх':{price:899,targets:[500,899,1500,3000]},
+    'Стандартный':{price:50,targets:[15,25,50,100]},
+    'Spider-man':{price:349,targets:[50,100,250,500]},
+    'FARM':{price:67,targets:[15,25,50,100]},
+    'Каникулы':{price:169,targets:[50,100,250,350]},
+  };
   const caseTitleEl=document.getElementById('caseTitle');
-  const caseNicknameEl=document.getElementById('caseNickname');
   const caseStripEl=document.getElementById('caseStrip');
   const caseGiftsGridEl=document.getElementById('caseGiftsGrid');
   const caseBackBtn=document.getElementById('caseBackBtn');
   const caseOpenBtn=document.getElementById('caseOpenBtn');
+  const caseOpenLabel=caseOpenBtn?.querySelector('span:first-child');
+  const caseOpenPriceEl=document.getElementById('caseOpenPrice');
+  const caseResultOverlay=document.getElementById('caseResultOverlay');
+  const caseResultImage=document.getElementById('caseResultImage');
+  const caseResultName=document.getElementById('caseResultName');
+  const caseResultValue=document.getElementById('caseResultValue');
+  const caseResultClose=document.getElementById('caseResultClose');
+  const caseResultBtn=document.getElementById('caseResultBtn');
+  let activeCaseConfig=null;
+  let activeCaseGifts=[];
+  let activeCaseCard=null;
+  let caseIsOpening=false;
+  const STAR_REWARDS=[
+    {name:'5 звёзд',price:5,stars:5,image:'assets/star.png',weight:2,type:'stars'},
+    {name:'10 звёзд',price:10,stars:10,image:'assets/star.png',weight:2,type:'stars'},
+    {name:'50 звёзд',price:50,stars:50,image:'assets/star.png',weight:1,type:'stars'},
+    {name:'100 звёзд',price:100,stars:100,image:'assets/star.png',weight:1,type:'stars'},
+  ];
+  function giftClosestTo(price,used){
+    const candidates=[...(typeof GIFT_CATALOG!=='undefined'?GIFT_CATALOG:[])].filter(g=>!used.has(String(g.id)));
+    candidates.sort((a,b)=>Math.abs(Number(a.price||0)-price)-Math.abs(Number(b.price||0)-price));
+    const gift=candidates[0]||{name:'Подарок',price:price,image:'assets/star.png',id:String(price)};
+    used.add(String(gift.id));
+    return {...gift,weight:18,type:'gift'};
+  }
+  function getCaseGifts(config){
+    const used=new Set();
+    const catalogGifts=(config.starsOnly?[]:(config.targets||[]).map(price=>giftClosestTo(price,used))).slice(0,4);
+    const starGifts=config.starsOnly?STAR_REWARDS.slice(0,6):[STAR_REWARDS[0],STAR_REWARDS[1]];
+    return [...catalogGifts,...starGifts];
+  }
+  function weightedCasePrize(gifts){
+    const pool=[...gifts,...(activeCaseConfig?.starsOnly?[]:STAR_REWARDS.slice(2))];
+    const total=pool.reduce((sum,g)=>sum+Number(g.weight||1),0);
+    let roll=Math.random()*total;
+    return pool.find(g=>{roll-=Number(g.weight||1);return roll<=0;})||pool[pool.length-1];
+  }
+  function applyCasePrices(){
+    document.querySelectorAll('[data-case-open="true"]').forEach(card=>{
+      const name=card.querySelector('.admin-case-name')?.textContent?.trim();
+      const config=CASE_CONFIGS[name];
+      const priceEl=card.querySelector('.admin-case-price span');
+      if(config&&priceEl)priceEl.textContent=formatStars(config.price);
+    });
+  }
+  applyCasePrices();
   function renderCaseOpening(card){
-    const name=card?.querySelector('.admin-case-name')?.textContent?.trim()||'Кейс';
+    activeCaseCard=card||activeCaseCard;
+    const name=activeCaseCard?.querySelector('.admin-case-name')?.textContent?.trim()||'Ежедневный';
+    activeCaseConfig=CASE_CONFIGS[name]||CASE_CONFIGS['Ежедневный'];
+    activeCaseGifts=getCaseGifts(activeCaseConfig);
     if(caseTitleEl)caseTitleEl.textContent=name;
-    if(caseNicknameEl)caseNicknameEl.textContent=typeof userHandle!=='undefined'?userHandle:'@user';
-    const gifts=caseGifts.length?caseGifts:Array.from({length:6},(_,i)=>({name:'Подарок '+(i+1),image:'assets/star.png'}));
-    if(caseStripEl)caseStripEl.innerHTML=gifts.map((gift,index)=>`<div class="case-strip-cell${index===2?' is-center':''}"><img src="${gift.image||'assets/star.png'}" alt="${gift.name||'Подарок'}"></div>`).join('');
-    if(caseGiftsGridEl)caseGiftsGridEl.innerHTML=gifts.map(gift=>`<article class="case-gift-card"><img class="case-gift-image" src="${gift.image||'assets/star.png'}" alt="${gift.name||'Подарок'}" loading="lazy"><div class="case-gift-name">${gift.name||'Подарок'}</div><div class="case-gift-price"><span>${formatStars(gift.price||0)}</span><img src="assets/star.png" alt="Stars"></div></article>`).join('');
+    if(caseOpenPriceEl)caseOpenPriceEl.innerHTML=`${formatStars(activeCaseConfig.price)} <img src="assets/star.png" alt="Stars">`;
+    if(caseStripEl){
+      const reel=Array.from({length:24},(_,index)=>activeCaseGifts[index%activeCaseGifts.length]);
+      caseStripEl.style.transition='none';
+      caseStripEl.style.transform='translateX(0)';
+      caseStripEl.innerHTML=reel.map((gift,index)=>`<div class="case-strip-cell${index===12?' is-center':''}"><img src="${gift.image||'assets/star.png'}" alt="${gift.name||'Подарок'}"></div>`).join('');
+    }
+    if(caseGiftsGridEl)caseGiftsGridEl.innerHTML=activeCaseGifts.map(gift=>`<article class="case-gift-card"><img class="case-gift-image" src="${gift.image||'assets/star.png'}" alt="${gift.name||'Подарок'}" loading="lazy"><div class="case-gift-name">${gift.name||'Подарок'}</div><div class="case-gift-price"><span>${formatStars(gift.price||0)}</span><img src="assets/star.png" alt="Stars"></div></article>`).join('');
   }
   document.querySelectorAll('[data-case-open="true"]').forEach(card=>{
     const open=()=>{playAppSound('tab');renderCaseOpening(card);activateTab('case',true);};
@@ -92,12 +153,35 @@
     card.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();open();}});
   });
   caseBackBtn?.addEventListener('click',()=>activateTab('game',true));
+  function closeCaseResult(){caseResultOverlay?.classList.remove('open');caseResultOverlay?.setAttribute('aria-hidden','true');}
+  caseResultClose?.addEventListener('click',closeCaseResult);
+  caseResultBtn?.addEventListener('click',closeCaseResult);
+  caseResultOverlay?.addEventListener('click',event=>{if(event.target===caseResultOverlay)closeCaseResult();});
   caseOpenBtn?.addEventListener('click',()=>{
-    caseOpenBtn.classList.remove('is-opening');
-    void caseOpenBtn.offsetWidth;
-    caseOpenBtn.classList.add('is-opening');
-    caseOpenBtn.textContent='Открыто';
-    setTimeout(()=>{if(caseOpenBtn)caseOpenBtn.textContent='Открыть';},900);
+    if(caseIsOpening||!activeCaseConfig)return;
+    caseIsOpening=true;
+    playAppSound('spin');
+    caseOpenBtn.disabled=true;
+    if(caseOpenLabel)caseOpenLabel.textContent='Крутится…';
+    const prize=weightedCasePrize(activeCaseGifts);
+    const winnerIndex=12;
+    const cellWidth=(caseStripEl?.parentElement?.clientWidth||300)/6;
+    const offset=(winnerIndex-2.5)*cellWidth;
+    if(caseStripEl){
+      caseStripEl.style.transition='transform 1.35s cubic-bezier(.12,.78,.16,1)';
+      caseStripEl.style.transform=`translateX(-${offset}px)`;
+    }
+    setTimeout(()=>{
+      playAppSound('reward');
+      if(caseResultImage)caseResultImage.src=prize.image||'assets/star.png';
+      if(caseResultName)caseResultName.textContent=prize.name||'Подарок';
+      if(caseResultValue)caseResultValue.textContent=`${formatStars(prize.price||0)} ⭐`;
+      caseResultOverlay?.classList.add('open');
+      caseResultOverlay?.setAttribute('aria-hidden','false');
+      caseOpenBtn.disabled=false;
+      if(caseOpenLabel)caseOpenLabel.textContent='Открыть';
+      caseIsOpening=false;
+    },1450);
   });
   pvpBetBtn?.addEventListener('click',()=>{
     if(!pvpCanAcceptBets()){showBetError('Ставки закрыты: таймер уже закончился');return;}
