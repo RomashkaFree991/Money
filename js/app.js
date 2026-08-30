@@ -57,11 +57,14 @@
     if(!pages[targetTab]) return;
     if(targetTab===currentTab && !referralPage.classList.contains('visible')) return;
     // Внутренние игры открываются из Game и сохраняют Game активным в нижней панели.
+    nav?.classList.toggle('case-result-active',targetTab==='caseResult');
     const navTarget=document.querySelector(`.nav-item[data-tab="${embeddedGameTabs.has(targetTab)?'game':targetTab}"]`);
     document.querySelector('.nav-item.active')?.classList.remove('active');
     if(navTarget){
       navTarget.classList.add('active');
-      moveIndicator(navTarget,animate);
+      if(targetTab!=='caseResult'){
+        requestAnimationFrame(()=>moveIndicator(navTarget,animate));
+      }
     }
     showTab(targetTab);
   }
