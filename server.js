@@ -3148,20 +3148,42 @@ app.post('/api/cases/open', async (req, res) => {
   const user = requireUser(req, res);
   if (!user) return;
   const caseName = String(req.body?.caseName || '').trim();
+  const count = Math.max(1, Math.min(5, Math.floor(Number(req.body?.count || 1))));
   const config = SERVER_CASE_CONFIGS[caseName];
   if (!config) return res.status(400).json({ error: 'Unknown case' });
+  if (config.starsOnly && count > 1) {
+    return res.status(400).json({ error: 'Бесплатный кейс можно открыть только 1 раз' });
+  }
   try {
-    const prize = weightedServerPrize(serverCasePrizes(config));
-    const { data, error } = await sb.rpc('open_case_atomic', {
-      p_user_id: Number(user.id), p_case_name: caseName, p_price: Number(config.price),
-      p_gift_id: String(prize.id), p_gift_name: String(prize.name),
-      p_gift_price: Number(prize.price || 0), p_gift_image: String(prize.image || ''),
+    const gifts = [];
+    let lastBalance = 0;
+    let lastDailyNextOpenAt = null;
+    let lastInventoryId = 0;
+
+    for (let i = 0; i < count; i++) {
+      const prize = weightedServerPrize(serverCasePrizes(config));
+      const { data, error } = await sb.rpc('open_case_atomic', {
+        p_user_id: Number(user.id), p_case_name: caseName, p_price: Number(config.price),
+        p_gift_id: String(prize.id), p_gift_name: String(prize.name),
+        p_gift_price: Number(prize.price || 0), p_gift_image: String(prize.image || ''),
+      });
+      if (error) throw new Error(error.message || 'Case transaction failed');
+      const row = data?.gift || data?.wonGift || data;
+      lastBalance = Number(data?.newBalance || 0);
+      lastDailyNextOpenAt = data?.dailyNextOpenAt || null;
+      lastInventoryId = Number(row?.id || 0);
+      gifts.push({ ...prize, inventoryId: lastInventoryId });
+    }
+
+    return res.json({
+      ok: true, caseName, count, casePrice: config.price * count,
+      newBalance: lastBalance,
+      dailyNextOpenAt: lastDailyNextOpenAt || (caseName === 'Ежедневный' ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() : null),
+      inventoryId: lastInventoryId,
+      gift: gifts[0],
+      gifts,
+      serverNow: Date.now()
     });
-    if (error) throw new Error(error.message || 'Case transaction failed');
-    const row = data?.gift || data?.wonGift || data;
-    return res.json({ ok: true, caseName, casePrice: config.price, newBalance: Number(data?.newBalance || 0),
-      dailyNextOpenAt: data?.dailyNextOpenAt || (caseName === 'Ежедневный' ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() : null),
-      inventoryId: Number(row?.id || 0), gift: prize, serverNow: Date.now() });
   } catch (error) {
     const message = String(error?.message || 'Case opening failed');
     const cooldownMatch = message.match(/DAILY_CASE_COOLDOWN:([^]+)$/i);
