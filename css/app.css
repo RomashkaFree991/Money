@@ -1250,3 +1250,9 @@
   .case-result-screen .case-result-btn{max-width:420px}
   .case-result-screen .case-result-actions{width:100%;max-width:420px}
   @keyframes caseResultSheetIn{from{transform:translateY(105%)}to{transform:translateY(0)}}
+
+  /* Result is a real full-screen route, not a sheet inside the case page. */
+  .bottom-nav.case-result-active{display:none!important}
+  .case-result-page{left:0;right:0;padding:0!important;z-index:40!important;background:#000 url('../assets/background_pepe.png') center/cover no-repeat!important;overflow:hidden!important}
+  .case-result-page.visible{display:block!important;opacity:1!important;visibility:visible!important;pointer-events:auto!important}
+  .case-result-screen{position:absolute!important;inset:auto 0 0!important;width:100%;min-height:58vh!important;box-sizing:border-box;background:#000 url('../assets/background_pepe.png') center/cover no-repeat!important;z-index:1}
