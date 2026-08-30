@@ -147,29 +147,6 @@ function invalidateBanCache(userId) {
   banCache.delete(Number(userId));
 }
 
-async function setUserBan(userId, reason) {
-  const id = Number(userId);
-  if (!Number.isFinite(id)) throw new Error('bad userId');
-  const { error } = await sb.from('users').update({
-    banned_at: new Date().toISOString(),
-    ban_reason: String(reason || '').slice(0, 500) || 'Нарушение правил',
-    updated_at: new Date().toISOString(),
-  }).eq('id', id);
-  if (error) throw new Error(error.message);
-  invalidateBanCache(id);
-}
-
-async function clearUserBan(userId) {
-  const id = Number(userId);
-  if (!Number.isFinite(id)) throw new Error('bad userId');
-  const { error } = await sb.from('users').update({
-    banned_at: null,
-    ban_reason: null,
-    updated_at: new Date().toISOString(),
-  }).eq('id', id);
-  if (error) throw new Error(error.message);
-  invalidateBanCache(id);
-}
 
 // Withdraw flow: фронт сначала платит 25⭐ комиссию, только потом мы делаем перевод.
 // Withdrawal intents/receipts и transfer-снимки хранятся в PostgreSQL.
@@ -595,41 +572,6 @@ async function getReferralSummary(userId) {
 }
 
 
-async function applyDepositCredit(userId, amount) {
-  const numericAmount = Math.max(0, Math.floor(Number(amount || 0)));
-  if (!userId || numericAmount <= 0) {
-    return { amount: 0, balance: await getUserBalance(userId), referral: null };
-  }
-
-  const { error } = await sb.rpc('balance_add', { p_user_id: userId, p_amount: numericAmount });
-  if (error) {
-    throw new Error(error.message || 'balance_add failed');
-  }
-
-  let referral = null;
-  try {
-    const rewardResult = await sb.rpc('giftpep_credit_referral_for_deposit_v2', {
-      p_user_id: userId,
-      p_deposit_amount: numericAmount,
-    });
-    if (rewardResult.error) {
-      console.error('credit_referral_for_deposit error:', rewardResult.error);
-    } else {
-      const rewardRow = Array.isArray(rewardResult.data) ? rewardResult.data[0] : rewardResult.data;
-      const rewardNum = Number(rewardRow?.reward || 0);
-      const refId = Number(rewardRow?.referrer_id || 0);
-      if (rewardNum > 0) {
-        logReferralDeposit(refId, userId, numericAmount, rewardNum, 'direct').catch(() => null);
-      }
-    }
-    referral = await getReferralSummary(userId).catch(() => null);
-  } catch (error) {
-    console.error('Referral credit failed:', error);
-  }
-
-  const balance = await getUserBalance(userId);
-  return { amount: numericAmount, balance, referral };
-}
 
 async function tgApi(method, data = {}, timeoutMs = 8000) {
   const controller = new AbortController();
@@ -770,9 +712,6 @@ async function handleBotMessage(message) {
   const text = String(message?.text || '').trim();
   const chatId = Number(message?.chat?.id);
   const senderId = Number(message?.from?.id);
-
-  const isAdmin = CONFIG.ADMIN_IDS.includes(senderId);
-  const replyTo = message?.reply_to_message?.text || '';
 
   // Telegram-бот больше не содержит админ-панели. Администрирование выполняется
   // только внутри Mini App через signed initData и requireAdmin.
@@ -1447,17 +1386,6 @@ async function getUserBalance(userId) {
   return Number(created.data?.balance || 0);
 }
 
-async function spendBalance(userId, amount) {
-  const rpc = await sb.rpc('spend_balance', { p_user_id: Number(userId), p_amount: Number(amount) });
-  if (rpc.error) throw new Error(rpc.error.message || 'Balance spend failed');
-  return Number(rpc.data || 0);
-}
-
-async function addWinBalance(userId, amount) {
-  const rpc = await sb.rpc('add_win_balance', { p_user_id: Number(userId), p_amount: Number(amount) });
-  if (rpc.error) throw new Error(rpc.error.message || 'Balance add failed');
-  return Number(rpc.data || 0);
-}
 
 function secureRandomUnit() {
   // crypto.randomInt() requires (max - min) <= 2^48 - 1.
@@ -3817,8 +3745,6 @@ app.post('/api/relayer/credit-gift', async (req, res) => {
     slug,
     isUnique,
     fallbackName,
-    fallbackImage,
-    fallbackPrice,
   } = req.body || {};
 
   if (!giftId) {

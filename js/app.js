@@ -170,12 +170,6 @@
       if(response.ok)startDailyTimer(data.nextOpenAt||null);
     }catch(_){ }
   }
-  function weightedCasePrize(gifts){
-    const pool=[...gifts,...(activeCaseConfig?.starsOnly?[]:STAR_REWARDS.slice(2))];
-    const total=pool.reduce((sum,g)=>sum+Number(g.weight||1),0);
-    let roll=Math.random()*total;
-    return pool.find(g=>{roll-=Number(g.weight||1);return roll<=0;})||pool[pool.length-1];
-  }
   function applyCasePrices(){
     document.querySelectorAll('[data-case-open="true"]').forEach(card=>{
       const name=card.querySelector('.admin-case-name')?.textContent?.trim();

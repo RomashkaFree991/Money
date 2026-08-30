@@ -18,11 +18,6 @@
   const crashHistory=document.getElementById('crashHistory');
   let crashRocketAnim=null;
   let crashMultiplier=1.0;
-  let crashMultInterval=null;
-  let crashTickAnimationTimeout=null;
-  let crashTickNextTimeout=null;
-  let crashRoundToken=0;
-
   let crashLastCountdownDigit=-1;
   let crashCountdownRoundId=0;
   let crashDigitAnimTimeout=null;
@@ -775,11 +770,6 @@
     currentLang=lang;pendingLang=lang;localStorage.setItem('miniapp_lang',lang);setLangIndicator(lang);updateLangStaticTexts();syncTopupModeUI();
   }
 
-  function clearCrashHistoryOverflow(){
-    while(crashHistory.children.length>MAX_CRASH_HISTORY+1){
-      crashHistory.removeChild(crashHistory.lastElementChild);
-    }
-  }
   function openGiftModal(){
     // Legacy crash gift popup is intentionally disabled. Crash results are handled
     // only by the round-result bottom sheet.
@@ -1544,15 +1534,6 @@
     }
   }
 
-  function crashRenderedGiftForCashout(){
-    const payout=Math.max(0,Math.floor(Number(crashBetAmount||0)*computeCrashMultiplier(crashRealtimeState)));
-    if(payout>0){
-      return withCrashGiftValue(getCrashPreviewGift(payout)||null,payout);
-    }
-    const fallbackAmount=crashRenderedWinAmount||crashSettledPayout||crashBetAmount||0;
-    return withCrashGiftValue(getCrashPreviewGift(fallbackAmount)||null,fallbackAmount);
-  }
-
   async function cashOut(){
     const roundId=Number(crashRealtimeState?.roundId||0);
     // Do not reject a tap locally from an out-of-date frame. The server is the
@@ -1581,9 +1562,6 @@
     const livePayout=renderedPayout>=Number(crashBetAmount||0)?renderedPayout:computedPayout;
     const renderedGift=(crashRenderedWinGift&&Math.abs(Number(crashRenderedWinAmount||0)-livePayout)<=Math.max(24,Math.floor(livePayout*0.08))) ? crashRenderedWinGift : null;
     const previewGift=withCrashGiftValue(getCrashPreviewGift(livePayout)||null,livePayout);
-    const visualGift=withCrashGiftValue(renderedGift||null,livePayout)||previewGift;
-    const optimisticGift=visualGift||null;
-
     crashCashoutBusy=true;
     crashBetActive=false;
     crashRoundLocked=true;
