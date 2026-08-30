@@ -23,10 +23,12 @@
     if(pages[tab]){
       void pages[tab].offsetWidth;
       pages[tab].classList.add('visible');
+      if(tab==='caseResult'&&pages.casePage)pages.casePage.classList.add('visible');
       currentTab=tab;
     }
     pvpBetDock?.classList.toggle('open',tab==='pvp');
     nav?.classList.toggle('case-result-active',tab==='caseResult');
+    document.querySelector('.top-bar')?.classList.toggle('result-route-visible',tab==='caseResult');
     syncTelegramBackButton();
     if(tab==='crash'){
       // Каждый вход получает собственную сессию; устаревшие ответы предыдущего входа игнорируются.
@@ -265,14 +267,12 @@
       caseStripEl.style.transform='translateX(0)';
       caseStripEl.innerHTML=filler.map((gift,index)=>caseGiftMarkup(gift,index,index===winnerIndex)).join('');
       void caseStripEl.offsetWidth;
-      const firstStop=offset*.68;
-      const secondStop=offset*.86;
+      const cruiseStop=offset*.78;
       caseStripEl.getAnimations?.().forEach(animation=>animation.cancel());
       const reelAnimation=caseStripEl.animate([
-        {transform:'translate3d(0,0,0)',offset:0,easing:'cubic-bezier(.2,.02,.72,.08)'},
-        {transform:`translate3d(-${firstStop}px,0,0)`,offset:.42,easing:'linear'},
-        {transform:`translate3d(-${secondStop}px,0,0)`,offset:.72,easing:'cubic-bezier(.18,.55,.22,.92)'},
-        {transform:`translate3d(-${offset}px,0,0)`,offset:1,easing:'cubic-bezier(.08,.72,.12,1)'}
+        {transform:'translate3d(0,0,0)',offset:0,easing:'cubic-bezier(.22,.8,.24,1)'},
+        {transform:`translate3d(-${cruiseStop}px,0,0)`,offset:.78,easing:'linear'},
+        {transform:`translate3d(-${offset}px,0,0)`,offset:1,easing:'cubic-bezier(.12,.72,.18,1)'}
       ],{duration:12000,fill:'forwards'});
       reelAnimation.finished.catch(()=>{});
     }
