@@ -1724,8 +1724,10 @@ async function getUserInventory(userId) {
 
 async function ensureExactGiftBacking(userId, gift) {
   if (!gift) throw new Error('Gift not found');
-  if (gift.tgIsUnique === false) throw new Error('Вывод доступен только для unique/NFT подарков');
-  if (gift.tgMsgId || gift.tgSlug) return gift;
+  // Gifts from the case catalog are initially stored with tg_is_unique=false,
+  // but they can still be withdrawn after an exact physical Telegram gift is
+  // reserved by the relayer. Only an already-backed gift bypasses reservation.
+  if (gift.tgMsgId || gift.tgSlug) return { ...gift, tgIsUnique: true };
 
   let response;
   try {
