@@ -207,7 +207,10 @@
     card.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();open();}});
   });
   caseBackBtn?.addEventListener('click',()=>activateTab('game',true));
-  function closeCaseResult(){activateTab('case',true);}
+  function closeCaseResult(){
+    caseResultPage?.classList.remove('visible');
+    activateTab('case',true);
+  }
   caseResultClose?.addEventListener('click',closeCaseResult);
   caseResultBtn?.addEventListener('click',()=>{closeCaseResult();refreshInventory(true).catch(()=>{});});
   caseResultSell?.addEventListener('click',async()=>{
@@ -287,7 +290,8 @@
       if(caseResultName)caseResultName.textContent=prize.name||'Подарок';
       if(caseResultValue)caseResultValue.innerHTML=`${formatStars(prize.price||0)} <img src="assets/star.png" alt="Stars">`;
       if(activeCaseConfig?.starsOnly&&transaction.dailyNextOpenAt)startDailyTimer(transaction.dailyNextOpenAt);
-      activateTab('caseResult',true);
+      activateTab('case',true);
+      caseResultPage?.classList.add('visible');
       if(!(activeCaseConfig?.starsOnly&&dailyNextOpenAt))caseOpenBtn.disabled=false;
       if(caseOpenLabel)caseOpenLabel.textContent='Открыть';
       caseIsOpening=false;
