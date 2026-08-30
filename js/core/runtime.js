@@ -357,6 +357,12 @@
     const n=Math.max(0,Math.floor(Number(v||0)));
     return String(n).replace(/\B(?=(\d{3})+(?!\d))/g,' ');
   }
+  function formatCompactStars(v){
+    const num=Math.max(0,Number(v||0));
+    if(num>=1000000) return (num/1000000).toFixed(num>=10000000?0:1).replace(/\.0$/,'')+'M';
+    if(num>=1000) return (num/1000).toFixed(num>=100000?0:1).replace(/\.0$/,'')+'K';
+    return formatStars(num);
+  }
   function formatInventoryTime(ms){
     const safe=Math.max(0,ms);
     const total=Math.ceil(safe/1000);
@@ -538,9 +544,11 @@
   let upgradeTargetGift=null;
   let upgradeSpinBusy=false;
   const upgradeBtnEl=document.getElementById('upgradeBtn');
+  const upgradeChanceEl=document.getElementById('upgradeChance');
   const slotSourceEl=document.getElementById('slotMyGifts');
   const slotTargetEl=document.getElementById('slotUpgradeGift');
   const upgradeWheelEl=document.getElementById('upgradeWheel');
+  const upgradeCircleOuterEl=document.getElementById('upgradeCircleOuter');
   const upgradeRingEl=document.getElementById('upgradeRing');
   const upgradeWheelDisc=document.getElementById('upgradeWheelDisc');
   const upgradeModalOverlay=document.getElementById('upgradeModalOverlay');
@@ -695,6 +703,18 @@
     sheetOverlay.classList.remove('open');sheet.classList.remove('open');
     sheetSelectedGiftId='';
     sheetAddBtn.classList.remove('visible');
+  }
+  function addGiftToInventory(gift){
+    if(!gift)return;
+    inventoryItems.unshift({
+      id:'temp_'+String(Date.now()),
+      name:gift.name,
+      price:gift.price,
+      image:resolveGiftImage(gift),
+      withdrawAt:INVENTORY_HOLD_MS>0?new Date(Date.now()+INVENTORY_HOLD_MS).toISOString():null
+    });
+    renderInventory();
+  renderUpgradeUI();
   }
 
   setInterval(()=>{
