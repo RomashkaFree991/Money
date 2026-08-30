@@ -1304,3 +1304,14 @@
 #caseResultPage.visible .case-result-screen .case-result-btn{margin:10px 0 0!important;height:42px!important}
 #caseResultPage.visible .case-result-screen .case-result-actions{margin:6px 0 0!important;gap:7px!important}
 #caseResultPage.visible .case-result-screen .case-result-secondary{height:38px!important;font-size:11px!important}
+
+/* LARGER RESULT CONTENT */
+#caseResultPage.visible .case-result-screen{height:46vh!important;min-height:340px!important;max-height:500px!important;padding:16px 18px calc(16px + env(safe-area-inset-bottom,0px))!important}
+#caseResultPage.visible .case-result-screen .case-result-image{width:145px!important;height:145px!important;margin:0 auto 8px!important}
+#caseResultPage.visible .case-result-screen .case-result-name{font-size:21px!important;font-weight:850!important;line-height:1.2!important}
+#caseResultPage.visible .case-result-screen .case-result-value{margin:6px 0 0!important;font-size:17px!important;font-weight:800!important;gap:6px!important}
+#caseResultPage.visible .case-result-screen .case-result-value img{width:21px!important;height:21px!important}
+#caseResultPage.visible .case-result-screen .case-result-btn{height:52px!important;margin-top:12px!important;font-size:17px!important;font-weight:850!important}
+#caseResultPage.visible .case-result-screen .case-result-actions{margin-top:9px!important;gap:9px!important}
+#caseResultPage.visible .case-result-screen .case-result-secondary{height:48px!important;font-size:13px!important;font-weight:850!important;padding:0 12px!important}
+#caseResultPage.visible .case-result-screen .case-result-secondary img{width:18px!important;height:18px!important}
