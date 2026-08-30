@@ -3149,13 +3149,17 @@ function serverDailyPrizes() {
     SERVER_STAR_REWARDS.find((gift) => gift.price === 5),
   ].filter(Boolean).sort((a, b) => Number(b.price || 0) - Number(a.price || 0));
 }
-function caseGiftWeight(price) {
-  if (price <= 500) return 32;
-  if (price <= 900) return 22;
-  if (price <= 1500) return 12;
-  if (price <= 3000) return 5;
-  if (price <= 7000) return 2;
-  return 0.8;
+function caseGiftWeight(casePrice, prizePrice) {
+  const paid = Math.max(0, Number(casePrice || 0));
+  const prize = Math.max(0, Number(prizePrice || 0));
+  if (paid === 0) return prize <= 100 ? 24 : 1;
+  // A prize far above the case price is possible, but deliberately very rare.
+  if (prize >= paid * 4) return 0.04;
+  if (prize >= paid * 2) return 0.12;
+  if (prize > paid * 1.25) return 0.8;
+  if (prize >= paid * 0.65) return 12;
+  if (prize >= paid * 0.25) return 26;
+  return 34;
 }
 function serverPaidStarRewards() {
   return SERVER_STAR_REWARDS.map((gift) => ({ ...gift, weight: gift.price <= 10 ? 0.35 : 0.15 }));
@@ -3164,7 +3168,7 @@ function serverCasePrizes(config) {
   const used = new Set();
   const gifts = config.starsOnly
     ? serverDailyPrizes()
-    : config.targets.map((price) => serverGiftForPrice(price, used, null, caseGiftWeight(price)));
+    : config.targets.map((price) => serverGiftForPrice(price, used, null, caseGiftWeight(config.price, price)));
   return [...gifts, ...(config.starsOnly ? [] : serverPaidStarRewards())].sort((a, b) => Number(b.price || 0) - Number(a.price || 0));
 }
 function weightedServerPrize(prizes) {
