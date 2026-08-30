@@ -265,14 +265,16 @@
       caseStripEl.style.transform='translateX(0)';
       caseStripEl.innerHTML=filler.map((gift,index)=>caseGiftMarkup(gift,index,index===winnerIndex)).join('');
       void caseStripEl.offsetWidth;
-      const firstStop=offset*.72;
-      caseStripEl.style.transition='transform 5s cubic-bezier(.55,.04,.9,.25)';
-      caseStripEl.style.transform=`translate3d(-${firstStop}px,0,0)`;
-      setTimeout(()=>{
-        if(!caseStripEl)return;
-        caseStripEl.style.transition='transform 7s cubic-bezier(.08,.72,.12,1)';
-        caseStripEl.style.transform=`translate3d(-${offset}px,0,0)`;
-      },5000);
+      const firstStop=offset*.68;
+      const secondStop=offset*.86;
+      caseStripEl.getAnimations?.().forEach(animation=>animation.cancel());
+      const reelAnimation=caseStripEl.animate([
+        {transform:'translate3d(0,0,0)',offset:0,easing:'cubic-bezier(.2,.02,.72,.08)'},
+        {transform:`translate3d(-${firstStop}px,0,0)`,offset:.42,easing:'linear'},
+        {transform:`translate3d(-${secondStop}px,0,0)`,offset:.72,easing:'cubic-bezier(.18,.55,.22,.92)'},
+        {transform:`translate3d(-${offset}px,0,0)`,offset:1,easing:'cubic-bezier(.08,.72,.12,1)'}
+      ],{duration:12000,fill:'forwards'});
+      reelAnimation.finished.catch(()=>{});
     }
     setTimeout(()=>{
       playAppSound('reward');
