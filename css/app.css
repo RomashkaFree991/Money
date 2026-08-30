@@ -1315,3 +1315,11 @@
 #caseResultPage.visible .case-result-screen .case-result-actions{margin-top:9px!important;gap:9px!important}
 #caseResultPage.visible .case-result-screen .case-result-secondary{height:48px!important;font-size:13px!important;font-weight:850!important;padding:0 12px!important}
 #caseResultPage.visible .case-result-screen .case-result-secondary img{width:18px!important;height:18px!important}
+
+/* Keep the active case context visible behind the result sheet. */
+.top-bar.result-route-visible{z-index:240!important}
+#caseResultPage.visible{background:rgba(0,0,0,.42)!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+#caseResultPage.visible~.bottom-nav{z-index:1!important}
+#caseResultPage.visible .case-result-screen{z-index:3!important}
+#casePage.visible .case-strip-wrap{width:100vw!important;margin-left:calc(-12px)!important;margin-right:0!important}
+#casePage.visible .case-strip{width:100vw!important;border-radius:0!important}
