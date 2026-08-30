@@ -1333,3 +1333,16 @@
 #caseResultPage.visible .case-result-context-track .case-strip-gift-name{max-width:100%!important;font-size:8px!important;line-height:1!important}
 #caseResultPage.visible .case-result-context-track .case-strip-gift-price{font-size:8px!important}
 @media (max-width:380px){#caseResultPage.visible .case-result-context-strip{top:132px!important;height:96px!important}#caseResultPage.visible .case-result-context-track .case-strip-cell img{width:40px!important;height:40px!important}}
+
+/* CASE RESULT AS A BOTTOM SHEET OVER THE CURRENT CASE PAGE */
+#caseResultPage.case-result-page{position:fixed!important;inset:0!important;z-index:230!important;display:none!important;visibility:visible!important;opacity:1!important;pointer-events:none!important;background:rgba(0,0,0,.42)!important;background-image:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+#caseResultPage.case-result-page.visible{display:block!important;pointer-events:auto!important}
+#caseResultPage.case-result-page .case-result-context-strip{display:none!important}
+#caseResultPage.case-result-page .case-result-screen{position:absolute!important;left:0!important;right:0!important;bottom:0!important;width:100%!important;height:50vh!important;min-height:320px!important;max-height:560px!important;box-sizing:border-box!important;display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:flex-end!important;padding:16px 18px calc(16px + env(safe-area-inset-bottom,0px))!important;border-radius:28px 28px 0 0!important;background:#000 url('../assets/background_pepe.png') center/cover no-repeat!important;transform:translateY(100%)!important;transition:transform .5s cubic-bezier(.22,.8,.24,1)!important;z-index:231!important;overflow:hidden!important}
+#caseResultPage.case-result-page.visible .case-result-screen{transform:translateY(0)!important}
+#caseResultPage.case-result-page .case-result-image{width:148px!important;height:148px!important;margin:0 auto 8px!important;object-fit:contain!important}
+#caseResultPage.case-result-page .case-result-name{font-size:21px!important;line-height:1.2!important;margin:0!important;text-align:center!important}
+#caseResultPage.case-result-page .case-result-value{font-size:17px!important;margin:6px 0 0!important;text-align:center!important}
+#caseResultPage.case-result-page .case-result-btn{width:100%!important;height:52px!important;margin:12px 0 0!important;flex:none!important}
+#caseResultPage.case-result-page .case-result-actions{width:100%!important;margin:8px 0 0!important;display:flex!important;gap:9px!important;flex:none!important}
+#caseResultPage.case-result-page .case-result-secondary{flex:1!important;height:48px!important}
