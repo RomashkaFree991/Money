@@ -95,6 +95,7 @@
   const caseOpenLabel=caseOpenBtn?.querySelector('span:first-child');
   const caseOpenPriceEl=document.getElementById('caseOpenPrice');
   const caseResultPage=document.getElementById('caseResultPage');
+  const caseResultContextStrip=document.getElementById('caseResultContextStrip');
   const caseResultImage=document.getElementById('caseResultImage');
   const caseResultName=document.getElementById('caseResultName');
   const caseResultValue=document.getElementById('caseResultValue');
@@ -266,6 +267,10 @@
       caseStripEl.style.transition='none';
       caseStripEl.style.transform='translateX(0)';
       caseStripEl.innerHTML=filler.map((gift,index)=>caseGiftMarkup(gift,index,index===winnerIndex)).join('');
+      if(caseResultContextStrip){
+        const contextGifts=activeCaseGifts.slice(0,8);
+        caseResultContextStrip.innerHTML=`<div class="case-result-context-track">${contextGifts.map((gift,index)=>caseGiftMarkup(gift,index,index===0)).join('')}</div>`;
+      }
       void caseStripEl.offsetWidth;
       const cruiseStop=offset*.78;
       caseStripEl.getAnimations?.().forEach(animation=>animation.cancel());
