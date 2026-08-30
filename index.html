@@ -216,7 +216,7 @@
       <button class="game-banner" type="button" data-game-target="upgrade" aria-label="Open Upgrade game">
         <img src="assets/Upgrade_banner.png" alt="Upgrade" decoding="async" fetchpriority="high">
       </button>
-      <section class="admin-cases-section" id="adminCasesSection" aria-label="Бесплатные кейсы">
+      <section class="admin-cases-section" id="adminCasesSection" aria-label="Кейсы">
         <div class="admin-cases-group">
           <h2 class="admin-cases-title">Бесплатные кейсы</h2>
           <div class="admin-cases-grid">
@@ -255,7 +255,16 @@
         <div class="case-strip"><div class="case-strip-track" id="caseStrip"></div></div>
         <img class="case-strip-arrow case-strip-arrow--bottom" src="svg/up.svg" alt="">
       </div>
-      <button type="button" class="case-open-btn" id="caseOpenBtn"><span>Открыть</span><span class="case-open-price" id="caseOpenPrice">0 <img src="assets/star.png" alt="Stars"></span></button>
+      <div class="case-open-stack">
+        <div class="case-mult-pill" id="caseMultPill">
+          <button type="button" class="case-mult-btn active" data-mult="1">1X</button>
+          <button type="button" class="case-mult-btn" data-mult="2">2X</button>
+          <button type="button" class="case-mult-btn" data-mult="3">3X</button>
+          <button type="button" class="case-mult-btn" data-mult="4">4X</button>
+          <button type="button" class="case-mult-btn" data-mult="5">5X</button>
+        </div>
+        <button type="button" class="case-open-btn" id="caseOpenBtn"><span>Открыть</span><span class="case-open-price" id="caseOpenPrice">0 <img src="assets/star.png" alt="Stars"></span></button>
+      </div>
       <div class="case-daily-timer" id="caseDailyTimer" hidden>Следующее открытие через <strong>24:00:00</strong></div>
       <div class="case-gifts-heading">Подарки в кейсе</div>
       <div class="case-gifts-grid" id="caseGiftsGrid"></div>

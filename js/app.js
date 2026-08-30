@@ -112,6 +112,7 @@
   let activeCaseGifts=[];
   let activeCaseCard=null;
   let caseIsOpening=false;
+  let caseOpenMult=1;
   const STAR_REWARDS=[
     {name:'5 звёзд',price:5,stars:5,image:'assets/star.png',weight:2,type:'stars'},
     {name:'10 звёзд',price:10,stars:10,image:'assets/star.png',weight:2,type:'stars'},
@@ -170,12 +171,6 @@
       if(response.ok)startDailyTimer(data.nextOpenAt||null);
     }catch(_){ }
   }
-  function weightedCasePrize(gifts){
-    const pool=[...gifts,...(activeCaseConfig?.starsOnly?[]:STAR_REWARDS.slice(2))];
-    const total=pool.reduce((sum,g)=>sum+Number(g.weight||1),0);
-    let roll=Math.random()*total;
-    return pool.find(g=>{roll-=Number(g.weight||1);return roll<=0;})||pool[pool.length-1];
-  }
   function applyCasePrices(){
     document.querySelectorAll('[data-case-open="true"]').forEach(card=>{
       const name=card.querySelector('.admin-case-name')?.textContent?.trim();
@@ -185,20 +180,48 @@
     });
   }
   applyCasePrices();
+  function updateCaseOpenPrice(){
+    if(!activeCaseConfig) return;
+    const totalPrice=activeCaseConfig.price*caseOpenMult;
+    if(caseOpenPriceEl)caseOpenPriceEl.innerHTML=`${formatStars(totalPrice)} <img src="assets/star.png" alt="Stars">`;
+  }
+  function setCaseOpenMult(mult){
+    if(activeCaseConfig?.starsOnly) mult=1;
+    caseOpenMult=mult;
+    document.querySelectorAll('.case-mult-btn').forEach(btn=>{
+      btn.classList.toggle('active', Number(btn.dataset.mult)===caseOpenMult);
+    });
+    updateCaseOpenPrice();
+    if(activeCaseCard) renderCaseStripTrack();
+  }
+  document.querySelectorAll('.case-mult-btn').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      setCaseOpenMult(Number(btn.dataset.mult||1));
+    });
+  });
+
+  function renderCaseStripTrack(){
+    if(!caseStripEl) return;
+    const count = activeCaseConfig?.starsOnly ? 1 : caseOpenMult;
+    let html = '';
+    for(let i=0; i<count; i++){
+      const reel=Array.from({length:24},(_,index)=>activeCaseGifts[index%activeCaseGifts.length]);
+      html += `<div class="case-strip-track" data-track-index="${i}">${reel.map((gift,index)=>caseGiftMarkup(gift,index,index===12)).join('')}</div>`;
+    }
+    caseStripEl.innerHTML = html;
+  }
+
   function renderCaseOpening(card){
     activeCaseCard=card||activeCaseCard;
     const name=activeCaseCard?.querySelector('.admin-case-name')?.textContent?.trim()||'Ежедневный';
     activeCaseConfig=CASE_CONFIGS[name]||CASE_CONFIGS['Ежедневный'];
     activeCaseGifts=getCaseGifts(activeCaseConfig);
     if(caseTitleEl)caseTitleEl.textContent=name;
-    if(caseOpenPriceEl)caseOpenPriceEl.innerHTML=`${formatStars(activeCaseConfig.price)} <img src="assets/star.png" alt="Stars">`;
+    const multPill=document.getElementById('caseMultPill');
+    if(multPill) multPill.style.display=activeCaseConfig.starsOnly?'none':'flex';
+    setCaseOpenMult(activeCaseConfig.starsOnly?1:caseOpenMult);
     if(activeCaseConfig.starsOnly)loadDailyStatus(); else {dailyNextOpenAt=null;renderDailyTimer();}
-    if(caseStripEl){
-      const reel=Array.from({length:24},(_,index)=>activeCaseGifts[index%activeCaseGifts.length]);
-      caseStripEl.style.transition='none';
-      caseStripEl.style.transform='translateX(0)';
-      caseStripEl.innerHTML=reel.map((gift,index)=>caseGiftMarkup(gift,index,index===12)).join('');
-    }
+    renderCaseStripTrack();
     if(caseGiftsGridEl)caseGiftsGridEl.innerHTML=activeCaseGifts.map(gift=>`<article class="case-gift-card"><img class="case-gift-image" src="${gift.image||'assets/star.png'}" alt="${gift.name||'Подарок'}" loading="lazy"><div class="case-gift-name">${gift.name||'Подарок'}</div><div class="case-gift-price"><span>${formatStars(gift.price||0)}</span><img src="assets/star.png" alt="Stars"></div></article>`).join('');
   }
   document.querySelectorAll('[data-case-open="true"]').forEach(card=>{
@@ -208,8 +231,12 @@
   });
   caseBackBtn?.addEventListener('click',()=>activateTab('game',true));
   function closeCaseResult(){
-    caseResultPage?.classList.remove('visible');
-    activateTab('case',true);
+    if(!caseResultPage) return;
+    caseResultPage.classList.add('closing');
+    setTimeout(()=>{
+      caseResultPage.classList.remove('visible','closing');
+      activateTab('case',true);
+    },320);
   }
   caseResultClose?.addEventListener('click',closeCaseResult);
   caseResultBtn?.addEventListener('click',()=>{closeCaseResult();refreshInventory(true).catch(()=>{});});
@@ -235,12 +262,13 @@
   });
   caseOpenBtn?.addEventListener('click',async()=>{
     if(caseIsOpening||!activeCaseConfig||!activeCaseCard)return;
+    const count = activeCaseConfig.starsOnly ? 1 : caseOpenMult;
     caseIsOpening=true;
     caseOpenBtn.disabled=true;
     if(caseOpenLabel)caseOpenLabel.textContent='Проверяем…';
     let transaction;
     try{
-      const response=await fetch(API_BASE+'/api/cases/open',{method:'POST',headers:{'Content-Type':'application/json','x-init-data':tg?.initData||''},body:JSON.stringify({caseName:activeCaseCard.querySelector('.admin-case-name')?.textContent?.trim()||'Ежедневный'})});
+      const response=await fetch(API_BASE+'/api/cases/open',{method:'POST',headers:{'Content-Type':'application/json','x-init-data':tg?.initData||''},body:JSON.stringify({caseName:activeCaseCard.querySelector('.admin-case-name')?.textContent?.trim()||'Ежедневный',count})});
       transaction=await response.json().catch(()=>({}));
       if(!response.ok||!transaction.ok){
         if(transaction.code==='DAILY_CASE_COOLDOWN'&&transaction.nextOpenAt)startDailyTimer(transaction.nextOpenAt);
@@ -253,42 +281,55 @@
       tg?.showAlert?tg.showAlert(error.message):alert(error.message);
       return;
     }
-    const prize=transaction.gift||{};
-      activeCaseResult={...prize,inventoryId:Number(transaction.inventoryId||0)};
-      if(caseResultSell)caseResultSell.hidden=!activeCaseResult.inventoryId;
-      if(caseResultUpgrade)caseResultUpgrade.hidden=!activeCaseResult.inventoryId;
-      if(Number.isFinite(Number(transaction.newBalance)))updateBalance(Number(transaction.newBalance));
-    if(caseResultSellValue)caseResultSellValue.textContent=formatStars(prize.price||0);
+    const wonGifts = Array.isArray(transaction.gifts) && transaction.gifts.length ? transaction.gifts : [transaction.gift||{}];
+    const prize = wonGifts[0];
+    const totalPrice = wonGifts.reduce((sum,g)=>sum+Number(g.price||0),0);
+    activeCaseResult={...prize,inventoryId:Number(transaction.inventoryId||0)};
+    if(caseResultSell)caseResultSell.hidden=!activeCaseResult.inventoryId;
+    if(caseResultUpgrade)caseResultUpgrade.hidden=!activeCaseResult.inventoryId;
+    if(Number.isFinite(Number(transaction.newBalance)))updateBalance(Number(transaction.newBalance));
+    if(caseResultSellValue)caseResultSellValue.textContent=formatStars(totalPrice);
     playAppSound('spin');
     if(caseOpenLabel)caseOpenLabel.textContent='Крутится…';
     const winnerIndex=18;
     const cellWidth=(caseStripEl?.parentElement?.clientWidth||300)/6;
     const offset=(winnerIndex-2.5)*cellWidth;
     if(caseStripEl){
-      const filler=Array.from({length:30},(_,index)=>activeCaseGifts[index%Math.max(1,activeCaseGifts.length)]);
-      filler[winnerIndex]=prize;
-      caseStripEl.style.transition='none';
-      caseStripEl.style.transform='translateX(0)';
-      caseStripEl.innerHTML=filler.map((gift,index)=>caseGiftMarkup(gift,index,index===winnerIndex)).join('');
+      const tracks = [];
+      for(let i=0; i<wonGifts.length; i++){
+        const g = wonGifts[i];
+        const filler=Array.from({length:30},(_,index)=>activeCaseGifts[index%Math.max(1,activeCaseGifts.length)]);
+        filler[winnerIndex]=g;
+        tracks.push(`<div class="case-strip-track" data-track-index="${i}">${filler.map((gift,index)=>caseGiftMarkup(gift,index,index===winnerIndex)).join('')}</div>`);
+      }
+      caseStripEl.innerHTML=tracks.join('');
       if(caseResultContextStrip){
         const contextGifts=activeCaseGifts.slice(0,8);
         caseResultContextStrip.innerHTML=`<div class="case-result-context-track">${contextGifts.map((gift,index)=>caseGiftMarkup(gift,index,index===0)).join('')}</div>`;
       }
       void caseStripEl.offsetWidth;
       const cruiseStop=offset*.78;
-      caseStripEl.getAnimations?.().forEach(animation=>animation.cancel());
-      const reelAnimation=caseStripEl.animate([
-        {transform:'translate3d(0,0,0)',offset:0,easing:'cubic-bezier(.22,.8,.24,1)'},
-        {transform:`translate3d(-${cruiseStop}px,0,0)`,offset:.78,easing:'linear'},
-        {transform:`translate3d(-${offset}px,0,0)`,offset:1,easing:'cubic-bezier(.12,.72,.18,1)'}
-      ],{duration:12000,fill:'forwards'});
-      reelAnimation.finished.catch(()=>{});
+      const trackEls = caseStripEl.querySelectorAll('.case-strip-track');
+      trackEls.forEach(trackEl=>{
+        trackEl.getAnimations?.().forEach(animation=>animation.cancel());
+        trackEl.animate([
+          {transform:'translate3d(0,0,0)',offset:0,easing:'cubic-bezier(.22,.8,.24,1)'},
+          {transform:`translate3d(-${cruiseStop}px,0,0)`,offset:.78,easing:'linear'},
+          {transform:`translate3d(-${offset}px,0,0)`,offset:1,easing:'cubic-bezier(.12,.72,.18,1)'}
+        ],{duration:12000,fill:'forwards'});
+      });
     }
     setTimeout(()=>{
       playAppSound('reward');
-      if(caseResultImage)caseResultImage.src=prize.image||'assets/star.png';
-      if(caseResultName)caseResultName.textContent=prize.name||'Подарок';
-      if(caseResultValue)caseResultValue.innerHTML=`${formatStars(prize.price||0)} <img src="assets/star.png" alt="Stars">`;
+      if(wonGifts.length > 1){
+        if(caseResultImage)caseResultImage.src=wonGifts[0].image||'assets/star.png';
+        if(caseResultName)caseResultName.textContent=`Выигрыш (${wonGifts.length} кейсов): ${wonGifts.map(g=>g.name).join(', ')}`;
+        if(caseResultValue)caseResultValue.innerHTML=`${formatStars(totalPrice)} <img src="assets/star.png" alt="Stars">`;
+      } else {
+        if(caseResultImage)caseResultImage.src=prize.image||'assets/star.png';
+        if(caseResultName)caseResultName.textContent=prize.name||'Подарок';
+        if(caseResultValue)caseResultValue.innerHTML=`${formatStars(prize.price||0)} <img src="assets/star.png" alt="Stars">`;
+      }
       if(activeCaseConfig?.starsOnly&&transaction.dailyNextOpenAt)startDailyTimer(transaction.dailyNextOpenAt);
       activateTab('case',true);
       caseResultPage?.classList.add('visible');

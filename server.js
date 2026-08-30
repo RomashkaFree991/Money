@@ -147,29 +147,6 @@ function invalidateBanCache(userId) {
   banCache.delete(Number(userId));
 }
 
-async function setUserBan(userId, reason) {
-  const id = Number(userId);
-  if (!Number.isFinite(id)) throw new Error('bad userId');
-  const { error } = await sb.from('users').update({
-    banned_at: new Date().toISOString(),
-    ban_reason: String(reason || '').slice(0, 500) || 'Нарушение правил',
-    updated_at: new Date().toISOString(),
-  }).eq('id', id);
-  if (error) throw new Error(error.message);
-  invalidateBanCache(id);
-}
-
-async function clearUserBan(userId) {
-  const id = Number(userId);
-  if (!Number.isFinite(id)) throw new Error('bad userId');
-  const { error } = await sb.from('users').update({
-    banned_at: null,
-    ban_reason: null,
-    updated_at: new Date().toISOString(),
-  }).eq('id', id);
-  if (error) throw new Error(error.message);
-  invalidateBanCache(id);
-}
 
 // Withdraw flow: фронт сначала платит 25⭐ комиссию, только потом мы делаем перевод.
 // Withdrawal intents/receipts и transfer-снимки хранятся в PostgreSQL.
@@ -595,41 +572,6 @@ async function getReferralSummary(userId) {
 }
 
 
-async function applyDepositCredit(userId, amount) {
-  const numericAmount = Math.max(0, Math.floor(Number(amount || 0)));
-  if (!userId || numericAmount <= 0) {
-    return { amount: 0, balance: await getUserBalance(userId), referral: null };
-  }
-
-  const { error } = await sb.rpc('balance_add', { p_user_id: userId, p_amount: numericAmount });
-  if (error) {
-    throw new Error(error.message || 'balance_add failed');
-  }
-
-  let referral = null;
-  try {
-    const rewardResult = await sb.rpc('giftpep_credit_referral_for_deposit_v2', {
-      p_user_id: userId,
-      p_deposit_amount: numericAmount,
-    });
-    if (rewardResult.error) {
-      console.error('credit_referral_for_deposit error:', rewardResult.error);
-    } else {
-      const rewardRow = Array.isArray(rewardResult.data) ? rewardResult.data[0] : rewardResult.data;
-      const rewardNum = Number(rewardRow?.reward || 0);
-      const refId = Number(rewardRow?.referrer_id || 0);
-      if (rewardNum > 0) {
-        logReferralDeposit(refId, userId, numericAmount, rewardNum, 'direct').catch(() => null);
-      }
-    }
-    referral = await getReferralSummary(userId).catch(() => null);
-  } catch (error) {
-    console.error('Referral credit failed:', error);
-  }
-
-  const balance = await getUserBalance(userId);
-  return { amount: numericAmount, balance, referral };
-}
 
 async function tgApi(method, data = {}, timeoutMs = 8000) {
   const controller = new AbortController();
@@ -770,9 +712,6 @@ async function handleBotMessage(message) {
   const text = String(message?.text || '').trim();
   const chatId = Number(message?.chat?.id);
   const senderId = Number(message?.from?.id);
-
-  const isAdmin = CONFIG.ADMIN_IDS.includes(senderId);
-  const replyTo = message?.reply_to_message?.text || '';
 
   // Telegram-бот больше не содержит админ-панели. Администрирование выполняется
   // только внутри Mini App через signed initData и requireAdmin.
@@ -1447,17 +1386,6 @@ async function getUserBalance(userId) {
   return Number(created.data?.balance || 0);
 }
 
-async function spendBalance(userId, amount) {
-  const rpc = await sb.rpc('spend_balance', { p_user_id: Number(userId), p_amount: Number(amount) });
-  if (rpc.error) throw new Error(rpc.error.message || 'Balance spend failed');
-  return Number(rpc.data || 0);
-}
-
-async function addWinBalance(userId, amount) {
-  const rpc = await sb.rpc('add_win_balance', { p_user_id: Number(userId), p_amount: Number(amount) });
-  if (rpc.error) throw new Error(rpc.error.message || 'Balance add failed');
-  return Number(rpc.data || 0);
-}
 
 function secureRandomUnit() {
   // crypto.randomInt() requires (max - min) <= 2^48 - 1.
@@ -3220,20 +3148,42 @@ app.post('/api/cases/open', async (req, res) => {
   const user = requireUser(req, res);
   if (!user) return;
   const caseName = String(req.body?.caseName || '').trim();
+  const count = Math.max(1, Math.min(5, Math.floor(Number(req.body?.count || 1))));
   const config = SERVER_CASE_CONFIGS[caseName];
   if (!config) return res.status(400).json({ error: 'Unknown case' });
+  if (config.starsOnly && count > 1) {
+    return res.status(400).json({ error: 'Бесплатный кейс можно открыть только 1 раз' });
+  }
   try {
-    const prize = weightedServerPrize(serverCasePrizes(config));
-    const { data, error } = await sb.rpc('open_case_atomic', {
-      p_user_id: Number(user.id), p_case_name: caseName, p_price: Number(config.price),
-      p_gift_id: String(prize.id), p_gift_name: String(prize.name),
-      p_gift_price: Number(prize.price || 0), p_gift_image: String(prize.image || ''),
+    const gifts = [];
+    let lastBalance = 0;
+    let lastDailyNextOpenAt = null;
+    let lastInventoryId = 0;
+
+    for (let i = 0; i < count; i++) {
+      const prize = weightedServerPrize(serverCasePrizes(config));
+      const { data, error } = await sb.rpc('open_case_atomic', {
+        p_user_id: Number(user.id), p_case_name: caseName, p_price: Number(config.price),
+        p_gift_id: String(prize.id), p_gift_name: String(prize.name),
+        p_gift_price: Number(prize.price || 0), p_gift_image: String(prize.image || ''),
+      });
+      if (error) throw new Error(error.message || 'Case transaction failed');
+      const row = data?.gift || data?.wonGift || data;
+      lastBalance = Number(data?.newBalance || 0);
+      lastDailyNextOpenAt = data?.dailyNextOpenAt || null;
+      lastInventoryId = Number(row?.id || 0);
+      gifts.push({ ...prize, inventoryId: lastInventoryId });
+    }
+
+    return res.json({
+      ok: true, caseName, count, casePrice: config.price * count,
+      newBalance: lastBalance,
+      dailyNextOpenAt: lastDailyNextOpenAt || (caseName === 'Ежедневный' ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() : null),
+      inventoryId: lastInventoryId,
+      gift: gifts[0],
+      gifts,
+      serverNow: Date.now()
     });
-    if (error) throw new Error(error.message || 'Case transaction failed');
-    const row = data?.gift || data?.wonGift || data;
-    return res.json({ ok: true, caseName, casePrice: config.price, newBalance: Number(data?.newBalance || 0),
-      dailyNextOpenAt: data?.dailyNextOpenAt || (caseName === 'Ежедневный' ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() : null),
-      inventoryId: Number(row?.id || 0), gift: prize, serverNow: Date.now() });
   } catch (error) {
     const message = String(error?.message || 'Case opening failed');
     const cooldownMatch = message.match(/DAILY_CASE_COOLDOWN:([^]+)$/i);
@@ -3817,8 +3767,6 @@ app.post('/api/relayer/credit-gift', async (req, res) => {
     slug,
     isUnique,
     fallbackName,
-    fallbackImage,
-    fallbackPrice,
   } = req.body || {};
 
   if (!giftId) {

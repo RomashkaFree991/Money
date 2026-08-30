@@ -21,7 +21,7 @@ function ask(question, { hidden = false } = {}) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   return new Promise((resolve) => {
     if (hidden) {
-      const stdin = process.openStdin();
+      process.openStdin();
       process.stdin.on('data', () => {});
       rl.question(question, (answer) => {
         rl.close();

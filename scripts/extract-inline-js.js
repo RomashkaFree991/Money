@@ -19,10 +19,11 @@ if (!localModuleSources.length && !inlineScripts.length) {
 }
 
 const moduleCode = localModuleSources.map((src) => {
-  const filePath = path.resolve(root, src);
+  const cleanSrc = src.split('?')[0];
+  const filePath = path.resolve(root, cleanSrc);
   if (!filePath.startsWith(`${root}${path.sep}`)) throw new Error(`Invalid module source: ${src}`);
   if (!fs.existsSync(filePath)) throw new Error(`Missing client module: ${src}`);
-  return `// --- ${src} ---\n${fs.readFileSync(filePath, 'utf8').trim()}`;
+  return `// --- ${cleanSrc} ---\n${fs.readFileSync(filePath, 'utf8').trim()}`;
 });
 
 fs.mkdirSync(targetDir, { recursive: true });

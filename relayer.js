@@ -570,7 +570,6 @@ async function main() {
       if (cls.includes('NewMessage') || cls.includes('NewChannelMessage')) {
         const m = update.message;
         const mCls = m?.className || '';
-        const aCls = m?.action?.className || '';
         // Обычные посты каналов не логируем: relayer получает их постоянно.
         // Обрабатываем только сервисные сообщения, где может находиться подарок.
         if (mCls === 'MessageService' && m?.action) {
