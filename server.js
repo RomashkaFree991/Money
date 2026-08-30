@@ -1877,6 +1877,21 @@ async function relayerExactGiftExists(row) {
   return data.exists;
 }
 
+async function sendRegularGiftViaBot(row, targetUserId) {
+  const gift = normalizeWithdrawSnapshot(row);
+  if (!gift?.gift_id) throw new Error('Gift ID is missing');
+  const result = await tgApi('sendGift', {
+    user_id: Number(targetUserId),
+    gift_id: String(gift.gift_id),
+  }, 15_000);
+  if (!result?.ok) {
+    const error = new Error(result?.description || 'Telegram не принял обычный подарок');
+    error.transferDefinitiveFailure = true;
+    throw error;
+  }
+  return result;
+}
+
 async function sendExactGiftViaRelayer(row, targetUserId, targetUsername) {
   const gift = normalizeWithdrawSnapshot(row);
   if (!gift?.tg_msg_id && !gift?.tg_slug) throw new Error('Exact Telegram gift reference is missing');
@@ -1968,7 +1983,12 @@ async function withdrawInventoryGift(intent, targetUserId, targetUsername = null
   if (!claimedRow) throw new Error('Gift transfer snapshot missing');
 
   try {
-    await sendExactGiftViaRelayer(claimedRow, targetUserId, targetUsername);
+    const isCollectible = claimedRow.tg_is_unique === true || claimedRow.tg_msg_id || claimedRow.tg_slug;
+    if (isCollectible) {
+      await sendExactGiftViaRelayer(claimedRow, targetUserId, targetUsername);
+    } else {
+      await sendRegularGiftViaBot(claimedRow, targetUserId);
+    }
     await markWithdrawCompleted(intentId, userId);
     return {
       sentGift: normalizeGift({ id: claimedRow.gift_id, name: claimedRow.gift_name, price: claimedRow.gift_price, image: claimedRow.gift_image }),
@@ -2411,7 +2431,8 @@ app.post('/api/inventory/withdraw-invoice', async (req, res) => {
       });
     }
   }
-  try {
+  const requiresCollectibleRelayer = owned.tgIsUnique === true || owned.tgMsgId || owned.tgSlug;
+  if (requiresCollectibleRelayer) try {
     owned = await ensureExactGiftBacking(user.id, owned);
   } catch (error) {
     if (error?.code === 'RELAYER_UNAVAILABLE') {
