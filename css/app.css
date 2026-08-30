@@ -1283,3 +1283,9 @@
 #caseResultPage.visible .case-result-screen .case-result-btn{display:flex!important;width:100%!important;max-width:420px!important;align-items:center!important;justify-content:center!important;box-sizing:border-box!important}
 #caseResultPage.visible .case-result-screen .case-result-actions{display:grid!important;grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;width:100%!important;max-width:420px!important;align-items:stretch!important}
 #caseResultPage.visible .case-result-screen .case-result-secondary{display:flex!important;width:100%!important;min-width:0!important;box-sizing:border-box!important;align-items:center!important;justify-content:center!important;text-align:center!important;white-space:normal!important;line-height:1.15!important}
+
+/* COMPACT RESULT SHEET: actions stay at the bottom */
+#caseResultPage.visible .case-result-screen{justify-content:flex-start!important;padding-top:12px!important;padding-bottom:14px!important}
+#caseResultPage.visible .case-result-screen .case-result-image{margin-top:0!important}
+#caseResultPage.visible .case-result-screen .case-result-btn{margin-top:auto!important}
+#caseResultPage.visible .case-result-screen .case-result-actions{margin-top:8px!important}
