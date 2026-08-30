@@ -1273,3 +1273,13 @@
 #caseResultPage.visible .case-result-screen .case-result-value{flex:0 0 auto!important;margin-top:5px!important}
 #caseResultPage.visible .case-result-screen .case-result-btn{height:44px!important;margin-top:12px!important;flex:0 0 auto!important}
 #caseResultPage.visible .case-result-screen .case-result-actions{margin-top:7px!important;flex:0 0 auto!important}
+
+/* RESULT SHEET VISUAL FIX */
+#caseResultPage.visible{background:rgba(0,0,0,.62)!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+#caseResultPage.visible .case-result-screen{display:flex!important;align-items:center!important;justify-content:flex-start!important;text-align:center!important;padding-left:18px!important;padding-right:18px!important}
+#caseResultPage.visible .case-result-screen .case-result-image{display:block!important;width:118px!important;height:118px!important;object-fit:contain!important;margin:0 auto 10px!important}
+#caseResultPage.visible .case-result-screen .case-result-name{display:block!important;width:100%!important;text-align:center!important;white-space:normal!important;line-height:1.25!important}
+#caseResultPage.visible .case-result-screen .case-result-value{display:flex!important;width:100%!important;justify-content:center!important;align-items:center!important;text-align:center!important}
+#caseResultPage.visible .case-result-screen .case-result-btn{display:flex!important;width:100%!important;max-width:420px!important;align-items:center!important;justify-content:center!important;box-sizing:border-box!important}
+#caseResultPage.visible .case-result-screen .case-result-actions{display:grid!important;grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;width:100%!important;max-width:420px!important;align-items:stretch!important}
+#caseResultPage.visible .case-result-screen .case-result-secondary{display:flex!important;width:100%!important;min-width:0!important;box-sizing:border-box!important;align-items:center!important;justify-content:center!important;text-align:center!important;white-space:normal!important;line-height:1.15!important}
