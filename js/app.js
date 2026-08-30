@@ -26,6 +26,7 @@
       currentTab=tab;
     }
     pvpBetDock?.classList.toggle('open',tab==='pvp');
+    nav?.classList.toggle('case-result-active',tab==='caseResult');
     syncTelegramBackButton();
     if(tab==='crash'){
       // Каждый вход получает собственную сессию; устаревшие ответы предыдущего входа игнорируются.
@@ -244,8 +245,10 @@
       return;
     }
     const prize=transaction.gift||{};
-    activeCaseResult={...prize,inventoryId:Number(transaction.inventoryId||0)};
-    if(Number.isFinite(Number(transaction.newBalance)))updateBalance(Number(transaction.newBalance));
+      activeCaseResult={...prize,inventoryId:Number(transaction.inventoryId||0)};
+      if(caseResultSell)caseResultSell.hidden=!activeCaseResult.inventoryId;
+      if(caseResultUpgrade)caseResultUpgrade.hidden=!activeCaseResult.inventoryId;
+      if(Number.isFinite(Number(transaction.newBalance)))updateBalance(Number(transaction.newBalance));
     if(caseResultSellValue)caseResultSellValue.textContent=formatStars(prize.price||0);
     playAppSound('spin');
     if(caseOpenLabel)caseOpenLabel.textContent='Крутится…';
@@ -259,14 +262,14 @@
       caseStripEl.style.transform='translateX(0)';
       caseStripEl.innerHTML=filler.map((gift,index)=>caseGiftMarkup(gift,index,index===winnerIndex)).join('');
       void caseStripEl.offsetWidth;
-      const firstStop=offset*.78;
-      caseStripEl.style.transition='transform 3s cubic-bezier(.55,.04,.9,.25)';
+      const firstStop=offset*.72;
+      caseStripEl.style.transition='transform 5s cubic-bezier(.55,.04,.9,.25)';
       caseStripEl.style.transform=`translate3d(-${firstStop}px,0,0)`;
       setTimeout(()=>{
         if(!caseStripEl)return;
-        caseStripEl.style.transition='transform 3s cubic-bezier(.08,.72,.12,1)';
+        caseStripEl.style.transition='transform 7s cubic-bezier(.08,.72,.12,1)';
         caseStripEl.style.transform=`translate3d(-${offset}px,0,0)`;
-      },3000);
+      },5000);
     }
     setTimeout(()=>{
       playAppSound('reward');
@@ -279,7 +282,7 @@
       if(caseOpenLabel)caseOpenLabel.textContent='Открыть';
       caseIsOpening=false;
       refreshInventory(true).catch(()=>{});
-    },6100);
+    },12100);
   });
   pvpBetBtn?.addEventListener('click',()=>{
     if(!pvpCanAcceptBets()){showBetError('Ставки закрыты: таймер уже закончился');return;}
