@@ -129,7 +129,8 @@
         userHandle=data.username?'@'+data.username:userHandle;
         photoUrl=data.photo_url||photoUrl;
         tgUserId=data.id;
-        if(data.balance!==undefined&&data.balance!==null&&Number.isFinite(Number(data.balance)))updateBalance(Number(data.balance));
+        if(data.balance===undefined||data.balance===null||!Number.isFinite(Number(data.balance)))throw new Error('Backend did not return a valid balance');
+        updateBalance(Number(data.balance));
         applyUserToUI();
         // init уже прошёл проверку подписи Telegram и сервер определил роль.
         // Это влияет только на видимость кнопки; все admin API всё равно защищены.
@@ -139,10 +140,9 @@
         if(adminCases&&data.isAdmin===true)adminCases.style.display='block';
         saveProfileWarmState();
       }
-      // Кэш может быть устаревшим. Открываем приложение только после
-      // успешного получения актуального баланса для текущей Telegram-сессии.
-      const liveBalance=tg.initData?await refreshBalance():{balance};
-      if(!liveBalance||!Number.isFinite(Number(liveBalance.balance)))throw new Error('Live balance is not available yet');
+      // /api/init уже возвращает баланс из текущей серверной сессии. Не делаем
+      // второй обязательный запрос /api/balance: при временном сбое этого
+      // необязательного обновления пользователь не должен застревать на boot.
       // Отдельная проверка нужна для старого production `/api/init`, где isAdmin мог отсутствовать.
       revealAdminCasesFromServer();
       return true;
