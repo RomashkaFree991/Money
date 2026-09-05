@@ -1102,6 +1102,9 @@
   }
   .admin-section input:focus,.admin-section select:focus{border-color:#007AFF}
   .admin-row.choice{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+  .admin-row:not(.choice){display:flex;gap:8px;align-items:center;margin:8px 0}
+  .admin-row:not(.choice) input{flex:1;min-width:0}
+  .admin-row:not(.choice) .admin-submit{width:auto;min-width:120px;margin-top:0}
   .admin-choice{
     flex:1;min-width:90px;padding:10px 8px;border-radius:10px;cursor:pointer;text-align:center;
     background:#1C1C1E;border:1.5px solid rgba(255,255,255,.08);
