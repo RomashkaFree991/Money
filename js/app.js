@@ -1180,6 +1180,7 @@
       loadPolicy();
       buildGiftSelect();
       loadAdminPromos();
+      loadAdminPartners();
       loadAdminStats();
     });
     overlay?.querySelector('.admin-close')?.addEventListener('click',()=>overlay.classList.remove('open'));
@@ -1303,6 +1304,44 @@
         promoSummary.textContent=`Всего кодов: ${items.length} · активаций: ${activations} · выдано по аналитике: ${totalReward}⭐`;
       }).catch(e=>{promoSummary.textContent='❌ '+e.message});
     }
+
+    const partnerIdentity=document.getElementById('adm_partnerIdentity');
+    const partnerAdd=document.getElementById('adm_partnerAdd');
+    const partnerRefresh=document.getElementById('adm_partnerRefresh');
+    const partnerMsg=document.getElementById('adm_partnerMsg');
+    const partnerTable=document.getElementById('adm_partnerTable');
+    function loadAdminPartners(){
+      if(!partnerTable)return;
+      adminJson('/api/admin/partners').then(data=>{
+        partnerTable.textContent='';
+        const items=Array.isArray(data.items)?data.items:[];
+        items.forEach(item=>{
+          const tr=document.createElement('tr');
+          const name=item.username?`@${item.username}`:(item.firstName||'Без username');
+          [name,String(item.userId),`${Number(item.commissionPercent||40)}%`,formatAdminDate(item.createdAt)].forEach(value=>{const td=document.createElement('td');td.textContent=value;tr.appendChild(td)});
+          const action=document.createElement('td');
+          const del=document.createElement('button');del.type='button';del.textContent='Удалить';
+          del.addEventListener('click',async()=>{
+            if(!confirm(`Удалить партнёра ${name}?`))return;
+            try{await adminJson(`/api/admin/partners/${encodeURIComponent(item.userId)}`,{method:'DELETE'});loadAdminPartners();}
+            catch(e){partnerMsg.classList.add('err');partnerMsg.textContent='❌ '+e.message;}
+          });
+          action.appendChild(del);tr.appendChild(action);partnerTable.appendChild(tr);
+        });
+        if(!items.length){const tr=document.createElement('tr');const td=document.createElement('td');td.colSpan=5;td.textContent='Партнёров пока нет';tr.appendChild(td);partnerTable.appendChild(tr);}
+      }).catch(e=>{partnerMsg.classList.add('err');partnerMsg.textContent='❌ '+e.message});
+    }
+    partnerAdd?.addEventListener('click',async()=>{
+      partnerMsg.classList.remove('err');partnerMsg.textContent='Добавляем…';
+      try{
+        const identity=(partnerIdentity.value||'').trim();
+        if(!identity)throw new Error('Укажи username или ID');
+        const data=await adminJson('/api/admin/partners',{method:'POST',body:JSON.stringify({username:/^\d+$/.test(identity)?'':identity,userId:/^\d+$/.test(identity)?identity:''})});
+        partnerMsg.textContent=`✅ Партнёр ${data.partner.username?`@${data.partner.username}`:data.partner.userId} добавлен. Ставка: 40%.`;
+        partnerIdentity.value='';loadAdminPartners();
+      }catch(e){partnerMsg.classList.add('err');partnerMsg.textContent='❌ '+e.message}
+    });
+    partnerRefresh?.addEventListener('click',loadAdminPartners);
     function drawAdminChart(rows){
       const canvas=document.getElementById('adm_activityChart'); if(!canvas)return;
       const ctx=canvas.getContext('2d'), width=canvas.width, height=canvas.height;
