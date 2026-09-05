@@ -303,6 +303,21 @@ function extractReferralId(startParam) {
   return match ? Number(match[1]) : null;
 }
 
+function extractReferralUsername(startParam) {
+  const match = /^ref_([A-Za-z0-9_]{5,32})$/.exec(String(startParam || '').trim());
+  return match ? match[1].toLowerCase() : null;
+}
+
+async function resolveReferralReferrer(startParam) {
+  const numericId = extractReferralId(startParam);
+  if (numericId) return numericId;
+  const username = extractReferralUsername(startParam);
+  if (!username) return null;
+  const { data, error } = await sb.from('users').select('id').eq('username', username).maybeSingle();
+  if (error) throw new Error(error.message || 'Referral username lookup failed');
+  return data?.id ? Number(data.id) : null;
+}
+
 // Обязательная подписка проверяется только сервером через Telegram getChatMember.
 // При недоступности Telegram или неверной настройке канала ответ fail-closed: реферал не засчитывается.
 const referralMembershipCache = new Map();
@@ -476,7 +491,7 @@ async function handleReferralChannelMembershipUpdate(update) {
 }
 
 // Уведомление пригласителю в Telegram. kind ∈ 'join' | 'deposit' | 'fee'.
-async function notifyReferrer(referrerId, referredUserId, kind, amount = 0, reward = 0) {
+async function notifyReferrer(referrerId, referredUserId, kind, amount = 0, reward = 0, source = '') {
   try {
     if (!referrerId || !referredUserId) return;
     let handle = `id${referredUserId}`;
@@ -494,7 +509,8 @@ async function notifyReferrer(referrerId, referredUserId, kind, amount = 0, rewa
     if (kind === 'join') {
       text = `🎉 ${handle} присоединился по вашей реферальной ссылке!`;
     } else if (kind === 'deposit') {
-      text = `💰 ${handle} пополнил баланс на ${amount}⭐ — вы получаете +${reward}⭐ (10%).`;
+      const rateLabel = String(source).startsWith('partner') ? 'доплата до 40%' : '10%';
+      text = `💰 ${handle} пополнил баланс на ${amount}⭐ — вы получаете +${reward}⭐ (${rateLabel}).`;
     } else if (kind === 'fee') {
       text = `💸 ${handle} оплатил комиссию ${amount}⭐ за вывод подарка — вы получаете +${reward}⭐ (10%).`;
     } else {
@@ -549,7 +565,7 @@ async function logReferralDeposit(referrerId, referredUserId, amount, reward, so
     getUserLogIdentity(referredUserId),
   ]);
   console.log(`💰 REF DEPOSIT inviter=${inviter} depositor=${depositor} amount=${Math.floor(Number(amount || 0))}⭐ reward=+${rewardNum}⭐ source=${source}`);
-  notifyReferrer(refId, referredUserId, 'deposit', Math.floor(Number(amount || 0)), rewardNum).catch(() => null);
+  notifyReferrer(refId, referredUserId, 'deposit', Math.floor(Number(amount || 0)), rewardNum, source).catch(() => null);
 }
 
 async function logDeposit(userId, amount, source = 'stars') {
@@ -594,6 +610,27 @@ async function getReferralSummary(userId) {
   };
 }
 
+async function creditPartnerCommission(userId, amount, source, idempotencyKey) {
+  const numericAmount = Math.max(0, Math.floor(Number(amount || 0)));
+  if (!userId || numericAmount <= 0) return null;
+  const result = await sb.rpc('giftpep_credit_partner_for_deposit_v1', {
+    p_user_id: Number(userId),
+    p_deposit_amount: numericAmount,
+    p_source: String(source || 'deposit'),
+    p_idempotency_key: String(idempotencyKey || `${Number(userId)}:${source}:${numericAmount}:${crypto.randomUUID()}`),
+  });
+  if (result.error) {
+    if (/function .* does not exist|schema cache/i.test(result.error.message || '')) return null;
+    throw new Error(result.error.message || 'Partner commission failed');
+  }
+  const row = Array.isArray(result.data) ? result.data[0] : result.data;
+  return row && Number(row.reward || 0) > 0 ? {
+    partnerId: Number(row.partner_id),
+    reward: Number(row.reward),
+    commissionPercent: Number(row.commission_percent || 40),
+  } : null;
+}
+
 
 async function applyDepositCredit(userId, amount) {
   const numericAmount = Math.max(0, Math.floor(Number(amount || 0)));
@@ -608,7 +645,11 @@ async function applyDepositCredit(userId, amount) {
 
   let referral = null;
   try {
-    const rewardResult = await sb.rpc('giftpep_credit_referral_for_deposit_v2', {
+    const partner = await creditPartnerCommission(userId, numericAmount, 'deposit');
+    if (partner) logReferralDeposit(partner.partnerId, userId, numericAmount, partner.reward, 'partner').catch(() => null);
+
+    // Non-partners continue using the existing 10% referral program.
+    const rewardResult = partner ? { data: null, error: null } : await sb.rpc('giftpep_credit_referral_for_deposit_v2', {
       p_user_id: userId,
       p_deposit_amount: numericAmount,
     });
@@ -1037,7 +1078,7 @@ async function handleBotMessage(message) {
 
   // По реферальному deep-link связь создаётся только после проверки подписки.
   try {
-    const refId = extractReferralId(startParam);
+    const refId = await resolveReferralReferrer(startParam);
     if (refId && senderId) {
       try {
         const fromUser = message?.from || {};
@@ -2218,7 +2259,7 @@ app.post('/api/init', async (req, res) => {
     return res.status(500).json({ error: error.message });
   }
 
-  const referrerId = extractReferralId(context.startParam);
+  const referrerId = await resolveReferralReferrer(context.startParam);
   const currentUserId = Number(user.id);
   const profile = { ...(data?.[0] ?? {}), isAdmin: isAdminUser(user) };
 
@@ -2280,11 +2321,17 @@ app.get('/api/referral', async (req, res) => {
   if (!user) return;
 
   try {
-    const summary = await getReferralSummary(user.id);
+    const [summary, userResult] = await Promise.all([
+      getReferralSummary(user.id),
+      sb.from('users').select('username').eq('id', Number(user.id)).maybeSingle(),
+    ]);
+    if (userResult.error) throw new Error(userResult.error.message || 'Referral user lookup failed');
+    const username = normalizeUsername(userResult.data?.username || user.username || '');
     res.json({
       invitedCount: summary.invitedCount,
       earned: summary.earned,
-      referrerLink: `ref_${user.id}`,
+      referrerLink: username ? `ref_${username}` : `ref_${user.id}`,
+      referralUsername: username || null,
     });
   } catch (error) {
     res.status(500).json({ error: error.message || 'Referral stats failed' });
@@ -2962,6 +3009,10 @@ app.post('/api/ton/topup/credit', async (req, res) => {
       const creditedAmount = Number(applied?.amount || intent.stars_amount || 0);
       logDeposit(user.id, creditedAmount, 'ton').catch(() => null);
       logReferralDeposit(applied?.referrerId, user.id, creditedAmount, applied?.referralReward, 'ton').catch(() => null);
+      try {
+        const partner = await creditPartnerCommission(user.id, creditedAmount, 'ton', `ton:${intentId}`);
+        if (partner) logReferralDeposit(partner.partnerId, user.id, creditedAmount, partner.reward, 'partner-ton').catch(() => null);
+      } catch (error) { console.error('partner TON commission failed:', error?.message || error); }
     }
     return res.json({
       ok: true, txHash: match.txHash, amount: Number(applied?.amount || intent.stars_amount || 0),
@@ -3673,6 +3724,10 @@ app.post('/webhook', async (req, res) => {
       if (data?.applied) {
         logDeposit(senderId, totalAmount, 'telegram-stars').catch(() => null);
         logReferralDeposit(data?.referrerId, senderId, totalAmount, data?.referralReward, 'telegram-stars').catch(() => null);
+        try {
+          const partner = await creditPartnerCommission(senderId, totalAmount, 'telegram-stars', `stars:${invoiceId}`);
+          if (partner) logReferralDeposit(partner.partnerId, senderId, totalAmount, partner.reward, 'partner-stars').catch(() => null);
+        } catch (partnerError) { console.error('partner Stars commission failed:', partnerError?.message || partnerError); }
       }
       console.log(`💫 payment ${data?.applied ? 'applied' : 'duplicate'}: user ${senderId} +${totalAmount}⭐`);
       return res.sendStatus(200);
@@ -3906,6 +3961,10 @@ app.post('/api/relayer/credit-gift', async (req, res) => {
     console.log(`🎁 deposit gift +${giftPayload.name} (${giftPayload.price}⭐) → user ${userId} from @${senderUsername || senderTgId}`);
     logDeposit(userId, giftPayload.price, 'telegram-gift').catch(() => null);
     logReferralDeposit(credited?.referrerId, userId, giftPayload.price, credited?.referralReward, 'telegram-gift').catch(() => null);
+    try {
+      const partner = await creditPartnerCommission(userId, giftPayload.price, 'telegram-gift', `gift:${numericMsgId}`);
+      if (partner) logReferralDeposit(partner.partnerId, userId, giftPayload.price, partner.reward, 'partner-gift').catch(() => null);
+    } catch (partnerError) { console.error('partner gift commission failed:', partnerError?.message || partnerError); }
 
     // DM юзеру: подарок добавлен + кнопка «Посмотреть в инвентаре» → мини-апп.
     try {
@@ -4671,6 +4730,80 @@ app.post('/api/admin/promo/delete', async (req, res) => {
   const { error } = await sb.from('promo_codes').delete().eq('code', code);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ ok: true });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PARTNERS — partner gets 40% total from deposits of direct referrals
+// ══════════════════════════════════════════════════════════════════════════════
+app.get('/api/admin/partners', async (req, res) => {
+  const admin = requireAdmin(req, res);
+  if (!admin) return;
+  try {
+    const { data: rows, error } = await sb.from('partner_accounts')
+      .select('user_id,commission_percent,created_at,created_by')
+      .order('created_at', { ascending: false }).limit(10000);
+    if (error) throw new Error(error.message);
+    const ids = (rows || []).map((row) => Number(row.user_id)).filter(Boolean);
+    const { data: users, error: usersError } = ids.length
+      ? await sb.from('users').select('id,username,first_name,balance,total_deposited').in('id', ids)
+      : { data: [], error: null };
+    if (usersError) throw new Error(usersError.message);
+    const usersById = new Map((users || []).map((user) => [Number(user.id), user]));
+    res.json({ items: (rows || []).map((row) => ({
+      userId: Number(row.user_id),
+      username: usersById.get(Number(row.user_id))?.username || null,
+      firstName: usersById.get(Number(row.user_id))?.first_name || null,
+      commissionPercent: Number(row.commission_percent || 40),
+      createdAt: row.created_at,
+    })) });
+  } catch (error) {
+    if (/partner_accounts|does not exist|schema cache/i.test(error?.message || '')) {
+      return res.status(503).json({ error: 'Сначала примени migration 20260905_partner_system.sql' });
+    }
+    res.status(500).json({ error: error.message || 'Partners lookup failed' });
+  }
+});
+
+app.post('/api/admin/partners', async (req, res) => {
+  const admin = requireAdmin(req, res);
+  if (!admin) return;
+  const raw = String(req.body?.username || req.body?.userId || '').trim();
+  if (!raw) return res.status(400).json({ error: 'Укажи username или Telegram User ID' });
+  try {
+    const userId = /^\d+$/.test(raw)
+      ? Number(raw)
+      : await getUserIdByUsername(normalizeUsername(raw));
+    if (!userId) return res.status(404).json({ error: 'Пользователь не найден' });
+    const { data: user, error: userError } = await sb.from('users').select('id,username,first_name').eq('id', userId).maybeSingle();
+    if (userError || !user) return res.status(404).json({ error: 'Пользователь не найден в базе' });
+    const { error } = await sb.from('partner_accounts').upsert({
+      user_id: Number(userId), commission_percent: 40, created_by: Number(admin.id),
+    }, { onConflict: 'user_id' });
+    if (error) throw new Error(error.message);
+    res.json({ ok: true, partner: { userId: Number(user.id), username: user.username || null, firstName: user.first_name || null, commissionPercent: 40 } });
+  } catch (error) {
+    if (/partner_accounts|does not exist|schema cache/i.test(error?.message || '')) {
+      return res.status(503).json({ error: 'Сначала примени migration 20260905_partner_system.sql' });
+    }
+    res.status(400).json({ error: error.message || 'Partner creation failed' });
+  }
+});
+
+app.delete('/api/admin/partners/:userId', async (req, res) => {
+  const admin = requireAdmin(req, res);
+  if (!admin) return;
+  const userId = Number(req.params.userId);
+  if (!Number.isSafeInteger(userId) || userId <= 0) return res.status(400).json({ error: 'Bad userId' });
+  try {
+    const { error } = await sb.from('partner_accounts').delete().eq('user_id', userId);
+    if (error) throw new Error(error.message);
+    res.json({ ok: true });
+  } catch (error) {
+    if (/partner_accounts|does not exist|schema cache/i.test(error?.message || '')) {
+      return res.status(503).json({ error: 'Сначала примени migration 20260905_partner_system.sql' });
+    }
+    res.status(400).json({ error: error.message || 'Partner deletion failed' });
+  }
 });
 
 app.get('/api/admin/withdraw-policy', async (req, res) => {

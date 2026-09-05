@@ -562,6 +562,7 @@
       <button class="admin-tab" data-tab="top" type="button">Топ</button>
       <button class="admin-tab" data-tab="stats" type="button">Статистика</button>
       <button class="admin-tab" data-tab="people" type="button">Люди</button>
+      <button class="admin-tab" data-tab="partners" type="button">Партнёры</button>
       <button class="admin-tab" data-tab="gifts" type="button">NFT</button>
       <button class="admin-tab" data-tab="sendgift" type="button">Подарок</button>
       <button class="admin-tab" data-tab="pol" type="button">Вывод</button>
@@ -614,6 +615,21 @@
     <div class="admin-section" id="adminSec_people">
       <div class="admin-muted">Полный TXT-отчёт со всеми пользователями, балансами, депозитами, играми и инвентарём формируется автоматически каждый день в <b>00:00 UTC</b> и отправляется в личные сообщения бота администраторам из <code>ADMIN_IDS</code>.</div>
       <div class="admin-msg" id="adm_peopleMsg"></div>
+    </div>
+
+    <!-- PARTNERS -->
+    <div class="admin-section" id="adminSec_partners">
+      <div class="admin-muted">Партнёр получает <b>40%</b> от каждого подтверждённого депозита пользователя, который пришёл по его реферальной ссылке. Можно указать username без символа @ или Telegram User ID.</div>
+      <label>Username или Telegram User ID</label>
+      <div class="admin-row">
+        <input id="adm_partnerIdentity" type="text" placeholder="username или 123456789">
+        <button class="admin-submit" id="adm_partnerAdd" type="button">Добавить</button>
+      </div>
+      <div class="admin-msg" id="adm_partnerMsg"></div>
+      <div class="admin-toolbar">
+        <button class="admin-submit" id="adm_partnerRefresh" type="button">Обновить</button>
+      </div>
+      <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Партнёр</th><th>ID</th><th>Ставка</th><th>Добавлен</th><th></th></tr></thead><tbody id="adm_partnerTable"></tbody></table></div>
     </div>
 
     <!-- NFT MANAGEMENT -->
