@@ -2262,18 +2262,12 @@ app.post('/api/init', async (req, res) => {
   const referrerId = await resolveReferralReferrer(context.startParam);
   const currentUserId = Number(user.id);
   const profile = { ...(data?.[0] ?? {}), isAdmin: isAdminUser(user) };
-  // Always include a fresh balance in the init response. This prevents the
-  // Mini App from opening with a stale/zero cached value and avoids making
-  // startup depend on a second balance request from the browser.
-  try {
-    const authoritativeBalance = await getUserBalance(currentUserId);
-    if (!Number.isFinite(authoritativeBalance) || authoritativeBalance < 0) {
-      throw new Error('Invalid balance returned from database');
-    }
-    profile.balance = authoritativeBalance;
-  } catch (balanceError) {
-    console.error('init balance lookup failed:', balanceError);
-    return res.status(503).json({ error: 'Balance is temporarily unavailable' });
+  // Do not block Mini App startup on a separate balance SELECT. init_user
+  // already returns balance on current schemas; older schemas can omit it.
+  // In that case the client opens after Telegram auth and loads balance in
+  // the background through /api/balance.
+  if (!Number.isFinite(Number(profile.balance)) || Number(profile.balance) < 0) {
+    delete profile.balance;
   }
 
   if (referrerId) {
