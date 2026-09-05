@@ -150,22 +150,17 @@
         if(adminCases&&data.isAdmin===true)adminCases.style.display='block';
         saveProfileWarmState();
       }
-      // Старые версии init_user иногда не возвращают balance. В этом случае
-      // ждём отдельный баланс с повторами, но не пускаем пользователя в Mini App
-      // с нулевым/неизвестным значением.
-      if(!balanceLoaded){
-        for(let attempt=0;attempt<3&&!balanceLoaded;attempt++){
-          const balanceData=await refreshBalance();
-          const value=Number(balanceData?.balance);
-          balanceLoaded=Number.isFinite(value)&&value>=0;
-          if(!balanceLoaded)await new Promise(resolve=>setTimeout(resolve,500));
-        }
-      }
-      if(!balanceLoaded)throw new Error('Live balance is not available yet');
+      // Никогда не блокируем вход из-за временного сбоя balance endpoint.
+      // Если init_user не вернул balance, загружаем его в фоне после открытия.
+      if(!balanceLoaded)refreshBalance().catch(()=>null);
       // Отдельная проверка нужна для старого production `/api/init`, где isAdmin мог отсутствовать.
       revealAdminCasesFromServer();
       return true;
-    }catch(e){console.warn('Backend init failed:',e.message); throw e;}
+    }catch(e){
+      console.warn('Backend init failed, opening app and retrying balance in background:',e.message);
+      if(tgUserId){refreshBalance().catch(()=>null);return true;}
+      throw e;
+    }
   }
 
   // === BAN OVERLAY (v8.13) ===
