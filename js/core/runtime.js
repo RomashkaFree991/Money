@@ -123,13 +123,15 @@
         }
         return false;
       }
-      if(!data?.id)throw new Error('Backend did not return a user profile');
+      // Некоторые старые версии init_user возвращают профиль без поля id,
+      // хотя Telegram ID уже получен из подписанного initData.
+      if(!data?.id&&!tgUserId)throw new Error('Backend did not return a user profile');
       let balanceLoaded=false;
-      if(data.id){
+      if(data?.id||tgUserId){
         firstName=data.first_name||firstName;
         userHandle=data.username?'@'+data.username:userHandle;
         photoUrl=data.photo_url||photoUrl;
-        tgUserId=data.id;
+        tgUserId=data.id||tgUserId;
         const initBalance=Number(data.balance);
         balanceLoaded=Number.isFinite(initBalance)&&initBalance>=0;
         if(balanceLoaded)updateBalance(initBalance);
