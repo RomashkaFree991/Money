@@ -124,13 +124,15 @@
         return false;
       }
       if(!data?.id)throw new Error('Backend did not return a user profile');
+      let balanceLoaded=false;
       if(data.id){
         firstName=data.first_name||firstName;
         userHandle=data.username?'@'+data.username:userHandle;
         photoUrl=data.photo_url||photoUrl;
         tgUserId=data.id;
-        if(data.balance===undefined||data.balance===null||!Number.isFinite(Number(data.balance)))throw new Error('Backend did not return a valid balance');
-        updateBalance(Number(data.balance));
+        const initBalance=Number(data.balance);
+        balanceLoaded=Number.isFinite(initBalance)&&initBalance>=0;
+        if(balanceLoaded)updateBalance(initBalance);
         applyUserToUI();
         // init уже прошёл проверку подписи Telegram и сервер определил роль.
         // Это влияет только на видимость кнопки; все admin API всё равно защищены.
@@ -140,9 +142,18 @@
         if(adminCases&&data.isAdmin===true)adminCases.style.display='block';
         saveProfileWarmState();
       }
-      // /api/init уже возвращает баланс из текущей серверной сессии. Не делаем
-      // второй обязательный запрос /api/balance: при временном сбое этого
-      // необязательного обновления пользователь не должен застревать на boot.
+      // Старые версии init_user иногда не возвращают balance. В этом случае
+      // ждём отдельный баланс с повторами, но не пускаем пользователя в Mini App
+      // с нулевым/неизвестным значением.
+      if(!balanceLoaded){
+        for(let attempt=0;attempt<8&&!balanceLoaded;attempt++){
+          const balanceData=await refreshBalance();
+          const value=Number(balanceData?.balance);
+          balanceLoaded=Number.isFinite(value)&&value>=0;
+          if(!balanceLoaded)await new Promise(resolve=>setTimeout(resolve,700));
+        }
+      }
+      if(!balanceLoaded)throw new Error('Live balance is not available yet');
       // Отдельная проверка нужна для старого production `/api/init`, где isAdmin мог отсутствовать.
       revealAdminCasesFromServer();
       return true;
