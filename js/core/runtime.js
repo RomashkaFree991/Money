@@ -79,6 +79,12 @@
       }
     }catch(_){ }
   }
+  async function fetchStartup(url,options={},timeoutMs=12000){
+    const controller=new AbortController();
+    const timer=setTimeout(()=>controller.abort(),timeoutMs);
+    try{return await fetch(url,{...options,signal:controller.signal});}
+    finally{clearTimeout(timer);}
+  }
   async function initUser(){
     if(!tg)return true;
     tg.ready();tg.expand();
@@ -100,7 +106,7 @@
     // не требуется; production Telegram sessions всегда проходят ниже.
     if(!tg.initData)return true;
     try{
-      const resp=await fetch(API_BASE+'/api/init',{
+      const resp=await fetchStartup(API_BASE+'/api/init',{
         method:'POST',
         headers:{'Content-Type':'application/json','x-init-data':tg?.initData||''},
         body:JSON.stringify({initData:tg.initData||''}),
@@ -148,11 +154,11 @@
       // ждём отдельный баланс с повторами, но не пускаем пользователя в Mini App
       // с нулевым/неизвестным значением.
       if(!balanceLoaded){
-        for(let attempt=0;attempt<8&&!balanceLoaded;attempt++){
+        for(let attempt=0;attempt<3&&!balanceLoaded;attempt++){
           const balanceData=await refreshBalance();
           const value=Number(balanceData?.balance);
           balanceLoaded=Number.isFinite(value)&&value>=0;
-          if(!balanceLoaded)await new Promise(resolve=>setTimeout(resolve,700));
+          if(!balanceLoaded)await new Promise(resolve=>setTimeout(resolve,500));
         }
       }
       if(!balanceLoaded)throw new Error('Live balance is not available yet');
