@@ -80,7 +80,7 @@
     }catch(_){ }
   }
   async function initUser(){
-    if(!tg)return;
+    if(!tg)return true;
     tg.ready();tg.expand();
     try{if(tg.requestFullscreen)tg.requestFullscreen();}catch(e){}
     try{if(tg.disableVerticalSwipes)tg.disableVerticalSwipes();}catch(e){}
@@ -96,6 +96,9 @@
       // Пользовательский кэш показывается только для того же Telegram ID.
       restoreProfileWarmState();
     }
+    // В локальном preview Telegram initData отсутствует, поэтому API-баланс
+    // не требуется; production Telegram sessions всегда проходят ниже.
+    if(!tg.initData)return true;
     try{
       const resp=await fetch(API_BASE+'/api/init',{
         method:'POST',
@@ -105,8 +108,9 @@
       const data=await resp.json();
       if(resp.status===403 && data && data.banned){
         showBannedOverlay(data.reason||'Нарушение правил');
-        return;
+        return false;
       }
+      if(!resp.ok)throw new Error(data?.error||`Backend init failed (${resp.status})`);
       if(data?.referralGate?.required){
         // Приглашённый сначала открыл Mini App. Сервер ещё не создал связь:
         // возвращаем его в бот для обязательной подписки и серверной проверки.
@@ -117,8 +121,9 @@
         }catch(error){
           console.warn('Referral subscription redirect failed:',error?.message||error);
         }
-        return;
+        return false;
       }
+      if(!data?.id)throw new Error('Backend did not return a user profile');
       if(data.id){
         firstName=data.first_name||firstName;
         userHandle=data.username?'@'+data.username:userHandle;
@@ -134,9 +139,14 @@
         if(adminCases&&data.isAdmin===true)adminCases.style.display='block';
         saveProfileWarmState();
       }
+      // Кэш может быть устаревшим. Открываем приложение только после
+      // успешного получения актуального баланса для текущей Telegram-сессии.
+      const liveBalance=tg.initData?await refreshBalance():{balance};
+      if(!liveBalance||!Number.isFinite(Number(liveBalance.balance)))throw new Error('Live balance is not available yet');
       // Отдельная проверка нужна для старого production `/api/init`, где isAdmin мог отсутствовать.
       revealAdminCasesFromServer();
-    }catch(e){console.warn('Backend init failed:',e.message); revealAdminCasesFromServer();}
+      return true;
+    }catch(e){console.warn('Backend init failed:',e.message); throw e;}
   }
 
   // === BAN OVERLAY (v8.13) ===
