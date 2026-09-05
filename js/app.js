@@ -391,7 +391,9 @@
       // Сначала показываем user-scoped warm-кэш. Для первого входа подождём
       // первичные данные в стартовом экране: профиль не должен открываться с
       // нулевым балансом и пустым инвентарём, которые через секунды «прыгают».
-      await bootTask(()=>initUser());
+      const initialized=await initUser();
+      // При бане или referral-gate пользователь уходит в отдельный сценарий.
+      if(initialized===false)return;
       // Баланс и профиль уже применены внутри initUser()/warm-cache.
       // Не блокируем первый экран тяжёлыми игровыми запросами и загрузкой баннеров.
       hideBootState();
@@ -420,7 +422,11 @@
       runAfterFirstPaint(()=>initAdmin());
     }catch(e){
       console.error('Bootstrap failed:',e);
-      hideBootState();
+      showBootState(
+        currentLang==='en'?'Unable to load your balance':'Не удалось загрузить баланс',
+        currentLang==='en'?'Check your connection and try again':'Проверь интернет и нажми «Повторить»',
+        {retry:true}
+      );
     }
   }
 
