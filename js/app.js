@@ -858,8 +858,10 @@
     // Снимок версии берётся до запроса. Если за время сети прошла продажа,
     // ставка или выплата, ответ относится к старому балансу и отбрасывается.
     const requestRevision=getBalanceRefreshRevision();
+    const controller=new AbortController();
+    const timeout=setTimeout(()=>controller.abort(),7000);
     try{
-      const resp=await fetch(API_BASE+'/api/balance?ts='+Date.now(),{headers:{'x-init-data':tg.initData}});
+      const resp=await fetch(API_BASE+'/api/balance?ts='+Date.now(),{headers:{'x-init-data':tg.initData},signal:controller.signal});
       const data=await resp.json();
       if(data.balance!==undefined&&canApplyBalanceRefresh(requestRevision)){
         updateBalance(data.balance);
@@ -867,6 +869,7 @@
         return data;
       }
     }catch(e){console.warn('Balance refresh failed:',e.message)}
+    finally{clearTimeout(timeout)}
     return null;
   }
 
