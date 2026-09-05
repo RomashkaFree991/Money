@@ -2262,6 +2262,19 @@ app.post('/api/init', async (req, res) => {
   const referrerId = await resolveReferralReferrer(context.startParam);
   const currentUserId = Number(user.id);
   const profile = { ...(data?.[0] ?? {}), isAdmin: isAdminUser(user) };
+  // Always include a fresh balance in the init response. This prevents the
+  // Mini App from opening with a stale/zero cached value and avoids making
+  // startup depend on a second balance request from the browser.
+  try {
+    const authoritativeBalance = await getUserBalance(currentUserId);
+    if (!Number.isFinite(authoritativeBalance) || authoritativeBalance < 0) {
+      throw new Error('Invalid balance returned from database');
+    }
+    profile.balance = authoritativeBalance;
+  } catch (balanceError) {
+    console.error('init balance lookup failed:', balanceError);
+    return res.status(503).json({ error: 'Balance is temporarily unavailable' });
+  }
 
   if (referrerId) {
     try {
