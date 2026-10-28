@@ -325,26 +325,52 @@
     }
   }
 
+  let minesResultGift=null;
   function openMinesResult(data){
     const title=document.getElementById('minesResultTitle');
     const image=document.getElementById('minesResultImage');
     const name=document.getElementById('minesResultName');
     const value=document.getElementById('minesResultValue');
-    const card=minesResultOverlay?.querySelector('.mines-result-card');
-    card?.classList.toggle('is-lost',data.kind==='lost');
+    const sellBtn=document.getElementById('minesResultSell');
+    const closeBtn=document.getElementById('minesResultClose');
+    minesResultGift=data.kind==='gift'&&data.gift?data.gift:null;
+    if(sellBtn){
+      sellBtn.hidden=!minesResultGift;
+      sellBtn.disabled=false;
+      document.getElementById('minesResultSellValue').textContent=formatStars(minesResultGift?.price||data.payout||0);
+    }
     if(data.kind==='lost'){
       title.textContent=t('minesLoseTitle');
       image.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(MINES_BOMB_SVG.replace('<svg ','<svg xmlns="http://www.w3.org/2000/svg" '));
       name.textContent=t('minesLoseText');
       value.textContent='';
+      closeBtn.textContent='OK';
     }else{
-      title.textContent=t('minesWinTitle');
-      const gift=data.kind==='gift'?data.gift:null;
-      image.src=gift?resolveGiftImage(gift):'assets/star.png';
-      name.textContent=gift?(gift.name+' · '+t('minesGiftAdded')):t('minesStarsAdded');
-      value.innerHTML='+'+formatStars(data.payout)+' <img src="assets/star.png" alt="">';
+      title.textContent=minesResultGift?t('giftUnlocked'):t('minesWinTitle');
+      image.src=minesResultGift?resolveGiftImage(minesResultGift):'assets/star.png';
+      name.textContent=minesResultGift?minesResultGift.name:t('minesStarsAdded');
+      value.innerHTML=formatStars(data.payout)+' <img src="assets/star.png" alt="">';
+      closeBtn.textContent=minesResultGift?t('claim'):'OK';
     }
     minesResultOverlay?.classList.add('open');
+  }
+  async function sellMinesResultGift(){
+    const gift=minesResultGift;
+    const sellBtn=document.getElementById('minesResultSell');
+    if(!gift?.id||!sellBtn||sellBtn.disabled)return;
+    sellBtn.disabled=true;
+    try{
+      const {response,data}=await minesRequest('/api/inventory/sell',{giftId:gift.id});
+      if(!response.ok)throw new Error(data.error||t('sellFailed'));
+      inventoryItems=Array.isArray(data.items)?data.items.map(item=>normalizeInventoryGift(item)).filter(Boolean):inventoryItems.filter(item=>String(item.id)!==String(gift.id));
+      renderInventory();
+      if(Number.isFinite(Number(data.newBalance)))updateBalance(Number(data.newBalance));
+      saveProfileWarmState();
+      closeMinesResult();
+    }catch(error){
+      sellBtn.disabled=false;
+      minesAlert(error.message||t('sellFailed'));
+    }
   }
   function closeMinesResult(){minesResultOverlay?.classList.remove('open');}
 
@@ -378,5 +404,6 @@
   }));
   minesHashBtn?.addEventListener('click',()=>copyRoundHash((minesGame||minesFinished)?.hash,minesHashBtn));
   document.getElementById('minesResultClose')?.addEventListener('click',closeMinesResult);
+  document.getElementById('minesResultSell')?.addEventListener('click',sellMinesResultGift);
   minesResultOverlay?.addEventListener('click',event=>{if(event.target===minesResultOverlay)closeMinesResult();});
   renderMinesUI();

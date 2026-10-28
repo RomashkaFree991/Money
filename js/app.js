@@ -1,9 +1,9 @@
   let currentTab='game';
   // Внутренние экраны открываются из вкладки-родителя и подсвечивают её в нижней панели.
-  const embeddedTabParents={crash:'game',pvp:'game',upgrade:'game',mines:'game',case:'cases',caseResult:'cases'};
+  const embeddedTabParents={crash:'game',pvp:'game',upgrade:'game',mines:'game',case:'cases'};
   const embeddedGameTabs=new Set(Object.keys(embeddedTabParents));
   function handleTelegramBack(){
-    if(currentTab==='caseResult'){closeCaseResult();return;}
+    if(caseResultPage?.classList.contains('open')){closeCaseResult();return;}
     if(embeddedGameTabs.has(currentTab))activateTab(embeddedTabParents[currentTab],false);
   }
   function syncTelegramBackButton(){
@@ -26,7 +26,6 @@
     if(pages[tab]){
       void pages[tab].offsetWidth;
       pages[tab].classList.add('visible');
-      if(tab==='caseResult'&&pages.case)pages.case.classList.add('visible');
       currentTab=tab;
     }
     pvpBetDock?.classList.toggle('open',tab==='pvp');
@@ -104,7 +103,7 @@
   const caseOpenBtn=document.getElementById('caseOpenBtn');
   const caseOpenLabel=caseOpenBtn?.querySelector('span:first-child');
   const caseOpenPriceEl=document.getElementById('caseOpenPrice');
-  const caseResultPage=document.getElementById('caseResultPage');
+  const caseResultPage=document.getElementById('caseResultOverlay');
   const caseResultContextStrip=document.getElementById('caseResultContextStrip');
   const caseResultImage=document.getElementById('caseResultImage');
   const caseResultName=document.getElementById('caseResultName');
@@ -220,9 +219,9 @@
   });
   caseBackBtn?.addEventListener('click',()=>activateTab('cases',true));
   function closeCaseResult(){
-    caseResultPage?.classList.remove('visible');
-    activateTab('case',true);
+    caseResultPage?.classList.remove('open');
   }
+  caseResultPage?.addEventListener('click',event=>{if(event.target===caseResultPage)closeCaseResult();});
   caseResultClose?.addEventListener('click',closeCaseResult);
   caseResultBtn?.addEventListener('click',()=>{closeCaseResult();refreshInventory(true).catch(()=>{});});
   caseResultSell?.addEventListener('click',async()=>{
@@ -302,8 +301,7 @@
       if(caseResultName)caseResultName.textContent=(prize.type==='stars'||String(prize.id||'').startsWith('stars:'))?formatStars(prize.price||0)+' Stars':(prize.name||t('giftWord'));
       if(caseResultValue)caseResultValue.innerHTML=`${formatStars(prize.price||0)} <img src="assets/star.png" alt="Stars">`;
       if(activeCaseConfig?.starsOnly&&transaction.dailyNextOpenAt)startDailyTimer(transaction.dailyNextOpenAt);
-      activateTab('case',true);
-      caseResultPage?.classList.add('visible');
+      caseResultPage?.classList.add('open');
       if(!(activeCaseConfig?.starsOnly&&dailyNextOpenAt))caseOpenBtn.disabled=false;
       if(caseOpenLabel)caseOpenLabel.textContent=t('caseOpen');
       caseIsOpening=false;

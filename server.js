@@ -1739,8 +1739,10 @@ function buildCrashBetState(bet,{ viewer = false, phase = 'countdown', liveMulti
   const amount = Number(bet.amount || 0);
   const won = !!bet.cashedOut;
   const lost = !won && phase === 'ended';
+  // Выигранный NFT стоит ровно столько, сколько игрок видел в момент нажатия.
+  const awardedPrice = won ? Number(normalizeGift(bet.awardedGift)?.price || 0) : 0;
   const displayAmount = won
-    ? Number(bet.payout || 0)
+    ? (awardedPrice > 0 ? awardedPrice : Number(bet.payout || 0))
     : (phase === 'live' ? Math.max(0, Math.floor(amount * liveMultiplier)) : amount);
   const basePreviewGift = won
     ? normalizeGift(bet.awardedGift) || getBestGiftForStars(displayAmount)
@@ -3592,7 +3594,7 @@ app.post('/api/crash/cashout', async (req, res) => {
       return res.json({
         ok: true,
         alreadySettled: true,
-        payout: Number(betRow.payout || 0),
+        payout: Number(normalizeGift(betRow.awarded_gift)?.price || betRow.payout || 0),
         newBalance: null,
         pendingPrize,
         awardedGift: pendingPrize || awardedGift,
@@ -3659,8 +3661,10 @@ app.post('/api/crash/cashout', async (req, res) => {
         settleAtMs = foundTs;
       } else {
         // Extremely high payouts can have sub-millisecond integer boundaries.
-        // Fall back to the closest safe server payout rather than trusting input.
-        settleAtMs = baseTs;
+        // Берём ближайший момент, который не превышает нажатую сумму.
+        let ts = baseTs;
+        while (ts > liveStartAt && Math.floor(betAmount * currentCrashMultiplier(state, ts)) > estimatePayout) ts -= 1;
+        settleAtMs = ts;
         estimatePayout = Math.floor(betAmount * currentCrashMultiplier(state, settleAtMs));
       }
     }
@@ -3691,7 +3695,7 @@ app.post('/api/crash/cashout', async (req, res) => {
         return res.json({
           ok: true,
           alreadySettled: true,
-          payout: Number(after.payout || 0),
+          payout: Number(normalizeGift(after.awarded_gift)?.price || after.payout || 0),
           newBalance: null,
           pendingPrize,
           awardedGift: pendingPrize || finalGift,
@@ -3707,6 +3711,8 @@ app.post('/api/crash/cashout', async (req, res) => {
     refreshCrashSharedSnapshot().catch(() => {});
     const pendingPrize = awardedGift ? normalizeGift(awardedGift) : null;
     const payoutKind = pendingPrize ? 'gift' : 'stars';
+    // Для подарка показываем зафиксированную при нажатии сумму, а не пересчёт БД.
+    const shownPayout = pendingPrize ? Number(pendingPrize.price || 0) : Number(data?.payout || 0);
     console.log(
       `🎁 CRASH CASHOUT user=${user.id} round=${roundId} requested=${Number(req.body?.requestedPayout || 0)} `
       + `max=${serverMaxPayout} settleAt=${settleAtMs} payout=${Number(data?.payout || 0)} `
@@ -3716,7 +3722,7 @@ app.post('/api/crash/cashout', async (req, res) => {
 
     return res.json({
       ok: true,
-      payout: Number(data?.payout || 0),
+      payout: shownPayout,
       newBalance: Number(data?.newBalance || 0),
       pendingPrize,
       awardedGift: pendingPrize,

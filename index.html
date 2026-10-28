@@ -13,7 +13,7 @@
   <link rel="preload" as="image" href="assets/Mines_banner.webp" fetchpriority="high">
   <link rel="preload" as="image" href="assets/PVP_Arena_banner.webp">
   <link rel="preload" as="image" href="assets/Upgrade_banner.webp">
-  <link rel="stylesheet" href="css/app.css?v=20261028-mines1">
+  <link rel="stylesheet" href="css/app.css?v=20261028-ui2">
 </head>
 <body>
   <div class="boot-screen" id="bootScreen">
@@ -305,13 +305,16 @@
       <button type="button" class="round-hash mines-round-hash" id="minesRoundHash" hidden title="Copy hash"><span>Hash:</span><code id="minesRoundHashValue"></code></button>
     </div>
   </div>
-  <div class="mines-result-overlay" id="minesResultOverlay">
-    <div class="mines-result-card" role="dialog" aria-modal="true">
-      <div class="mines-result-title" id="minesResultTitle"></div>
-      <img class="mines-result-image" id="minesResultImage" src="assets/star.png" alt="">
-      <div class="mines-result-name" id="minesResultName"></div>
-      <div class="mines-result-value" id="minesResultValue"></div>
-      <button type="button" class="mines-action" id="minesResultClose">OK</button>
+  <div class="gift-modal-overlay" id="minesResultOverlay">
+    <div class="gift-modal">
+      <div class="gift-modal-head"><div class="gift-modal-pill" id="minesResultTitle"></div></div>
+      <img class="gift-modal-image" id="minesResultImage" src="assets/star.png" alt="">
+      <div class="gift-modal-title" id="minesResultName"></div>
+      <div class="gift-modal-price" id="minesResultValue"></div>
+      <div class="gift-modal-actions">
+        <button type="button" class="crash-prize-sell" id="minesResultSell" hidden><span data-i18n="sell">Продать</span> <span id="minesResultSellValue">0</span><img src="assets/star.png" alt=""></button>
+        <button type="button" class="crash-prize-claim" id="minesResultClose" data-i18n="claim">Забрать</button>
+      </div>
     </div>
   </div>
 
@@ -333,17 +336,18 @@
     </div>
   </div>
 
-  <div class="page case-result-page" id="caseResultPage">
-    <div class="case-result-context-strip" id="caseResultContextStrip" aria-label="Линия призов кейса"></div>
-    <div class="case-result-screen">
-      <img class="case-result-image" id="caseResultImage" src="assets/star.png" alt="Приз">
-      <div class="case-result-name" id="caseResultName">Подарок</div>
-      <div class="case-result-value" id="caseResultValue">0 <img src="assets/star.png" alt="Stars"></div>
-      <button type="button" class="case-result-btn" id="caseResultBtn" data-i18n="claim">Забрать</button>
-      <div class="case-result-actions">
-        <button type="button" class="case-result-secondary" id="caseResultSell"><span data-i18n="sell">Продать</span> <span id="caseResultSellValue">0</span><img src="assets/star.png" alt="Stars"></button>
-        <button type="button" class="case-result-secondary" id="caseResultUpgrade" data-i18n="toUpgrade">В апгрейд</button>
+  <!-- CASE RESULT (тот же стиль окна, что в апгрейде) -->
+  <div class="gift-modal-overlay" id="caseResultOverlay">
+    <div class="gift-modal">
+      <div class="gift-modal-head"><div class="gift-modal-pill" data-i18n="giftUnlocked">Ваш подарок</div></div>
+      <img class="gift-modal-image" id="caseResultImage" src="assets/star.png" alt="">
+      <div class="gift-modal-title" id="caseResultName"></div>
+      <div class="gift-modal-price" id="caseResultValue"></div>
+      <div class="gift-modal-actions">
+        <button type="button" class="crash-prize-sell" id="caseResultSell"><span data-i18n="sell">Продать</span> <span id="caseResultSellValue">0</span><img src="assets/star.png" alt=""></button>
+        <button type="button" class="crash-prize-claim" id="caseResultBtn" data-i18n="claim">Забрать</button>
       </div>
+      <button type="button" class="gift-modal-link" id="caseResultUpgrade" data-i18n="toUpgrade">В апгрейд</button>
     </div>
   </div>
 
@@ -623,12 +627,12 @@
   </nav>
 
 </div>
-  <script defer src="js/core/runtime.js?v=20261028-mines1"></script>
-  <script defer src="js/core/state.js?v=20261028-mines1"></script>
-  <script defer src="js/modes/crash.js?v=20261028-mines1"></script>
-  <script defer src="js/modes/pvp.js?v=20261028-mines1"></script>
-  <script defer src="js/modes/mines.js?v=20261028-mines1"></script>
-  <script defer src="js/app.js?v=20261028-mines1"></script>
+  <script defer src="js/core/runtime.js?v=20261028-ui2"></script>
+  <script defer src="js/core/state.js?v=20261028-ui2"></script>
+  <script defer src="js/modes/crash.js?v=20261028-ui2"></script>
+  <script defer src="js/modes/pvp.js?v=20261028-ui2"></script>
+  <script defer src="js/modes/mines.js?v=20261028-ui2"></script>
+  <script defer src="js/app.js?v=20261028-ui2"></script>
 <div class="admin-overlay" id="adminOverlay">
   <div class="admin-sheet">
     <h2>🔧 Админ-панель <button class="admin-close" type="button">✕</button></h2>

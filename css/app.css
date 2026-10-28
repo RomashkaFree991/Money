@@ -1350,108 +1350,90 @@
 #caseResultPage.case-result-page .case-result-actions{width:100%!important;margin:8px 0 0!important;display:flex!important;gap:9px!important;flex:none!important}
 #caseResultPage.case-result-page .case-result-secondary{flex:1!important;height:48px!important}
 
-/* === CASES TAB === */
+/* === CASES TAB (стиль приложения: #1C1C1E + синий акцент) === */
 .cases-page{display:flex;flex-direction:column;gap:16px;padding:0 0 12px}
 .cases-page .admin-cases-section{display:none;margin:0}
-.sailor-case-card{position:relative;display:flex;align-items:center;gap:10px;min-height:156px;padding:18px 14px 18px 18px;border-radius:24px;overflow:hidden;cursor:pointer;
-  background:linear-gradient(135deg,#3a1b5c 0%,#7b2f8f 52%,#ff6fb5 100%);border:1px solid rgba(255,190,235,.35);
-  box-shadow:0 12px 34px rgba(214,63,163,.35),inset 0 1px 0 rgba(255,255,255,.2);transition:transform .18s ease,filter .18s ease}
-.sailor-case-card:active{transform:scale(.98);filter:brightness(1.08)}
-.sailor-case-glow{position:absolute;right:-40px;top:-40px;width:230px;height:230px;border-radius:50%;background:radial-gradient(circle,rgba(255,224,246,.55),rgba(255,224,246,0) 70%);animation:sailorPulse 3.2s ease-in-out infinite;pointer-events:none}
-@keyframes sailorPulse{0%,100%{opacity:.55;transform:scale(.95)}50%{opacity:1;transform:scale(1.06)}}
-.sailor-case-info{position:relative;z-index:1;flex:1;min-width:0}
-.sailor-case-badge{display:inline-block;padding:4px 10px;border-radius:999px;background:rgba(255,255,255,.18);color:#fff;font-size:11px;font-weight:700;letter-spacing:.2px;margin-bottom:8px}
-.sailor-case-title{color:#fff;font-size:26px;font-weight:850;line-height:1.05;text-shadow:0 2px 10px rgba(80,0,60,.4)}
-.sailor-case-desc{margin-top:6px;color:rgba(255,255,255,.82);font-size:12.5px;line-height:1.3}
-.sailor-case-price{display:inline-flex;align-items:center;gap:6px;margin-top:12px;padding:7px 12px;border-radius:14px;background:rgba(0,0,0,.28);color:#fff;font-size:15px;font-weight:800}
-.sailor-case-price img{width:18px;height:18px;object-fit:contain}
-.sailor-case-stars{display:inline-flex;align-items:center;gap:4px;color:rgba(255,255,255,.7);font-size:13px;font-weight:700}
-.sailor-case-stars img{width:15px;height:15px}
-.sailor-case-image{position:relative;z-index:1;width:128px;height:128px;object-fit:contain;flex:0 0 128px;filter:drop-shadow(0 10px 18px rgba(90,0,70,.45));animation:sailorFloat 4s ease-in-out infinite}
-@keyframes sailorFloat{0%,100%{transform:translateY(0) rotate(-3deg)}50%{transform:translateY(-6px) rotate(3deg)}}
 .cases-page .admin-cases-group{margin-top:0}
+.sailor-case-card{position:relative;display:flex;align-items:center;gap:10px;min-height:150px;padding:16px 12px 16px 16px;border-radius:22px;overflow:hidden;cursor:pointer;
+  background:rgba(28,28,30,.94);border:1px solid rgba(255,255,255,.08);transition:transform .18s ease,filter .18s ease}
+.sailor-case-card:active{transform:scale(.98);filter:brightness(1.08)}
+.sailor-case-glow{position:absolute;right:-30px;top:50%;width:210px;height:210px;margin-top:-105px;border-radius:50%;background:radial-gradient(circle,rgba(10,132,255,.32),rgba(10,132,255,0) 70%);pointer-events:none}
+.sailor-case-info{position:relative;z-index:1;flex:1;min-width:0}
+.sailor-case-badge{display:inline-flex;align-items:center;height:26px;padding:0 11px;border-radius:999px;background:rgba(10,132,255,.16);color:#0A84FF;font-size:11.5px;font-weight:750;margin-bottom:8px}
+.sailor-case-title{color:#fff;font-size:22px;font-weight:800;line-height:1.1}
+.sailor-case-desc{margin-top:5px;color:rgba(255,255,255,.55);font-size:12.5px;line-height:1.3}
+.sailor-case-price{display:inline-flex;align-items:center;gap:5px;margin-top:12px;height:32px;padding:0 13px;border-radius:999px;background:#007AFF;color:#fff;font-size:14px;font-weight:800}
+.sailor-case-price img{width:16px;height:16px;object-fit:contain}
+.sailor-case-stars{display:inline-flex;align-items:center;gap:4px;color:rgba(255,255,255,.82);font-size:13px;font-weight:700}
+.sailor-case-stars img{width:14px;height:14px}
+.sailor-case-image{position:relative;z-index:1;width:118px;height:118px;object-fit:contain;flex:0 0 118px;filter:drop-shadow(0 10px 16px rgba(0,0,0,.35))}
 
-/* === MINES === */
-.mines-page{display:flex;flex-direction:column;gap:12px;padding:0 0 18px}
-.mines-coef-row{display:flex;gap:7px;overflow-x:auto;scrollbar-width:none;padding:2px 2px 4px;scroll-snap-type:x proximity}
+/* Общее окно результата (кейсы, мины): ссылка «В апгрейд» под кнопками */
+.gift-modal-link{display:block;width:100%;height:40px;margin-top:8px;border:0;border-radius:12px;background:transparent;color:#0A84FF;font:inherit;font-size:14px;font-weight:700;cursor:pointer}
+.gift-modal-link[hidden]{display:none}
+.gift-modal-actions [hidden]{display:none}
+
+/* === MINES (стиль приложения) === */
+.mines-page{display:flex;flex-direction:column;gap:10px;padding:0 0 18px}
+.mines-coef-row{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:0 0 2px}
 .mines-coef-row::-webkit-scrollbar{display:none}
-.mines-coef{flex:0 0 auto;min-width:62px;padding:6px 9px;border-radius:13px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.08);text-align:center;color:rgba(255,255,255,.55);scroll-snap-align:center;transition:background .2s,color .2s,transform .2s}
-.mines-coef b{display:block;font-size:13px;font-weight:800;color:inherit}
-.mines-coef-step{display:block;font-size:10px;font-weight:600;opacity:.75}
-.mines-coef.passed{color:rgba(196,174,255,.8);background:rgba(150,120,230,.14)}
-.mines-coef.current{color:#fff;background:linear-gradient(135deg,#7a5bd6,#b48cff);border-color:rgba(255,255,255,.3);transform:scale(1.04);box-shadow:0 6px 16px rgba(140,100,240,.35)}
-.mines-coef.next{color:#fff;border-color:rgba(180,150,255,.55)}
-.mines-board-wrap{padding:12px;border-radius:26px;background:linear-gradient(160deg,rgba(116,96,160,.42),rgba(40,30,66,.7));border:1px solid rgba(200,180,255,.18);box-shadow:0 18px 40px rgba(20,8,48,.45),inset 0 1px 0 rgba(255,255,255,.08)}
-.mines-board{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;aspect-ratio:1}
-.mines-cell{position:relative;padding:0;border:0;border-radius:15px;cursor:pointer;background:linear-gradient(180deg,#5b4c86 0%,#3e3263 100%);
-  box-shadow:inset 0 2px 0 rgba(255,255,255,.18),inset 0 -5px 0 rgba(0,0,0,.28),0 4px 8px rgba(0,0,0,.25);transition:transform .12s ease,filter .15s ease,background .2s ease;-webkit-tap-highlight-color:transparent}
-.mines-cell::after{content:'';position:absolute;inset:22% 22%;border-radius:10px;background:radial-gradient(circle at 35% 30%,rgba(255,255,255,.16),rgba(255,255,255,0) 70%);pointer-events:none}
-.mines-board.is-active .mines-cell[data-state="hidden"]:active{transform:translateY(2px) scale(.96);box-shadow:inset 0 2px 0 rgba(255,255,255,.14),inset 0 -2px 0 rgba(0,0,0,.28),0 2px 4px rgba(0,0,0,.25)}
-.mines-board:not(.is-active) .mines-cell[data-state="hidden"]{filter:saturate(.7) brightness(.85);cursor:default}
+.mines-coef{flex:0 0 auto;min-width:58px;height:44px;padding:0 10px;border-radius:14px;background:#1C1C1E;border:1px solid rgba(255,255,255,.08);display:flex;flex-direction:column;align-items:center;justify-content:center;color:rgba(255,255,255,.46);transition:background .2s,color .2s}
+.mines-coef b{font-size:13px;font-weight:800;color:inherit}
+.mines-coef-step{font-size:10px;font-weight:600;opacity:.8}
+.mines-coef.passed{color:rgba(255,255,255,.72)}
+.mines-coef.current{color:#fff;background:#0A84FF;border-color:#0A84FF}
+.mines-coef.next{color:#fff;border-color:rgba(10,132,255,.6)}
+.mines-board-wrap{width:min(100%,42vh,440px);align-self:center;padding:10px;border-radius:24px;background:rgba(28,28,30,.94);border:1px solid rgba(255,255,255,.08)}
+.mines-board{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px;aspect-ratio:1}
+.mines-cell{position:relative;padding:0;border:0;border-radius:14px;cursor:pointer;background:#2b2b31;box-shadow:inset 0 -3px 0 rgba(0,0,0,.28);transition:transform .12s ease,background .2s ease,opacity .2s ease;-webkit-tap-highlight-color:transparent}
+.mines-board.is-active .mines-cell[data-state="hidden"]{background:#34343b}
+.mines-board.is-active .mines-cell[data-state="hidden"]:active{transform:scale(.94);background:#3d3d45}
+.mines-board:not(.is-active) .mines-cell[data-state="hidden"]{opacity:.6;cursor:default}
 .mines-cell:disabled{cursor:default}
 .mines-cell-face{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
-.mines-cell-face svg{width:64%;height:64%}
-.mines-cell[data-state="pending"]{animation:minesPending .6s ease-in-out infinite alternate}
-@keyframes minesPending{from{filter:brightness(1)}to{filter:brightness(1.35)}}
-.mines-cell[data-state="safe"]{background:linear-gradient(180deg,#e9e3ff 0%,#b9a9ec 100%);box-shadow:inset 0 2px 0 #fff,inset 0 -4px 0 rgba(90,60,160,.35),0 0 16px rgba(190,160,255,.45)}
-.mines-cell[data-state="safe"] .mines-cell-face svg{animation:minesPop .38s cubic-bezier(.2,1.6,.4,1) both}
-.mines-cell[data-state="dim"]{background:rgba(255,255,255,.08);box-shadow:none}
-.mines-cell[data-state="dim"] .mines-cell-face svg{opacity:.28;filter:grayscale(.4)}
-.mines-cell[data-state="mine"]{background:linear-gradient(180deg,#4a2433,#2a141d);box-shadow:inset 0 -3px 0 rgba(0,0,0,.35)}
-.mines-cell[data-state="mine"] .mines-cell-face svg{opacity:.75}
-.mines-cell[data-state="boom"]{background:radial-gradient(circle,#ff6b5a 0%,#c2132c 70%);box-shadow:0 0 24px rgba(255,60,60,.7);animation:minesShake .45s ease}
-.mines-cell[data-state="boom"] .mines-cell-face svg{animation:minesPop .38s cubic-bezier(.2,1.6,.4,1) both}
-@keyframes minesPop{from{transform:scale(.2);opacity:0}to{transform:scale(1);opacity:1}}
-@keyframes minesShake{0%,100%{transform:translateX(0)}20%{transform:translateX(-5px)}40%{transform:translateX(5px)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
-.mines-status{display:flex;justify-content:center;align-items:center;gap:10px;min-height:22px;color:#fff;font-size:17px;font-weight:800;opacity:0;transition:opacity .2s}
+.mines-cell-face svg{width:62%;height:62%}
+.mines-cell[data-state="pending"]{background:rgba(10,132,255,.35);animation:minesPending .6s ease-in-out infinite alternate}
+@keyframes minesPending{from{opacity:.75}to{opacity:1}}
+.mines-cell[data-state="safe"]{background:rgba(10,132,255,.2);box-shadow:inset 0 0 0 1.5px rgba(10,132,255,.75)}
+.mines-cell[data-state="safe"] .mines-cell-face svg{animation:minesPop .32s cubic-bezier(.2,1.5,.4,1) both}
+.mines-cell[data-state="dim"]{background:#232327;box-shadow:none}
+.mines-cell[data-state="dim"] .mines-cell-face svg{opacity:.25}
+.mines-cell[data-state="mine"]{background:#232327;box-shadow:none}
+.mines-cell[data-state="mine"] .mines-cell-face svg{opacity:.7}
+.mines-cell[data-state="boom"]{background:rgba(255,69,58,.28);box-shadow:inset 0 0 0 1.5px #FF453A;animation:minesShake .4s ease}
+.mines-cell[data-state="boom"] .mines-cell-face svg{animation:minesPop .32s cubic-bezier(.2,1.5,.4,1) both}
+@keyframes minesPop{from{transform:scale(.3);opacity:0}to{transform:scale(1);opacity:1}}
+@keyframes minesShake{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}50%{transform:translateX(4px)}75%{transform:translateX(-2px)}}
+.mines-status{display:flex;justify-content:center;align-items:center;gap:10px;min-height:18px;color:#fff;font-size:15px;font-weight:800;opacity:0;transition:opacity .2s}
 .mines-status.visible{opacity:1}
-.mines-status-next{color:rgba(255,255,255,.55);font-size:13px;font-weight:600}
-.mines-panel{display:flex;flex-direction:column;gap:10px;padding:14px;border-radius:22px;background:rgba(28,28,30,.88);border:1px solid rgba(255,255,255,.07)}
+.mines-status-next{color:rgba(255,255,255,.46);font-size:13px;font-weight:600}
+.mines-action{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:52px;border:0;border-radius:999px;cursor:pointer;color:#fff;font:inherit;font-size:16px;font-weight:800;background:#007AFF;box-shadow:0 8px 22px rgba(0,122,255,.25);transition:transform .15s,filter .15s,opacity .2s}
+.mines-action:active{transform:scale(.985);filter:brightness(1.08)}
+.mines-action:disabled{opacity:.72}
+.mines-action.is-wait{background:#2b2b31;box-shadow:none;color:rgba(255,255,255,.55)}
+.mines-action.is-cashout,.mines-action.is-gift{background:#007AFF}
+.mines-action-value{display:inline-flex;align-items:center;gap:4px;color:rgba(255,255,255,.9);font-size:14px;font-weight:800}
+.mines-action-value img{width:16px;height:16px}
+.mines-action-gift{width:28px;height:28px;object-fit:contain}
+.mines-panel{display:flex;flex-direction:column;gap:10px;padding:14px;border-radius:22px;background:rgba(28,28,30,.94);border:1px solid rgba(255,255,255,.08)}
 .mines-panel-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
-.mines-panel-label{color:rgba(255,255,255,.55);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.4px}
-.mines-bet-input{flex:1;display:flex;align-items:center;gap:8px;height:46px;padding:0 12px;border-radius:14px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.08)}
-.mines-bet-input input{flex:1;min-width:0;background:transparent;border:0;outline:none;color:#fff;font-size:18px;font-weight:800}
+.mines-panel-label{color:rgba(255,255,255,.46);font-size:12px;font-weight:700}
+.mines-bet-input{flex:1;min-width:0;display:flex;align-items:center;gap:8px;height:46px;padding:0 14px;border-radius:999px;background:rgba(255,255,255,.1)}
+.mines-bet-input input{flex:1;min-width:0;background:transparent;border:0;outline:none;color:#fff;font:inherit;font-size:17px;font-weight:800}
 .mines-bet-input input:disabled{opacity:.6}
 .mines-bet-input img{width:20px;height:20px}
-.mines-count-stepper{display:flex;align-items:center;height:46px;border-radius:14px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.08);overflow:hidden}
-.mines-count-stepper button{width:40px;height:100%;border:0;background:transparent;color:#fff;font-size:22px;font-weight:700;cursor:pointer}
+.mines-count-stepper{flex:0 0 auto;display:flex;align-items:center;height:46px;border-radius:999px;background:rgba(255,255,255,.1);overflow:hidden}
+.mines-count-stepper button{width:42px;height:100%;border:0;background:transparent;color:#fff;font-size:22px;font-weight:700;cursor:pointer}
 .mines-count-stepper button:disabled{opacity:.3}
-.mines-count-stepper span{min-width:30px;text-align:center;color:#fff;font-size:18px;font-weight:850}
+.mines-count-stepper span{min-width:26px;text-align:center;color:#fff;font-size:17px;font-weight:850}
 .mines-quick-row{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
-.mines-quick{height:34px;border:0;border-radius:11px;background:rgba(255,255,255,.08);color:#fff;font-size:13px;font-weight:700;cursor:pointer}
+.mines-quick{height:36px;border:0;border-radius:999px;background:rgba(255,255,255,.1);color:#fff;font:inherit;font-size:13px;font-weight:750;cursor:pointer}
 .mines-quick:active{filter:brightness(1.3)}
 .mines-quick:disabled{opacity:.35}
 .mines-count-chips{display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:4px}
-.mines-count-chip{height:30px;padding:0;border:0;border-radius:9px;background:rgba(255,255,255,.06);color:rgba(255,255,255,.65);font-size:12px;font-weight:800;cursor:pointer;transition:background .15s,color .15s}
-.mines-count-chip.active{background:linear-gradient(135deg,#7a5bd6,#b48cff);color:#fff}
+.mines-count-chip{height:32px;padding:0;border:0;border-radius:999px;background:rgba(255,255,255,.07);color:rgba(255,255,255,.6);font:inherit;font-size:12px;font-weight:800;cursor:pointer;transition:background .15s,color .15s}
+.mines-count-chip.active{background:#0A84FF;color:#fff}
 .mines-count-chip:disabled:not(.active){opacity:.35}
-.mines-action{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:54px;border:0;border-radius:17px;cursor:pointer;color:#fff;font-size:17px;font-weight:800;
-  background:linear-gradient(135deg,#6f52cf 0%,#a57cff 100%);box-shadow:0 10px 24px rgba(130,90,240,.35);transition:transform .15s,filter .15s}
-.mines-action:active{transform:scale(.985);filter:brightness(1.08)}
-.mines-action:disabled{filter:grayscale(.3) brightness(.8)}
-.mines-action.is-wait{background:rgba(255,255,255,.1);box-shadow:none;color:rgba(255,255,255,.6)}
-.mines-action.is-cashout{background:linear-gradient(135deg,#18b35a 0%,#41d98a 100%);box-shadow:0 10px 24px rgba(40,200,110,.35)}
-.mines-action.is-gift{background:linear-gradient(135deg,#d6338f 0%,#ff7ac2 100%);box-shadow:0 10px 24px rgba(240,80,170,.4)}
-.mines-action-value{display:inline-flex;align-items:center;gap:4px;padding:4px 9px;border-radius:10px;background:rgba(0,0,0,.18)}
-.mines-action-value img{width:17px;height:17px}
-.mines-action-gift{width:30px;height:30px;object-fit:contain}
-.mines-floor-note{color:rgba(255,255,255,.45);font-size:11.5px;text-align:center;line-height:1.3}
+.mines-floor-note{color:rgba(255,255,255,.4);font-size:11.5px;text-align:center;line-height:1.3}
 .mines-round-hash{align-self:center}
-.mines-result-overlay{position:fixed;inset:0;z-index:120;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(0,0,0,.55);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);opacity:0;pointer-events:none;transition:opacity .22s}
-.mines-result-overlay.open{opacity:1;pointer-events:auto}
-.mines-result-card{width:100%;max-width:320px;padding:24px 18px 18px;border-radius:26px;text-align:center;background:linear-gradient(170deg,#3b2b66,#1b1530);border:1px solid rgba(200,170,255,.25);box-shadow:0 20px 50px rgba(0,0,0,.5);transform:scale(.9);transition:transform .25s cubic-bezier(.2,1.4,.4,1)}
-.mines-result-overlay.open .mines-result-card{transform:scale(1)}
-.mines-result-card.is-lost{background:linear-gradient(170deg,#4a1c28,#1d1014);border-color:rgba(255,120,120,.25)}
-.mines-result-title{color:#fff;font-size:24px;font-weight:850}
-.mines-result-image{width:120px;height:120px;object-fit:contain;margin:12px auto 8px;display:block;filter:drop-shadow(0 8px 20px rgba(0,0,0,.4))}
-.mines-result-name{color:rgba(255,255,255,.78);font-size:14px;line-height:1.35;margin-bottom:6px}
-.mines-result-value{display:flex;align-items:center;justify-content:center;gap:6px;color:#ffd34d;font-size:26px;font-weight:900;margin-bottom:16px;min-height:4px}
-.mines-result-value img{width:24px;height:24px}
 .pvp-history-modal-row img.no-photo{visibility:hidden}
-.mines-bet-input{min-width:0}
-.mines-count-stepper{flex:0 0 auto}
-.mines-board-wrap{width:min(100%,48vh,440px);align-self:center;padding:10px}
-.mines-board{gap:7px}
-.mines-board-wrap{width:min(100%,42vh,440px)}
-.mines-page{gap:10px}
-.mines-status{min-height:18px;font-size:15px}

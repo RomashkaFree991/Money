@@ -511,12 +511,16 @@
     if(crashResultSheetBusy)return;
     if(!crashPrizePending||!crashPrizeGift){closeCrashResultSheet();return;}
     crashResultSheetBusy=true;
-    if(crashResultAction){crashResultAction.disabled=true;crashResultAction.textContent=crashResultText('receiving');}
+    // Закрываем окно сразу: подарок зачисляется в фоне, ошибка покажется алертом.
+    playAppSound('reward');
+    // resolveCrashPrize синхронно снимает pending-состояние до сетевого запроса,
+    // поэтому окно можно закрыть сразу после старта.
+    const resolving=resolveCrashPrize('claim');
+    closeCrashResultSheet();
     try{
-      const resolved=await resolveCrashPrize('claim');
+      const resolved=await resolving;
       if(resolved||!crashPrizePending){
-        if(resolved)playAppSound('reward');
-        closeCrashResultSheet();
+        // готово
       }else{
         // The backend says that no pending prize exists. This is an old local
         // preview, not a reason to trap the player in a Receive-only sheet.
@@ -971,7 +975,7 @@
         // A cashout request is only a win after the server confirms it.
         // Keep the card neutral while the request is in flight so a last-millisecond
         // rejection can never flash green and then turn into a loss.
-        setCrashPlayerState(crashBetSettled?'win':null);
+        setCrashPlayerState((crashBetSettled||crashCashoutBusy)?'win':null);
         renderCrashPlayerCard(crashBetAmount);
         renderCrashPlayerWin(crashSettledPayout||crashRenderedWinAmount||crashBetAmount,crashPrizeGift||crashRenderedWinGift,false);
         return;
@@ -990,7 +994,7 @@
 
     if(crashCashoutBusy && viewerBet){
       if(crashBetAmount>0){
-        setCrashPlayerState(null);
+        setCrashPlayerState('win');
         renderCrashPlayerCard(crashBetAmount);
         renderCrashPlayerWin(crashSettledPayout||crashRenderedWinAmount||crashBetAmount,crashPrizeGift||crashRenderedWinGift,false);
       }
@@ -1024,8 +1028,8 @@
       // A stale poll can arrive after the cashout tap but before the cashout
       // response. Never paint that temporary snapshot red.
       if(crashCashoutBusy){
-        // Stale poll while cashout is pending: stay neutral until HTTP confirmation.
-        setCrashPlayerState(null);
+        // Stale poll while cashout is pending: keep the tapped win until HTTP confirmation.
+        setCrashPlayerState('win');
         renderCrashPlayerWin(crashSettledPayout||crashRenderedWinAmount||crashBetAmount,crashPrizeGift||crashRenderedWinGift,false);
         return;
       }
@@ -1209,8 +1213,8 @@
     }
     if(crashCashoutBusy){
       // The round may already be visually ended while the cashout response is
-      // still on the wire. Do not claim a win before the backend confirms it.
-      setCrashPlayerState(null);
+      // still on the wire. Keep the tapped win; a rejection repaints it as a loss.
+      setCrashPlayerState('win');
       renderCrashPlayerWin(crashSettledPayout||crashRenderedWinAmount||crashBetAmount,crashPrizeGift||crashRenderedWinGift);
     }else if(crashBetSettled){
       setCrashPlayerState('win');
@@ -1596,11 +1600,15 @@
     crashSettledPayout=livePayout;
     crashPrizeGift=null;
     crashPrizePending=false;
+    // Мгновенно фиксируем карточку на нажатой сумме — без ожидания сервера.
     renderCrashPlayerCard(crashBetAmount);
-    renderCrashPlayerWin(livePayout,null);
-    setCrashPlayerState(null);
+    renderCrashPlayerWin(livePayout,optimisticGift);
+    setCrashPlayerState('win');
+    crashLivePlayerLastAmount=livePayout;
     betBtn.classList.add('dim');
-    betBtn.textContent=t('cashOut')+'…';
+    betBtn.textContent=t('placeBet');
+    try{tg?.HapticFeedback?.impactOccurred?.('medium');}catch(_){}
+    playAppSound('reward');
 
     try{
       const resp=await fetch(API_BASE+'/api/crash/cashout',{
@@ -1648,7 +1656,9 @@
         updateCrashWaitLabel(data.state.betsCount||0);
       }
 
-      const win=Number(data.payout||0);
+      const finalPrizeForWin=data.pendingPrize||data.awardedGift||null;
+      // Сумма не может «уехать» выше нажатой: для подарка берём его зафиксированную цену.
+      const win=Math.min(livePayout||Infinity,Number(finalPrizeForWin?.price||data.payout||livePayout||0))||Number(data.payout||0);
 
       crashCashoutBusy=false;
       crashBetActive=false;
@@ -1659,7 +1669,7 @@
       if(finalPrize){
         // A gift cashout must NOT visually credit Stars. The balance only changes
         // after the player explicitly chooses Sell in the prize modal.
-        enterPendingCrashPrize(finalPrize,win,crashBetAmount,{force:true,autoOpen:false,roundId});
+        enterPendingCrashPrize({...finalPrize,price:win},win,crashBetAmount,{force:true,autoOpen:false,roundId});
         return;
       }
 
