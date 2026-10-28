@@ -332,6 +332,9 @@
     });
   }
   // CRASH PHASE/CASHOUT FIX: global 5s hold, no stale rows, idempotent cashout UI.
+  const CRASH_MAX_EXTRAPOLATE_MS=350;
+  const CRASH_POLL_LIVE_MS=200;
+  const CRASH_POLL_IDLE_MS=500;
   function computeCrashMultiplier(state,now=getServerNow()){
     if(!state)return 1;
     const snapshot=Math.max(1,Number(state.lastCrashMultiplier||state.liveMultiplier||1));
@@ -341,7 +344,9 @@
     // Браузер не знает секретную точку crashAt. Поэтому он может продолжать
     // число лишь коротко от последнего серверного снимка: иначе UI способен
     // показать 13.65x, когда серверный раунд уже завершился на 3.84x.
-    const ahead=Math.max(0,Math.min(1200,now-snapshotAt));
+    // Дорисовываем не дальше ~интервала опроса: иначе экран уходил выше реального взрыва
+    // (показывало 1.36x, а раунд уже закончился на 1.17x).
+    const ahead=Math.max(0,Math.min(CRASH_MAX_EXTRAPOLATE_MS,now-snapshotAt));
     return snapshot*Math.exp(ahead/growth);
   }
   function stopCrashRocket(){
@@ -1359,7 +1364,14 @@
     crashRealtimeStarted=true;
     const viewSession=crashViewSession;
     if(!crashRealtimeTimer){
-      crashRealtimeTimer=setInterval(()=>refreshCrashState(true,false,crashViewSession),500);
+      // Во время полёта опрашиваем чаще, чтобы взрыв приходил без задержки.
+      let lastPollAt=0;
+      crashRealtimeTimer=setInterval(()=>{
+        const live=deriveCrashDisplayPhase(crashRealtimeState)==='live';
+        if(Date.now()-lastPollAt<(live?CRASH_POLL_LIVE_MS:CRASH_POLL_IDLE_MS))return;
+        lastPollAt=Date.now();
+        refreshCrashState(true,false,crashViewSession);
+      },100);
     }
     if(!crashRealtimeFrame&&document.visibilityState==='visible'){
       crashRealtimeFrame=requestAnimationFrame(renderCrashRealtimeFrame);

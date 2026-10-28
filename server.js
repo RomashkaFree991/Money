@@ -103,7 +103,7 @@ app.use('/api/crash', (req, res, next) => {
 });
 app.use('/api', rateLimit({
   windowMs: 60_000,
-  limit: 300,
+  limit: 900,
   standardHeaders: 'draft-8',
   legacyHeaders: false,
   handler: (_req, res) => res.status(429).json({
@@ -2244,8 +2244,26 @@ function invalidateCrashSharedSnapshot() {
 }
 
 // CRASH BACKGROUND RECOVERY FIX: an old pending prize cannot lock future rounds.
+// Снимок из БД может отставать на время запроса к Supabase. Сервер знает точку
+// взрыва, поэтому сам переводит раунд в 'ended' ровно в crashAt — клиент не рисует
+// множитель дальше реального взрыва.
+function effectiveCrashState(state, now = Date.now()) {
+  if (!state || state.phase !== 'live' || !state.crashAt || now < state.crashAt) return state;
+  const multiplier = round2(state.crashMultiplier || 1);
+  const history = Array.isArray(state.history) ? state.history : [];
+  const hasRound = history.some((entry) => Number(entry?.roundId || 0) === Number(state.roundId));
+  return {
+    ...state,
+    phase: 'ended',
+    nextRoundAt: Number(state.nextRoundAt || 0) || Number(state.crashAt) + CRASH.resetMs,
+    history: hasRound ? history : [{ roundId: state.roundId, multiplier }, ...history].slice(0, CRASH.historyLimit),
+  };
+}
+
 async function serializeCrashState(userId = null, forceSnapshot = false) {
-  const { state, bets } = await getCrashSharedSnapshot(forceSnapshot);
+  const snapshot = await getCrashSharedSnapshot(forceSnapshot);
+  const bets = snapshot.bets;
+  const state = effectiveCrashState(snapshot.state);
   const viewerRow = userId
     ? bets.find((bet) => String(bet.userId) === String(userId)) || null
     : null;
