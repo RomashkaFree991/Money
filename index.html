@@ -13,7 +13,7 @@
   <link rel="preload" as="image" href="assets/Mines_banner.webp" fetchpriority="high">
   <link rel="preload" as="image" href="assets/PVP_Arena_banner.webp">
   <link rel="preload" as="image" href="assets/Upgrade_banner.webp">
-  <link rel="stylesheet" href="css/app.css?v=20261028-ui4">
+  <link rel="stylesheet" href="css/app.css?v=20261028-ui5">
 </head>
 <body>
   <div class="boot-screen" id="bootScreen">
@@ -227,15 +227,15 @@
   <!-- CASES -->
   <div class="page" id="casesPage">
     <div class="cases-page">
-      <article class="sailor-case-card" role="button" tabindex="0" data-case-open="true" data-case-name="Sailor Moon">
-        <div class="sailor-case-glow" aria-hidden="true"></div>
-        <div class="sailor-case-info">
-          <div class="sailor-case-badge" data-i18n="casesSailorBadge">Шанс на Sailor Moon</div>
-          <div class="sailor-case-title">Sailor Moon</div>
-          <div class="sailor-case-desc" data-i18n="casesSailorDesc">NFT Joyful Bundle с моделью Sailor Moon за 0.1 Gram</div>
-          <div class="sailor-case-price"><img src="assets/ton.webp" alt="Gram"><span>0.1 Gram</span><span class="sailor-case-stars">· <span class="admin-case-price-value">9</span> <img src="assets/star.png" alt="Stars"></span></div>
+      <article class="jackpot-case-card" role="button" tabindex="0" data-case-open="true" data-case-name="Plush Pepe">
+        <div class="jackpot-case-glow" aria-hidden="true"></div>
+        <div class="jackpot-case-info">
+          <div class="jackpot-case-badge" data-i18n="casesJackpotBadge">Шанс на Plush Pepe</div>
+          <div class="jackpot-case-title">Plush Pepe</div>
+          <div class="jackpot-case-desc" data-i18n="casesJackpotDesc">Самый дорогой подарок Telegram за 0.1 Gram</div>
+          <div class="jackpot-case-price"><img src="assets/ton.webp" alt="Gram"><span>0.1 Gram</span><span class="jackpot-case-stars">· <span class="admin-case-price-value">9</span> <img src="assets/star.png" alt="Stars"></span></div>
         </div>
-        <img class="sailor-case-image" src="https://cdn.changes.tg/gifts/models/Joyful%20Bundle/png/Sailor%20Moon.png" alt="Sailor Moon" decoding="async">
+        <img class="jackpot-case-image" src="https://cdn.changes.tg/gifts/originals/5936013938331222567/Original.png" alt="Plush Pepe" decoding="async">
       </article>
 
       <div class="admin-cases-group">
@@ -314,6 +314,7 @@
         <button type="button" class="crash-prize-sell" id="minesResultSell" hidden><span data-i18n="sell">Продать</span> <span id="minesResultSellValue">0</span><img src="assets/star.png" alt=""></button>
         <button type="button" class="crash-prize-claim" id="minesResultClose" data-i18n="claim">Забрать</button>
       </div>
+      <button type="button" class="gift-modal-link" id="minesResultUpgrade" data-i18n="toUpgrade" hidden>В апгрейд</button>
     </div>
   </div>
 
@@ -491,6 +492,7 @@
         <span class="crash-result-progress"><span class="crash-result-progress-fill" id="crashResultProgress"></span></span>
       </div>
       <button type="button" class="crash-result-action" id="crashResultAction">Закрыть</button>
+      <button type="button" class="gift-modal-link" id="crashResultUpgrade" data-i18n="toUpgrade" hidden>В апгрейд</button>
     </div>
   </div>
 
@@ -503,6 +505,7 @@
       <div class="gift-modal-actions">
         <button class="crash-prize-claim" id="upgradeModalCloseBtn">OK</button>
       </div>
+      <button type="button" class="gift-modal-link" id="upgradeModalAgain" data-i18n="toUpgrade" hidden>В апгрейд</button>
     </div>
   </div>
 
@@ -626,12 +629,12 @@
   </nav>
 
 </div>
-  <script defer src="js/core/runtime.js?v=20261028-ui4"></script>
-  <script defer src="js/core/state.js?v=20261028-ui4"></script>
-  <script defer src="js/modes/crash.js?v=20261028-ui4"></script>
-  <script defer src="js/modes/pvp.js?v=20261028-ui4"></script>
-  <script defer src="js/modes/mines.js?v=20261028-ui4"></script>
-  <script defer src="js/app.js?v=20261028-ui4"></script>
+  <script defer src="js/core/runtime.js?v=20261028-ui5"></script>
+  <script defer src="js/core/state.js?v=20261028-ui5"></script>
+  <script defer src="js/modes/crash.js?v=20261028-ui5"></script>
+  <script defer src="js/modes/pvp.js?v=20261028-ui5"></script>
+  <script defer src="js/modes/mines.js?v=20261028-ui5"></script>
+  <script defer src="js/app.js?v=20261028-ui5"></script>
 <div class="admin-overlay" id="adminOverlay">
   <div class="admin-sheet">
     <h2>🔧 Админ-панель <button class="admin-close" type="button">✕</button></h2>

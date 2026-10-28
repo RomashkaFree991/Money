@@ -351,6 +351,8 @@
       value.innerHTML=formatStars(data.payout)+' <img src="assets/star.png" alt="">';
       closeBtn.textContent=minesResultGift?t('claim'):'OK';
     }
+    const upgradeBtn=document.getElementById('minesResultUpgrade');
+    if(upgradeBtn)upgradeBtn.hidden=!minesResultGift;
     minesResultOverlay?.classList.add('open');
   }
   async function sellMinesResultGift(){
@@ -404,5 +406,8 @@
   minesHashBtn?.addEventListener('click',()=>copyRoundHash((minesGame||minesFinished)?.hash,minesHashBtn));
   document.getElementById('minesResultClose')?.addEventListener('click',closeMinesResult);
   document.getElementById('minesResultSell')?.addEventListener('click',sellMinesResultGift);
+  document.getElementById('minesResultUpgrade')?.addEventListener('click',()=>{
+    if(minesResultGift&&openUpgradeWithGift(minesResultGift.id))closeMinesResult();
+  });
   minesResultOverlay?.addEventListener('click',event=>{if(event.target===minesResultOverlay)closeMinesResult();});
   renderMinesUI();

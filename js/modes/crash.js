@@ -609,6 +609,7 @@
         crashResultPrizeName.textContent=String(gift.name||'Gift');
         crashResultPrize.classList.add('visible');
         crashResultAction.textContent=crashResultText('receive');
+        if(crashResultUpgradeBtn)crashResultUpgradeBtn.hidden=false;
       }else{
         // Win below minimum NFT price: backend already credited Stars.
         const starWin=Math.max(0,Number(viewer?.payout||viewer?.displayAmount||0));
@@ -626,6 +627,7 @@
       crashResultAction.textContent=crashResultText('close');
     }
 
+    if(crashResultUpgradeBtn&&!crashResultSheetWon)crashResultUpgradeBtn.hidden=true;
     crashResultAction.disabled=false;
     crashResultOverlay.classList.add('open');
 
@@ -1808,6 +1810,20 @@
   bindFastTap(crashResultAction,()=>{
     if(crashResultSheetWon) claimCrashResultPrizeAndClose(false);
     else closeCrashResultSheet();
+  });
+  // «В апгрейд»: забираем подарок в инвентарь и сразу открываем его в Апгрейде.
+  const crashResultUpgradeBtn=document.getElementById('crashResultUpgrade');
+  crashResultUpgradeBtn?.addEventListener('click',async()=>{
+    const prize=crashPrizeGift?normalizeCrashPrizeGift(crashPrizeGift):null;
+    if(!prize||crashResultSheetBusy)return;
+    crashResultSheetBusy=true;
+    const resolving=resolveCrashPrize('claim');
+    closeCrashResultSheet();
+    try{
+      await resolving;
+      openUpgradeWithGift(entry=>String(entry.name)===String(prize.name)&&!String(entry.id).startsWith('temp_'))
+        ||openUpgradeWithGift(entry=>String(entry.name)===String(prize.name));
+    }finally{crashResultSheetBusy=false;}
   });
   bindFastTap(crashPrizeSellBtn,()=>resolveCrashPrize('sell'));
   bindFastTap(crashPrizeClaimBtn,()=>resolveCrashPrize('claim'));

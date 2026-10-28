@@ -90,8 +90,8 @@
     'Spider-man':{price:349,targets:[2500,2000,1500,1200,1000,900,700,500,450,420,399,350,100,50,25,15]},
     'FARM':{price:67,targets:[700,575,500,450,420,399,380,365,350,340,339,338,100,50,25,15]},
     'Каникулы':{price:169,targets:[1200,1000,900,800,700,575,500,450,420,399,380,350,100,50,25,15]},
-    // 0.1 Gram. Единственный подарок — Sailor Moon, остальное Stars.
-    'Sailor Moon':{price:Math.round(0.1*GRAM_TO_STARS),sailorMoonOnly:true},
+    // 0.1 Gram. Единственный подарок — Plush Pepe, остальное Stars.
+    'Plush Pepe':{price:Math.round(0.1*GRAM_TO_STARS),jackpotOnly:true},
   };
   const CASE_NAME_KEYS={'Стандартный':'caseStandard','Эконом':'caseEconom','Работяга':'caseWorker','Олигарх':'caseOligarch','Ежедневный':'caseDaily','Каникулы':'caseHoliday'};
   function caseDisplayName(name){return CASE_NAME_KEYS[name]?t(CASE_NAME_KEYS[name]):name;}
@@ -150,7 +150,10 @@
     return {...gift,name:label||gift.name,price:Number(price),weight,type:'gift'};
   }
   function getCaseGifts(config){
-    if(config.sailorMoonOnly)return [{...SAILOR_MOON_GIFT,type:'gift'},{...STAR_REWARDS[1]},{...STAR_REWARDS[0]}];
+    if(config.jackpotOnly){
+      const plushPepe=GIFT_CATALOG.find(gift=>String(gift.id)===PLUSH_PEPE_ID);
+      return [{...plushPepe,type:'gift'},{...STAR_REWARDS[1]},{...STAR_REWARDS[0]}];
+    }
     const used=new Set();
     if(config.starsOnly){
       const daily=[
@@ -565,9 +568,16 @@
     }
     upgradeModalName.textContent=normalized.name||'Gift';
     upgradeModalPrice.innerHTML=formatStars(normalized.price||0)+' <img src="assets/star.png" alt="">';
+    upgradeModalWonId=gift.id||null;
+    const again=document.getElementById('upgradeModalAgain');
+    if(again)again.hidden=!upgradeModalWonId;
     upgradeModalOverlay.classList.add('open');
   }
+  let upgradeModalWonId=null;
   upgradeModalCloseBtn.addEventListener('click',()=>upgradeModalOverlay.classList.remove('open'));
+  document.getElementById('upgradeModalAgain')?.addEventListener('click',()=>{
+    if(upgradeModalWonId&&openUpgradeWithGift(upgradeModalWonId))upgradeModalOverlay.classList.remove('open');
+  });
   upgradeModalOverlay.addEventListener('click',e=>{if(e.target===upgradeModalOverlay) upgradeModalOverlay.classList.remove('open')});
 
   const UPGRADE_SPIN_MS=5200;
