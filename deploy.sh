@@ -35,7 +35,7 @@ export DEBIAN_FRONTEND=noninteractive
 
 log "Системные пакеты"
 apt-get update -qq
-apt-get install -y -qq curl git nginx certbot rsync ca-certificates gnupg openssl </dev/null >/dev/null
+apt-get install -y -qq curl git nginx certbot rsync ca-certificates gnupg openssl iproute2 </dev/null >/dev/null
 if systemctl is-active --quiet apache2 2>/dev/null; then
   warn "apache2 занимает порт 80 — останавливаю"
   systemctl disable --now apache2 || true
@@ -137,9 +137,27 @@ set_env RELAYER_INTERNAL_KEY "$(rand 24)"
 set_env MINI_APP_URL "https://$DOMAIN"
 set_env PUBLIC_BASE_URL "https://$API_DOMAIN"
 set_env WEBHOOK_URL "https://$API_DOMAIN/webhook"
-set_env BACKEND_URL "http://127.0.0.1:3000"
+# Порты могут быть заняты другими проектами на сервере — их не трогаем, а берём свободный.
+pm2 delete giftpep-api giftpep-relayer >/dev/null 2>&1 || true
+port_busy() { # кто-то уже слушает порт?
+  (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null && return 0
+  ss -ltnH "( sport = :$1 )" 2>/dev/null | grep -q .
+}
+free_port() { local p="$1"; while port_busy "$p"; do p=$((p + 1)); done; echo "$p"; }
 PORT="$(env_get PORT | tr -d '" ')"
 PORT="${PORT:-3000}"
+if port_busy "$PORT"; then
+  NEW_PORT="$(free_port 3100)"
+  warn "Порт $PORT занят другим приложением — Gift Pepe API будет на $NEW_PORT"
+  PORT="$NEW_PORT"
+fi
+env_put PORT "$PORT"
+env_put BACKEND_URL "http://127.0.0.1:$PORT"
+RELAYER_PORT="$(env_get RELAYER_HTTP_PORT | tr -d '" ')"
+RELAYER_PORT="${RELAYER_PORT:-4011}"
+if port_busy "$RELAYER_PORT"; then RELAYER_PORT="$(free_port 4111)"; fi
+env_put RELAYER_HTTP_PORT "$RELAYER_PORT"
+env_put RELAYER_URL "http://127.0.0.1:$RELAYER_PORT"
 for key in BOT_TOKEN SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY ADMIN_KEY TELEGRAM_WEBHOOK_SECRET RELAYER_INTERNAL_KEY; do
   [ -n "$(env_get "$key")" ] || die "В $APP_DIR/.env не заполнен $key"
 done
@@ -179,10 +197,16 @@ for f in $(grep -rlsE "server_name[^;]*(${DOMAIN//./\\.}|${API_DOMAIN//./\\.})" 
   warn "Старый конфиг $f перенесён в /etc/nginx/giftpep-backup"
 done
 
+nginx_supports_http2_on() { # директива `http2 on;` появилась в nginx 1.25.1
+  local v; v="$(nginx -v 2>&1 | sed -nE 's#.*nginx/([0-9]+)\.([0-9]+)\.([0-9]+).*#\1 \2 \3#p')"
+  set -- $v
+  [ -n "${1:-}" ] && { [ "$1" -gt 1 ] || { [ "$1" -eq 1 ] && { [ "$2" -gt 25 ] || { [ "$2" -eq 25 ] && [ "$3" -ge 1 ]; }; }; }; }
+}
 write_nginx() { # $1 = with_ssl|no_ssl
   local listen_main="listen 80;" ssl=""
   if [ "$1" = with_ssl ]; then
-    listen_main="listen 443 ssl http2;"
+    listen_main="listen 443 ssl; http2 on;"
+    nginx_supports_http2_on || listen_main="listen 443 ssl http2;"
     ssl="ssl_certificate $CERT_DIR/fullchain.pem; ssl_certificate_key $CERT_DIR/privkey.pem; ssl_protocols TLSv1.2 TLSv1.3;"
   fi
   local redirect=""
@@ -255,17 +279,7 @@ else
 fi
 
 log "PM2"
-# Останавливаем старые процессы этого проекта (server.js/relayer.js из других папок), чтобы не занимали порт.
-pm2 jlist 2>/dev/null | node -e '
-  let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
-    let list=[];try{list=JSON.parse(s)}catch{}
-    for(const p of list){
-      const script=String(p?.pm2_env?.pm_exec_path||"");
-      if(/(^|\/)(server|relayer)\.js$/.test(script)&&!p.name.startsWith("giftpep-"))console.log(p.name);
-    }
-  })' | while read -r old; do
-  [ -n "$old" ] && { warn "Удаляю старый PM2-процесс $old"; pm2 delete "$old" >/dev/null || true; }
-done
+# Чужие PM2-процессы на сервере не трогаем — перезапускаем только giftpep-*.
 pm2 delete giftpep-api giftpep-relayer >/dev/null 2>&1 || true
 pm2 start ecosystem.config.cjs --update-env >/dev/null
 pm2 save >/dev/null
