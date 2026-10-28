@@ -242,10 +242,10 @@
   let sheetLottieAnim=null;
   let trophyLottieAnim=null;
 
-  // Самый дорогой подарок проекта (1200 Gram). Сервер может переопределить id/картинку через /api/market-prices.
+  // Sailor Moon — модель NFT из коллекции Joyful Bundle. Сервер присылает актуальные данные через /api/market-prices.
   const GRAM_TO_STARS=90;
   const MAX_GIFT_PRICE_STARS=1200*GRAM_TO_STARS;
-  const SAILOR_MOON_GIFT={name:'Sailor Moon',price:MAX_GIFT_PRICE_STARS,id:'sailor_moon',image:'assets/sailor_moon.webp'};
+  const SAILOR_MOON_GIFT={name:'Sailor Moon',price:19*GRAM_TO_STARS,id:'sailor_moon',collection:'Joyful Bundle',image:'https://cdn.changes.tg/gifts/models/Joyful%20Bundle/png/Sailor%20Moon.png'};
   const GIFT_CATALOG=[
     {name:'Шампанское',price:50,id:'6028601630662853006',image:'https://cdn.changes.tg/gifts/originals/6028601630662853006/Original.png'},
     {name:'Алмаз',price:100,id:'5170521118301225164',image:'https://cdn.changes.tg/gifts/originals/5170521118301225164/Original.png'},
@@ -276,12 +276,12 @@
       giftUnlocked:'Ваш подарок', claim:'Забрать', sell:'Продать', support:'Поддержка', language:'Язык', saveAndExit:'Сохранить и выйти', topup:'Пополнение', stars:'Звезды', ton:'Gram',
       topupBtn:'Пополнить', connectWallet:'Подключить кошелек', disconnectWallet:'Отключить кошелек', bet:'Ставка', top:'Топ', crash:'Краш', upgrade:'Апгрейд', profileNav:'Профиль', giftReady:'Подарок', giftOpened:'Подарок открыт',
       sellAll:'Продать все', withdraw:'Вывести', withdrawSoon:'Выводится...', giftWord1:'подарок', giftWord2:'подарка', giftWord5:'подарков', referralBack:'Назад', invited:'Приглашено', earned:'Заработано', invite:'Пригласить', referralLink:'Реферальная ссылка', copied:'Скопировано', addGift:'Добавить подарок', chance:'Шанс', chanceEmpty:'Шанс —', tonLoading:'Подключаем кошелёк...', tonNeedWallet:'Подключи TON кошелёк...', tonNotConnected:'TON кошелёк не подключён', tonOpening:'Открываем оплату Gram...', tonConfirm:'Подтверждаем пополнение Gram...', loading:'Загрузка...', loadingWait:'Подождите немного', promoUnavailable:'Промокод недоступен', upgradeFailed:'Апгрейд не удался', openTelegramPay:'Открой в Telegram для оплаты', creatingInvoice:'Создаём инвойс...', openingPayment:'Открываем оплату...', checkingPayment:'Проверяем оплату...', paymentDelayed:'Оплата принята, но подтверждение задержалось. Баланс обновится чуть позже.', paymentFailed:'Оплата не прошла. Попробуй снова.', paymentCancelled:'Оплата отменена.', errorPrefix:'Ошибка: ', topPlaceAt:'Вы в топе на <b>{rank}</b> месте', topNotYet:'Вы ещё не в топе', now:'Сейчас', soonPrefix:'Оч',
-      cases:'Кейсы', casesRegular:'Обычные кейсы', casesFree:'Бесплатные кейсы', casesLimited:'Лимитированные кейсы', casesSailorBadge:'Шанс на Sailor Moon', casesSailorDesc:'Самый дорогой подарок проекта всего за 0.1 Gram',
+      cases:'Кейсы', casesRegular:'Обычные кейсы', casesFree:'Бесплатные кейсы', casesLimited:'Лимитированные кейсы', casesSailorBadge:'Шанс на Sailor Moon', casesSailorDesc:'NFT Joyful Bundle с моделью Sailor Moon за 0.1 Gram',
       caseStandard:'Стандартный', caseEconom:'Эконом', caseWorker:'Работяга', caseOligarch:'Олигарх', caseDaily:'Ежедневный', caseHoliday:'Каникулы', caseDefault:'Кейс',
       caseOpen:'Открыть', caseChecking:'Проверяем…', caseSpinning:'Крутится…', caseGiftsHeading:'Подарки в кейсе', caseNextOpen:'Следующее открытие через', caseOpenFailed:'Не удалось открыть кейс', toUpgrade:'В апгрейд', sellFailed:'Продажа не удалась', giftWord:'Подарок',
       bank:'Банк', history:'История', historyEmpty:'История пока пуста', game:'Игра', close:'Закрыть', youWon:'Вы выиграли', nextBetIn:'До следующей ставки', untilEnd:'ДО КОНЦА', retry:'Повторить',
       betsClosed:'Ставки закрыты: таймер уже закончился', minBet:'Минимальная ставка {n}⭐', notEnoughStars:'Недостаточно Stars', hashCopied:'Hash скопирован',
-      minesBet:'Ставка', minesCount:'Мины', minesPlay:'Играть', minesCashout:'Забрать', minesCashoutGift:'Забрать подарок', minesPickCell:'Откройте клетку', minesNext:'Следующий', minesFloorNote:'От {n}⭐ выигрыш автоматически становится подарком', minesWinTitle:'Победа!', minesLoseTitle:'Мина!', minesLoseText:'Ставка сгорела. Попробуйте ещё раз', minesGiftAdded:'Подарок добавлен в инвентарь', minesStarsAdded:'Stars зачислены на баланс', minesGameActive:'Сначала завершите текущую игру', minesStartFailed:'Не удалось начать игру', winner:'Победитель', player:'Игрок', gameStarted:'Игра началась', roundStarting:'Раунд начинается', crashError:'Ошибка Crash', crashUnavailable:'Crash недоступен'
+      minesBet:'Ставка', minesCount:'Мины', minesPlay:'Играть', minesCashout:'Забрать', minesCashoutGift:'Забрать подарок', minesPickCell:'Откройте клетку', minesNext:'Следующий', minesFloorNote:'От {n}⭐ выигрыш автоматически становится подарком', minesWinTitle:'Победа!', minesLoseTitle:'Мина!', minesLoseText:'Ставка сгорела. Попробуйте ещё раз', minesGiftAdded:'Подарок добавлен в инвентарь', minesStarsAdded:'Stars зачислены на баланс', minesGameActive:'Сначала завершите текущую игру', minesStartFailed:'Не удалось начать игру', winner:'Победитель', player:'Игрок', gameStarted:'Игра началась', roundStarting:'Раунд начинается', crashError:'Ошибка Crash', crashUnavailable:'Crash недоступен', betQueued:'Ставка {n} на след. раунд · отмена'
     },
     en:{
       topPlace:'You are in the top at <b>—</b> place', waitingDots:'Waiting...', profile:'Profile', promocodes:'Promo codes', promoPlaceholder:'Enter promo code', apply:'Apply',
@@ -292,12 +292,12 @@
       giftUnlocked:'Your gift', claim:'Claim', sell:'Sell', support:'Support', language:'Language', saveAndExit:'Save and exit', topup:'Top up', stars:'Stars', ton:'Gram',
       topupBtn:'Top up', connectWallet:'Connect wallet', disconnectWallet:'Disconnect wallet', bet:'Bet', top:'Top', crash:'Crash', upgrade:'Upgrade', profileNav:'Profile', giftReady:'Gift', giftOpened:'Gift opened',
       sellAll:'Sell all', withdraw:'Withdraw', withdrawSoon:'Withdrawing...', giftWord1:'gift', giftWord2:'gifts', giftWord5:'gifts', referralBack:'Back', invited:'Invited', earned:'Earned', invite:'Invite', referralLink:'Referral link', copied:'Copied', addGift:'Add gift', chance:'Chance', chanceEmpty:'Chance —', tonLoading:'Connecting wallet...', tonNeedWallet:'Connect TON wallet...', tonNotConnected:'TON wallet is not connected', tonOpening:'Opening Gram payment...', tonConfirm:'Confirming Gram top up...', loading:'Loading...', loadingWait:'Please wait a bit', promoUnavailable:'Promo code unavailable', upgradeFailed:'Upgrade failed', openTelegramPay:'Open in Telegram to pay', creatingInvoice:'Creating invoice...', openingPayment:'Opening payment...', checkingPayment:'Checking payment...', paymentDelayed:'Payment is accepted, but confirmation is delayed. Balance will update a bit later.', paymentFailed:'Payment failed. Try again.', paymentCancelled:'Payment cancelled.', errorPrefix:'Error: ', topPlaceAt:'You are in the top at <b>{rank}</b> place', topNotYet:'You are not in the top yet', now:'Now', soonPrefix:'In',
-      cases:'Cases', casesRegular:'Regular cases', casesFree:'Free cases', casesLimited:'Limited cases', casesSailorBadge:'Chance for Sailor Moon', casesSailorDesc:'The most valuable gift for just 0.1 Gram',
+      cases:'Cases', casesRegular:'Regular cases', casesFree:'Free cases', casesLimited:'Limited cases', casesSailorBadge:'Chance for Sailor Moon', casesSailorDesc:'Joyful Bundle NFT with the Sailor Moon model for 0.1 Gram',
       caseStandard:'Standard', caseEconom:'Economy', caseWorker:'Worker', caseOligarch:'Oligarch', caseDaily:'Daily', caseHoliday:'Holidays', caseDefault:'Case',
       caseOpen:'Open', caseChecking:'Checking…', caseSpinning:'Spinning…', caseGiftsHeading:'Gifts in this case', caseNextOpen:'Next opening in', caseOpenFailed:'Could not open the case', toUpgrade:'Upgrade', sellFailed:'Sale failed', giftWord:'Gift',
       bank:'Bank', history:'History', historyEmpty:'No history yet', game:'Game', close:'Close', youWon:'You won', nextBetIn:'Next bet in', untilEnd:'ENDS IN', retry:'Retry',
       betsClosed:'Bets are closed: the timer has ended', minBet:'Minimum bet is {n}⭐', notEnoughStars:'Not enough Stars', hashCopied:'Hash copied',
-      minesBet:'Bet', minesCount:'Mines', minesPlay:'Play', minesCashout:'Cash out', minesCashoutGift:'Claim gift', minesPickCell:'Open a cell', minesNext:'Next', minesFloorNote:'From {n}⭐ your win automatically becomes a gift', minesWinTitle:'You won!', minesLoseTitle:'Boom!', minesLoseText:'The bet is lost. Try again', minesGiftAdded:'Gift added to your inventory', minesStarsAdded:'Stars added to your balance', minesGameActive:'Finish the current game first', minesStartFailed:'Could not start the game', winner:'Winner', player:'Player', gameStarted:'Game started', roundStarting:'Round is starting', crashError:'Crash error', crashUnavailable:'Crash unavailable'
+      minesBet:'Bet', minesCount:'Mines', minesPlay:'Play', minesCashout:'Cash out', minesCashoutGift:'Claim gift', minesPickCell:'Open a cell', minesNext:'Next', minesFloorNote:'From {n}⭐ your win automatically becomes a gift', minesWinTitle:'You won!', minesLoseTitle:'Boom!', minesLoseText:'The bet is lost. Try again', minesGiftAdded:'Gift added to your inventory', minesStarsAdded:'Stars added to your balance', minesGameActive:'Finish the current game first', minesStartFailed:'Could not start the game', winner:'Winner', player:'Player', gameStarted:'Game started', roundStarting:'Round is starting', crashError:'Crash error', crashUnavailable:'Crash unavailable', betQueued:'Bet {n} next round · cancel'
     }
   };
   // Force the new GiftPep build to start in English once, even if an older build saved RU.
@@ -368,7 +368,10 @@
       if(!r.ok) return;
       const d=await r.json().catch(()=>({}));
       const prices=d&&d.prices||{};
-      if(d?.sailorMoon?.id) Object.assign(SAILOR_MOON_GIFT,d.sailorMoon);
+      if(d?.sailorMoon?.id){
+        Object.assign(SAILOR_MOON_GIFT,d.sailorMoon);
+        document.querySelectorAll('.sailor-case-image').forEach(img=>{img.src=SAILOR_MOON_GIFT.image;});
+      }
       if(Number(d?.minesGiftFloor)>0) minesGiftFloorStars=Number(d.minesGiftFloor);
       for(const g of GIFT_CATALOG){
         const id=String(g.id||g.giftId||'');

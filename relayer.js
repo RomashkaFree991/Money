@@ -201,8 +201,10 @@ function normalizeGiftName(value) {
 
 // Used only to reserve a physical NFT for a virtual game reward.
 // The actual /transfer endpoint never does fuzzy matching: it receives the exact msgId/slug selected here.
-async function findSavedGiftCandidates(client, { giftId, giftName, giftPrice, limit = 25 }) {
+async function findSavedGiftCandidates(client, { giftId, giftName, giftPrice, giftModel = '', limit = 25 }) {
   const targetId = String(giftId || '').trim();
+  // Например Sailor Moon: нужна NFT коллекции именно с этой моделью.
+  const targetModel = normalizeGiftName(giftModel);
   const targetName = normalizeGiftName(giftName);
   if (!targetId && !targetName) return [];
 
@@ -226,6 +228,10 @@ async function findSavedGiftCandidates(client, { giftId, giftName, giftPrice, li
       const msgId = Number(sg?.msgId || sg?.savedId || sg?.savedStarGiftId || 0) || null;
       if (!slug && !msgId) continue;
       const stars = Number(inner?.stars || sg?.convertStars || 0);
+      if (targetModel) {
+        const model = (inner?.attributes || []).find((attr) => String(attr?.className || '').includes('Model'));
+        if (normalizeGiftName(model?.name) !== targetModel) continue;
+      }
       const item = { msgId, slug, giftId: candidateIds[0] || '', title, stars, isUnique: true };
       const idMatched = !!targetId && candidateIds.includes(targetId);
       if (idMatched) exact.push(item);
@@ -454,13 +460,14 @@ function startHttpServer() {
         const giftId = body.giftId ? String(body.giftId).trim() : '';
         const giftName = String(body.giftName || '').trim();
         const giftPrice = Number(body.giftPrice || 0);
+        const giftModel = String(body.giftModel || '').trim();
         if (!giftId && !giftName) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: false, error: 'giftId or giftName required' }));
           return;
         }
         try {
-          const candidates = await findSavedGiftCandidates(tgClient, { giftId, giftName, giftPrice, limit: 30 });
+          const candidates = await findSavedGiftCandidates(tgClient, { giftId, giftName, giftPrice, giftModel, limit: 30 });
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: true, candidates }));
         } catch (err) {

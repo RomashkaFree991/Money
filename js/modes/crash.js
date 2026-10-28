@@ -69,8 +69,17 @@
       if(!stored?.state||Date.now()-Number(stored.savedAt||0)>CRASH_WARM_STATE_MAX_AGE_MS)return false;
       const state=stored.state;
       if(!Number(state.roundId))return false;
+      // Сохранённый снимок старый: оцениваем текущее серверное время от момента сохранения.
+      const offset=Number(state.serverNow||stored.savedAt)-Number(stored.savedAt);
+      const estimatedServerNow=Date.now()+offset;
+      const countdownLeft=Number(state.countdownEndsAt||0)-estimatedServerNow;
+      // Показываем только идущий отсчёт. Иначе был бы «0» или чужая фаза до ответа сервера.
+      if(String(state.phase)!=='countdown'||countdownLeft<1200){
+        renderCrashHistoryState({...state,phase:'ended'});
+        return false;
+      }
       crashRealtimeState=state;
-      crashServerOffsetMs=Number(state.serverNow||Date.now())-Date.now();
+      crashServerOffsetMs=offset;
       renderCrashRoundHash(state.roundHash);
       renderCrashHistoryState(state);
       renderCrashOtherBets(state.activeBets||[],state);
@@ -1103,7 +1112,7 @@
     }
     crashRealtimeFrame=requestAnimationFrame(renderCrashRealtimeFrame);
     const state=crashRealtimeState;
-    if(!state)return;
+    if(!state||crashAwaitingFresh)return;
     const now=getServerNow();
     const betBtn=document.getElementById('crashBetBtn');
     const lossEl=document.getElementById('crashLoss');
@@ -1155,7 +1164,8 @@
       }else if(!crashPrizePending){
         crashRoundLocked=false;
         betBtn.classList.remove('dim');
-        betBtn.textContent=t('placeBet');
+        maybePlaceQueuedCrashBet(state);
+        if(!crashBetActive)crashIdleBetLabel(betBtn);
       }
       return;
     }
@@ -1163,7 +1173,7 @@
     if(displayPhase==='live'){
       crashLastCountdownDigit=-1;
       if(crashDigitAnimTimeout){clearTimeout(crashDigitAnimTimeout);crashDigitAnimTimeout=null}
-      closeBet();
+      // Окно ставки не закрываем: ставка в полёте уйдёт на следующий раунд.
       lossEl.className='crash-loss';
       startCrashRocket();
       crashMultiplier=computeCrashMultiplier({...state, phase:'live'},now);
@@ -1181,13 +1191,13 @@
         }
         betBtn.classList.remove('dim');
       }else if(!crashPrizePending){
-        betBtn.classList.add('dim');
-        betBtn.textContent=t('placeBet');
+        // Во время полёта можно сделать ставку на следующий раунд.
+        betBtn.classList.remove('dim');
+        crashIdleBetLabel(betBtn);
       }
       return;
     }
 
-    closeBet();
     crashTimer.style.display='none';
     crashTimer.textContent='';
     crashTimer.className='crash-timer';
@@ -1227,7 +1237,7 @@
     if(crashPrizePending){ crashLivePill.textContent=t('giftReady'); closeBet(); }
     else crashLivePill.textContent=t('waiting');
     betBtn.classList.add('dim');
-    if(!crashBetActive&&!crashPrizePending) betBtn.textContent=t('placeBet');
+    if(!crashBetActive&&!crashPrizePending){betBtn.classList.remove('dim');crashIdleBetLabel(betBtn);}
   }
   // CRASH BACKGROUND RECOVERY FIX: abortable polling + forced resync after resume.
   async function refreshCrashState(silent=false,force=false,viewSession=crashViewSession,allowBackground=false){
@@ -1262,6 +1272,8 @@
       markCrashStateApplied(data);
       crashServerOffsetMs=Number(data.serverNow||Date.now())-Date.now();
       crashStateFailCount=0;
+      crashLastFreshAt=Date.now();
+      crashAwaitingFresh=false;
       const prevState=crashRealtimeState;
       crashRealtimeState=data;
       renderCrashRoundHash(data.roundHash);
@@ -1303,6 +1315,16 @@
     }
   }
 
+  let crashLastFreshAt=0;
+  function renderCrashAwaiting(){
+    crashTimer.textContent='';
+    crashTimer.className='crash-timer';
+    crashTimer.style.display='';
+    crashLivePill.textContent=t('waiting');
+    stopCrashRocket();
+    const btn=document.getElementById('crashBetBtn');
+    if(!crashBetActive&&!crashPrizePending){btn.classList.add('dim');btn.textContent=crashQueuedBet?crashQueuedLabel():t('placeBet');}
+  }
   function pauseCrashRound(){
     if(crashRealtimeTimer){
       clearInterval(crashRealtimeTimer);
@@ -1321,10 +1343,19 @@
     crashViewSession+=1;
   }
 
+  // true, пока после входа на экран не пришёл свежий снимок раунда.
+  let crashAwaitingFresh=false;
   function runCrashRound(){
     if(currentTab!=='crash') return;
+    // Снимок из памяти мог устареть, пока экран был закрыт: не рисуем по нему «0»/старый таймер.
+    if(crashRealtimeState&&Date.now()-Number(crashLastFreshAt||0)>1500){
+      const left=Number(crashRealtimeState.countdownEndsAt||0)-getServerNow();
+      if(!(String(crashRealtimeState.phase)==='countdown'&&left>1200))crashAwaitingFresh=true;
+    }
     // Показываем недавний локальный снимок моментально, затем сверяем его с сервером.
     restoreCrashWarmState();
+    if(!crashRealtimeState)crashAwaitingFresh=true;
+    if(crashAwaitingFresh)renderCrashAwaiting();
     crashRealtimeStarted=true;
     const viewSession=crashViewSession;
     if(!crashRealtimeTimer){
@@ -1338,11 +1369,41 @@
   }
   let crashStarted=false;
 
+  // Ставка, сделанная после старта раунда, автоматически уходит на следующий раунд.
+  let crashQueuedBet=0;
+  let crashQueuedFromRoundId=0;
+  function crashQueuedLabel(){return t('betQueued').replace('{n}',formatStars(crashQueuedBet));}
+  function queueCrashBet(amount){
+    crashQueuedBet=Number(amount||0);
+    crashQueuedFromRoundId=Number(crashRealtimeState?.roundId||0);
+    const btn=document.getElementById('crashBetBtn');
+    btn.classList.remove('dim');
+    btn.innerHTML=crashQueuedLabel()+' <img src="assets/star.png" alt="">';
+    try{tg?.HapticFeedback?.notificationOccurred?.('success');}catch(_){}
+  }
+  function cancelQueuedCrashBet(){
+    crashQueuedBet=0;crashQueuedFromRoundId=0;
+    const btn=document.getElementById('crashBetBtn');
+    btn.textContent=t('placeBet');
+  }
+  function maybePlaceQueuedCrashBet(state){
+    if(!crashQueuedBet||crashBetActive||crashPrizePending||crashBetSyncPending)return;
+    if(Number(state?.roundId||0)===crashQueuedFromRoundId)return;
+    if(Number(state?.countdownEndsAt||0)-getServerNow()<700)return;
+    const amount=crashQueuedBet;
+    crashQueuedBet=0;crashQueuedFromRoundId=0;
+    if(amount<=balance)placeBet(amount);
+  }
+  function crashIdleBetLabel(btn){
+    if(crashQueuedBet){btn.classList.remove('dim');btn.innerHTML=crashQueuedLabel()+' <img src="assets/star.png" alt="">';}
+    else btn.textContent=t('placeBet');
+  }
+
   async function placeBet(amount){
     if(!crashRealtimeState||balance<amount||crashPrizePending)return false;
     if(Number(amount)<10) return false;
     const phase=deriveCrashDisplayPhase(crashRealtimeState);
-    if(phase!=='countdown') return false;
+    if(phase!=='countdown'){queueCrashBet(amount);return true;}
     const prevBalance=balance;
     const balanceMutation=beginBalanceMutation();
     const prevPrizePending=crashPrizePending;
@@ -1382,7 +1443,7 @@
         body:JSON.stringify({amount, roundId:crashRealtimeState?.roundId||0, clientPhase:phase}),
       });
       data=await resp.json().catch(()=>({}));
-      if(!resp.ok) throw new Error(data.error||'Round already started');
+      if(!resp.ok){const err=new Error(data.error||'Round already started');err.code=data.code;throw err;}
       crashPrizeModalAutoKey='';
       crashPrizeResolveToken='';
       if(data.state&&!isStaleCrashState(data.state)){
@@ -1425,6 +1486,11 @@
         resetCrashPlayer();
       }
       refreshCrashState(true);
+      if(e.code==='ROUND_CLOSED'){
+        // Не отменяем ставку: переносим её на следующий раунд.
+        queueCrashBet(amount);
+        return true;
+      }
       tg?.showAlert?tg.showAlert(e.message):alert(e.message);
       return false;
     }finally{

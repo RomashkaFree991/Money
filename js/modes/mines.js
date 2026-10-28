@@ -14,7 +14,6 @@
   const minesCountValueEl=document.getElementById('minesCountValue');
   const minesCountChipsEl=document.getElementById('minesCountChips');
   const minesActionBtn=document.getElementById('minesActionBtn');
-  const minesFloorNoteEl=document.getElementById('minesFloorNote');
   const minesHashBtn=document.getElementById('minesRoundHash');
   const minesHashValueEl=document.getElementById('minesRoundHashValue');
   const minesResultOverlay=document.getElementById('minesResultOverlay');
@@ -143,7 +142,6 @@
         chip.disabled=locked;
       });
     }
-    if(minesFloorNoteEl)minesFloorNoteEl.textContent=t('minesFloorNote').replace('{n}',formatStars(minesFloor()));
     const hash=(minesGame||minesFinished)?.hash||'';
     if(minesHashBtn){minesHashBtn.hidden=!hash;if(minesHashValueEl)minesHashValueEl.textContent=hash?hash.slice(0,10)+'…'+hash.slice(-8):'';}
   }
@@ -176,8 +174,9 @@
   function renderMinesStatus(){
     if(!minesStatusEl)return;
     if(!minesGame){
-      minesStatusEl.textContent='';
-      minesStatusEl.classList.remove('visible');
+      const lost=minesFinished?.status==='lost';
+      minesStatusEl.innerHTML=lost?'<span class="mines-status-lost">'+t('minesLoseTitle')+'</span><span class="mines-status-next">'+t('minesLoseText')+'</span>':'';
+      minesStatusEl.classList.toggle('visible',lost);
       return;
     }
     const opened=minesGame.opened.length;
@@ -293,8 +292,8 @@
       }else{
         minesGame=null;minesFinished=game;
         if(game.status==='lost'){
+          // Без всплывающего окна: поле само показывает мины, под ним — короткая надпись.
           minesHaptic('error');
-          setTimeout(()=>openMinesResult({kind:'lost',payout:0}),650);
         }else applyMinesWin(data);
       }
     }catch(error){

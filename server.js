@@ -204,11 +204,24 @@ const GRAM_TO_STARS = 90;
 // Самый дорогой подарок проекта — Sailor Moon. Ничего дороже 1200 Gram в каталоге нет.
 const MAX_GIFT_PRICE_GRAM = 1200;
 const MAX_GIFT_PRICE_STARS = MAX_GIFT_PRICE_GRAM * GRAM_TO_STARS;
+// Sailor Moon — модель NFT внутри коллекции Telegram (по умолчанию Joyful Bundle,
+// также есть у Bow Tie и Lol Pop). В каталоге у неё свой id, а для вывода релеер
+// ищет NFT коллекции с этой моделью.
+const SAILOR_MOON_COLLECTIONS = {
+  'Joyful Bundle': { giftId: '5870862540036113469', floorGram: 19 },
+  'Bow Tie': { giftId: '5895544372761461960', floorGram: 11 },
+  'Lol Pop': { giftId: '5170594532177215681', floorGram: 10 },
+};
+const SAILOR_MOON_COLLECTION = SAILOR_MOON_COLLECTIONS[process.env.SAILOR_MOON_COLLECTION] ? process.env.SAILOR_MOON_COLLECTION : 'Joyful Bundle';
+const SAILOR_MOON_GIFT_ID = 'sailor_moon';
 const SAILOR_MOON_GIFT = {
   name: 'Sailor Moon',
-  price: Math.min(MAX_GIFT_PRICE_STARS, Math.max(1, Math.round(Number(process.env.SAILOR_MOON_PRICE_GRAM || MAX_GIFT_PRICE_GRAM) * GRAM_TO_STARS))),
-  id: String(process.env.SAILOR_MOON_GIFT_ID || 'sailor_moon').trim(),
-  image: String(process.env.SAILOR_MOON_IMAGE || '').trim() || `${CONFIG.MINI_APP_URL.replace(/\/$/, '')}/assets/sailor_moon.webp`,
+  price: Math.min(MAX_GIFT_PRICE_STARS, Math.max(1, Math.round(Number(process.env.SAILOR_MOON_PRICE_GRAM || SAILOR_MOON_COLLECTIONS[SAILOR_MOON_COLLECTION].floorGram) * GRAM_TO_STARS))),
+  id: SAILOR_MOON_GIFT_ID,
+  collection: SAILOR_MOON_COLLECTION,
+  collectionGiftId: SAILOR_MOON_COLLECTIONS[SAILOR_MOON_COLLECTION].giftId,
+  model: 'Sailor Moon',
+  image: `https://cdn.changes.tg/gifts/models/${encodeURIComponent(SAILOR_MOON_COLLECTION)}/png/Sailor%20Moon.png`,
 };
 
 const GIFT_CATALOG = [
@@ -304,6 +317,14 @@ app.use('/api', async (req, res, next) => {
   if (!init) return next();
   const user = validateInitData(init);
   if (!user) return next();
+  // Не ждём Supabase на каждом запросе: берём кэш (даже устаревший) и обновляем
+  // его в фоне. Ждём только при первом входе (/api/init) или без кэша вообще.
+  const cached = banCache.get(Number(user.id));
+  if (cached && req.path !== '/init') {
+    if (cached.banned) req._banInfo = { reason: cached.reason, bannedAt: cached.bannedAt };
+    if (cached.expiresAt <= Date.now()) getBanInfo(user.id).catch(() => {});
+    return next();
+  }
   try {
     const ban = await getBanInfo(user.id);
     if (ban) req._banInfo = ban;
@@ -1814,7 +1835,9 @@ async function ensureExactGiftBacking(userId, gift) {
     response = await fetch(`${CONFIG.RELAYER_URL}/resolve-exact`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-relayer-key': CONFIG.RELAYER_INTERNAL_KEY },
-      body: JSON.stringify({ giftId: gift.giftId, giftName: gift.name, giftPrice: gift.price }),
+      body: JSON.stringify(gift.giftId === SAILOR_MOON_GIFT_ID
+        ? { giftId: SAILOR_MOON_GIFT.collectionGiftId, giftName: SAILOR_MOON_GIFT.collection, giftModel: SAILOR_MOON_GIFT.model }
+        : { giftId: gift.giftId, giftName: gift.name, giftPrice: gift.price }),
       signal: AbortSignal.timeout(10_000),
     });
   } catch (cause) {
@@ -2205,6 +2228,16 @@ async function getCrashSharedSnapshot(force = false) {
   return refreshCrashSharedSnapshot();
 }
 
+// Пока кто-то смотрит Crash, держим снимок тёплым в фоне: ответы /api/crash/state
+// приходят из памяти, и вход на экран не ждёт двух запросов к Supabase.
+let crashLastViewerAt = 0;
+const crashWarmTimer = setInterval(() => {
+  if (Date.now() - crashLastViewerAt > 20_000) return;
+  if (Date.now() - crashSharedSnapshotAt < 200) return;
+  refreshCrashSharedSnapshot().catch(() => {});
+}, 250);
+crashWarmTimer.unref?.();
+
 function invalidateCrashSharedSnapshot() {
   crashSharedSnapshot = null;
   crashSharedSnapshotAt = 0;
@@ -2525,7 +2558,7 @@ app.post('/api/inventory/withdraw-invoice', async (req, res) => {
       });
     }
   }
-  const requiresCollectibleRelayer = owned.tgIsUnique === true || owned.tgMsgId || owned.tgSlug;
+  const requiresCollectibleRelayer = owned.tgIsUnique === true || owned.tgMsgId || owned.tgSlug || owned.giftId === SAILOR_MOON_GIFT_ID;
   if (requiresCollectibleRelayer) try {
     owned = await ensureExactGiftBacking(user.id, owned);
   } catch (error) {
@@ -3252,9 +3285,10 @@ const SERVER_CASE_CONFIGS = {
 };
 function serverSailorMoonPrizes() {
   return [
+    // Возврат игроку ≈80%: Sailor Moon 1 к 1000, остальное утешительные Stars.
     { ...SAILOR_MOON_GIFT, type: 'gift', weight: 1 },
-    { ...SERVER_STAR_REWARDS.find((gift) => gift.price === 10), weight: 2500 },
-    { ...SERVER_STAR_REWARDS.find((gift) => gift.price === 5), weight: 45000 },
+    { ...SERVER_STAR_REWARDS.find((gift) => gift.price === 10), weight: 99 },
+    { ...SERVER_STAR_REWARDS.find((gift) => gift.price === 5), weight: 900 },
   ];
 }
 const SERVER_STAR_REWARDS = [
@@ -3488,6 +3522,7 @@ app.get('/api/crash/state', async (req, res) => {
   const user = requireUser(req, res);
   if (!user) return;
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  crashLastViewerAt = Date.now();
   try {
     res.json(await serializeCrashState(user.id));
   } catch (error) {

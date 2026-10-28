@@ -1437,3 +1437,31 @@
 .mines-floor-note{color:rgba(255,255,255,.4);font-size:11.5px;text-align:center;line-height:1.3}
 .mines-round-hash{align-self:center}
 .pvp-history-modal-row img.no-photo{visibility:hidden}
+.mines-status-lost{color:#FF453A}
+
+/* === Все всплывающие окна — снизу на пол-экрана, верхние углы скруглены === */
+.gift-modal-overlay,.modal-overlay{align-items:flex-end!important;justify-content:center;padding:0!important;background:rgba(0,0,0,.55)}
+.gift-modal-overlay .gift-modal,.modal-overlay .modal{
+  width:100%!important;max-width:none!important;min-height:50vh;max-height:88vh;overflow-y:auto;
+  border-radius:28px 28px 0 0!important;padding:14px 16px calc(18px + env(safe-area-inset-bottom,0px))!important;
+  display:flex;flex-direction:column;justify-content:flex-start;
+  transform:translateY(100%)!important;transition:transform .32s cubic-bezier(.22,.8,.24,1)!important;
+  box-shadow:0 -12px 40px rgba(0,0,0,.4)}
+.gift-modal-overlay.open .gift-modal,.modal-overlay.open .modal{transform:translateY(0)!important}
+.gift-modal-overlay .gift-modal::before,.modal-overlay .modal::before{content:'';display:block;width:40px;height:5px;border-radius:999px;background:rgba(255,255,255,.22);margin:0 auto 12px;flex:0 0 auto}
+.gift-modal-overlay .gift-modal-actions{margin-top:auto}
+.gift-modal-overlay .crash-prize-sell,.gift-modal-overlay .crash-prize-claim{height:50px;border-radius:999px;font-size:15px}
+.gift-modal-overlay .gift-modal-image{width:150px;height:150px}
+/* «В апгрейд» — кнопка с обводкой, а не просто текст */
+.gift-modal-link{height:48px!important;margin-top:10px!important;border:1.5px solid #0A84FF!important;border-radius:999px!important;color:#0A84FF!important;background:rgba(10,132,255,.08)!important}
+
+/* === Полоса кейса: широкие ячейки === */
+#casePage .case-strip{height:138px!important}
+#casePage .case-strip-track .case-strip-cell{flex:0 0 var(--case-cell,116px)!important;width:var(--case-cell,116px)!important;gap:4px!important;padding:8px 6px!important}
+#casePage .case-strip-track .case-strip-cell>img{width:68px!important;height:68px!important}
+#casePage .case-strip-gift-name{font-size:11px!important}
+#casePage .case-strip-gift-price{font-size:11px!important}
+#casePage .case-strip-gift-price img{width:12px!important;height:12px!important}
+#casePage .case-strip-cell.is-winner{background:rgba(10,132,255,.18)!important;box-shadow:inset 0 0 0 2px #0A84FF!important}
+#casePage .case-strip::after{content:'';position:absolute;top:0;bottom:0;left:50%;width:2px;margin-left:-1px;background:#0A84FF;box-shadow:0 0 12px rgba(10,132,255,.8);z-index:2;pointer-events:none}
+.mines-cell{touch-action:manipulation}
