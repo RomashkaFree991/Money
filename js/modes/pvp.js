@@ -84,7 +84,7 @@
 
   function pvpTotalBank(){return pvpPlayers.reduce((total,player)=>total+Math.max(0,Number(player.amount||0)),0);}
   function pvpChance(player){const total=pvpTotalBank();return total?Number(player.amount||0)*100/total:0;}
-  function pvpChanceLabel(player){const chance=pvpChance(player);return 'Шанс '+(chance>=99.995?'100':chance.toFixed(chance<10?1:0))+'%';}
+  function pvpChanceLabel(player){const chance=pvpChance(player);return t('chance')+' '+(chance>=99.995?'100':chance.toFixed(chance<10?1:0))+'%';}
   function pvpColor(player){return PVP_COLORS[Math.abs(Number(player.colorIndex||0))%PVP_COLORS.length];}
   function renderPvpWheel(){
     if(!pvpWheelEl)return;
@@ -148,7 +148,7 @@
     if(!pvpBetBtn)return;
     const allowed=pvpCanAcceptBets();
     pvpBetBtn.disabled=!allowed;
-    pvpBetBtn.textContent=allowed?'Сделать ставку':'Игра началась';
+    pvpBetBtn.textContent=allowed?t('placeBet'):t('gameStarted');
   }
   function renderPvpClock(){
     if(!pvpTimerEl||!pvpState?.round)return;
@@ -162,8 +162,8 @@
     if(round.phase!=='countdown'){
       pvpWheelEl?.classList.remove('running');
       pvpLastCountdownValue=-1;
-      pvpTimerEl.classList.add('waiting');pvpTimerEl.textContent='Ожидание';
-      if(pvpGameTitleEl)pvpGameTitleEl.textContent='Игра #'+round.id;
+      pvpTimerEl.classList.add('waiting');pvpTimerEl.textContent=t('waiting');
+      if(pvpGameTitleEl)pvpGameTitleEl.textContent=t('game')+' #'+round.id;
       return;
     }
     const left=Math.max(0,Number(round.countdownEndsAt||0)-(Date.now()+pvpServerOffsetMs));
@@ -174,7 +174,7 @@
     pvpLastCountdownValue=shown;
     pvpWheelEl?.classList.add('running');
     pvpTimerEl.classList.remove('waiting');pvpTimerEl.textContent=String(shown);
-    if(pvpGameTitleEl)pvpGameTitleEl.textContent='Игра #'+round.id;
+    if(pvpGameTitleEl)pvpGameTitleEl.textContent=t('game')+' #'+round.id;
   }
   function resetPvpWheel(){
     if(!pvpWheelEl)return;
@@ -243,9 +243,9 @@
     if(winnerIsCurrentUser)playAppSound('reward');
     const winnerColor=pvpColor({colorIndex:result.winningColorIndex});
     if(pvpResultAvatar){pvpResultAvatar.style.background=winnerColor;if(winner.photoUrl||winner.photo_url){pvpResultAvatar.src=winner.photoUrl||winner.photo_url;pvpResultAvatar.style.padding='0';}else{pvpResultAvatar.removeAttribute('src');pvpResultAvatar.style.padding='12px';}}
-    if(pvpResultHeading)pvpResultHeading.textContent='Вы выиграли';
-    if(pvpResultName)pvpResultName.textContent=winner.firstName||winner.first_name||'Игрок';
-    if(pvpResultChance)pvpResultChance.textContent='Шанс '+String(result.winnerChance||0)+'%';
+    if(pvpResultHeading)pvpResultHeading.textContent=winnerIsCurrentUser?t('youWon'):t('winner');
+    if(pvpResultName)pvpResultName.textContent=winner.firstName||winner.first_name||t('player');
+    if(pvpResultChance)pvpResultChance.textContent=t('chance')+' '+String(result.winnerChance||0)+'%';
     if(pvpResultPrize)pvpResultPrize.textContent='+'+String(result.prize||0);
     if(pvpResultHideTimer)clearTimeout(pvpResultHideTimer);
     if(pvpResultRevealTimer)clearTimeout(pvpResultRevealTimer);

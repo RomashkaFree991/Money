@@ -4,14 +4,16 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Mini App</title>
+<title>Gift Pepe</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
-  <script src="https://unpkg.com/@tonconnect/ui@3.0.0/dist/tonconnect-ui.min.js"></script>
-  <link rel="preload" as="image" href="assets/Crash_banner.png" fetchpriority="high">
-  <link rel="preload" as="image" href="assets/PVP_Arena_banner.png" fetchpriority="high">
-  <link rel="preload" as="image" href="assets/Upgrade_banner.png" fetchpriority="high">
-  <link rel="stylesheet" href="css/app.css?v=20260905-balance-gate1">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
+  <script defer src="https://unpkg.com/@tonconnect/ui@3.0.0/dist/tonconnect-ui.min.js"></script>
+  <link rel="preconnect" href="https://api.moneymonkey.live" crossorigin>
+  <link rel="preload" as="image" href="assets/Crash_banner.webp" fetchpriority="high">
+  <link rel="preload" as="image" href="assets/Mines_banner.webp" fetchpriority="high">
+  <link rel="preload" as="image" href="assets/PVP_Arena_banner.webp">
+  <link rel="preload" as="image" href="assets/Upgrade_banner.webp">
+  <link rel="stylesheet" href="css/app.css?v=20261028-mines1">
 </head>
 <body>
   <div class="boot-screen" id="bootScreen">
@@ -20,7 +22,7 @@
       <div class="boot-spinner" aria-hidden="true"></div>
       <div class="boot-title" id="bootTitle"></div>
       <div class="boot-subtitle" id="bootSubtitle"></div>
-      <button class="boot-retry" id="bootRetryBtn" type="button" style="display:none;">Повторить</button>
+      <button class="boot-retry" id="bootRetryBtn" type="button" style="display:none;" data-i18n="retry">Повторить</button>
     </div>
   </div>
 <div class="app boot-hidden">
@@ -58,7 +60,7 @@
         <div class="top-my-score">0 <img src="assets/star.png" alt=""></div>
       </div>
     </div>
-    <div class="top-timer-cloud" id="topTimerCloud">ДО КОНЦА <b id="topTimerText">7д0ч0м0с</b></div>
+    <div class="top-timer-cloud" id="topTimerCloud"><span data-i18n="untilEnd">ДО КОНЦА</span> <b id="topTimerText">—</b></div>
     <div class="top-list">
       <div class="top-row">
         <span class="top-rank gold">1</span>
@@ -163,7 +165,7 @@
     <div class="inventory-header">
       <span class="inventory-title">Инвентарь</span>
       <span class="inventory-count">0 подарков</span>
-      <button class="sell-all-btn">Продать все 0 <img src="assets/star.png" alt="star"></button>
+      <button class="sell-all-btn">Sell all 0 <img src="assets/star.png" alt="star"></button>
     </div>
 
     <div class="inventory-grid" id="inventoryGrid"></div>
@@ -208,39 +210,108 @@
   <div class="page visible" id="gamePage">
     <div class="games-page">
       <button class="game-banner" type="button" data-game-target="crash" aria-label="Open Crash game">
-        <img src="assets/Crash_banner.png" alt="Crash" decoding="async" fetchpriority="high">
+        <img src="assets/Crash_banner.webp" alt="Crash" decoding="async" fetchpriority="high">
       </button>
-      <button class="game-banner game-banner--static" type="button" data-game-target="pvp" aria-label="Open PVP Arena">
-        <img src="assets/PVP_Arena_banner.png" alt="PVP Arena" decoding="async" fetchpriority="high">
+      <button class="game-banner" type="button" data-game-target="mines" aria-label="Open Mines game">
+        <img src="assets/Mines_banner.webp" alt="Mines" decoding="async" fetchpriority="high">
+      </button>
+      <button class="game-banner" type="button" data-game-target="pvp" aria-label="Open PVP Arena">
+        <img src="assets/PVP_Arena_banner.webp" alt="PVP Arena" decoding="async" fetchpriority="high">
       </button>
       <button class="game-banner" type="button" data-game-target="upgrade" aria-label="Open Upgrade game">
-        <img src="assets/Upgrade_banner.png" alt="Upgrade" decoding="async" fetchpriority="high">
+        <img src="assets/Upgrade_banner.webp" alt="Upgrade" decoding="async" fetchpriority="high">
       </button>
-      <section class="admin-cases-section" id="adminCasesSection" aria-label="Бесплатные кейсы">
+    </div>
+  </div>
+
+  <!-- CASES -->
+  <div class="page" id="casesPage">
+    <div class="cases-page">
+      <article class="sailor-case-card" role="button" tabindex="0" data-case-open="true" data-case-name="Sailor Moon">
+        <div class="sailor-case-glow" aria-hidden="true"></div>
+        <div class="sailor-case-info">
+          <div class="sailor-case-badge" data-i18n="casesSailorBadge">Шанс на Sailor Moon</div>
+          <div class="sailor-case-title">Sailor Moon</div>
+          <div class="sailor-case-desc" data-i18n="casesSailorDesc">Самый дорогой подарок проекта всего за 0.1 Gram</div>
+          <div class="sailor-case-price"><img src="assets/ton.webp" alt="Gram"><span>0.1 Gram</span><span class="sailor-case-stars">· <span class="admin-case-price-value">9</span> <img src="assets/star.png" alt="Stars"></span></div>
+        </div>
+        <img class="sailor-case-image" src="assets/sailor_moon.webp" alt="Sailor Moon" decoding="async">
+      </article>
+
+      <div class="admin-cases-group">
+        <h2 class="admin-cases-title" data-i18n="casesRegular">Обычные кейсы</h2>
+        <div class="admin-cases-grid">
+          <article class="admin-case-card" role="button" tabindex="0" data-case-open="true" data-case-name="Стандартный"><img src="assets/standard_case.webp" alt="" loading="lazy"><div class="admin-case-name" data-i18n="caseStandard">Стандартный</div><div class="admin-case-price"><span class="admin-case-price-value">50</span><img src="assets/star.png" alt="Stars"></div></article>
+          <article class="admin-case-card" role="button" tabindex="0" data-case-open="true" data-case-name="Эконом"><img src="assets/econom_case.webp" alt="" loading="lazy"><div class="admin-case-name" data-i18n="caseEconom">Эконом</div><div class="admin-case-price"><span class="admin-case-price-value">149</span><img src="assets/star.png" alt="Stars"></div></article>
+          <article class="admin-case-card" role="button" tabindex="0" data-case-open="true" data-case-name="Работяга"><img src="assets/worker_case.webp" alt="" loading="lazy"><div class="admin-case-name" data-i18n="caseWorker">Работяга</div><div class="admin-case-price"><span class="admin-case-price-value">360</span><img src="assets/star.png" alt="Stars"></div></article>
+          <article class="admin-case-card" role="button" tabindex="0" data-case-open="true" data-case-name="Олигарх"><img src="assets/oligarch_case.webp" alt="" loading="lazy"><div class="admin-case-name" data-i18n="caseOligarch">Олигарх</div><div class="admin-case-price"><span class="admin-case-price-value">899</span><img src="assets/star.png" alt="Stars"></div></article>
+        </div>
+      </div>
+
+      <section class="admin-cases-section" id="adminCasesSection" aria-label="Admin cases">
         <div class="admin-cases-group">
-          <h2 class="admin-cases-title">Бесплатные кейсы</h2>
+          <h2 class="admin-cases-title" data-i18n="casesFree">Бесплатные кейсы</h2>
           <div class="admin-cases-grid">
-            <article class="admin-case-card" role="button" tabindex="0" data-case-open="true"><img src="assets/daily_case.png" alt="Ежедневный кейс" loading="lazy"><div class="admin-case-name">Ежедневный</div><div class="admin-case-price"><span>0</span><img src="assets/star.png" alt="Stars"></div></article>
+            <article class="admin-case-card" role="button" tabindex="0" data-case-open="true" data-case-name="Ежедневный"><img src="assets/daily_case.webp" alt="" loading="lazy"><div class="admin-case-name" data-i18n="caseDaily">Ежедневный</div><div class="admin-case-price"><span class="admin-case-price-value">0</span><img src="assets/star.png" alt="Stars"></div></article>
           </div>
         </div>
         <div class="admin-cases-group">
-          <h2 class="admin-cases-title">Лимитированные кейсы</h2>
+          <h2 class="admin-cases-title" data-i18n="casesLimited">Лимитированные кейсы</h2>
           <div class="admin-cases-grid">
-            <article class="admin-case-card" role="button" tabindex="0" data-case-open="true"><img src="assets/farm_case.png" alt="FARM кейс" loading="lazy"><div class="admin-case-name">FARM</div><div class="admin-case-price"><span>67</span><img src="assets/star.png" alt="Stars"></div></article>
-            <article class="admin-case-card" role="button" tabindex="0" data-case-open="true"><img src="assets/holiday_case.png" alt="Каникулы кейс" loading="lazy"><div class="admin-case-name">Каникулы</div><div class="admin-case-price"><span>169</span><img src="assets/star.png" alt="Stars"></div></article>
-            <article class="admin-case-card" role="button" tabindex="0" data-case-open="true"><img src="assets/spiderman_case.png" alt="Spider-man кейс" loading="lazy"><div class="admin-case-name">Spider-man</div><div class="admin-case-price"><span>349</span><img src="assets/star.png" alt="Stars"></div></article>
-          </div>
-        </div>
-        <div class="admin-cases-group">
-          <h2 class="admin-cases-title">Обычные кейсы</h2>
-          <div class="admin-cases-grid">
-            <article class="admin-case-card" role="button" tabindex="0" data-case-open="true"><img src="assets/standard_case.png" alt="Стандартный кейс" loading="lazy"><div class="admin-case-name">Стандартный</div><div class="admin-case-price"><span>50</span><img src="assets/star.png" alt="Stars"></div></article>
-            <article class="admin-case-card" role="button" tabindex="0" data-case-open="true"><img src="assets/econom_case.png" alt="Эконом кейс" loading="lazy"><div class="admin-case-name">Эконом</div><div class="admin-case-price"><span>149</span><img src="assets/star.png" alt="Stars"></div></article>
-            <article class="admin-case-card" role="button" tabindex="0" data-case-open="true"><img src="assets/worker_case.png" alt="Работяга кейс" loading="lazy"><div class="admin-case-name">Работяга</div><div class="admin-case-price"><span>360</span><img src="assets/star.png" alt="Stars"></div></article>
-            <article class="admin-case-card" role="button" tabindex="0" data-case-open="true"><img src="assets/oligarch_case.png" alt="Олигарх кейс" loading="lazy"><div class="admin-case-name">Олигарх</div><div class="admin-case-price"><span>899</span><img src="assets/star.png" alt="Stars"></div></article>
+            <article class="admin-case-card" role="button" tabindex="0" data-case-open="true" data-case-name="FARM"><img src="assets/farm_case.webp" alt="" loading="lazy"><div class="admin-case-name">FARM</div><div class="admin-case-price"><span class="admin-case-price-value">67</span><img src="assets/star.png" alt="Stars"></div></article>
+            <article class="admin-case-card" role="button" tabindex="0" data-case-open="true" data-case-name="Каникулы"><img src="assets/holiday_case.webp" alt="" loading="lazy"><div class="admin-case-name" data-i18n="caseHoliday">Каникулы</div><div class="admin-case-price"><span class="admin-case-price-value">169</span><img src="assets/star.png" alt="Stars"></div></article>
+            <article class="admin-case-card" role="button" tabindex="0" data-case-open="true" data-case-name="Spider-man"><img src="assets/spiderman_case.webp" alt="" loading="lazy"><div class="admin-case-name">Spider-man</div><div class="admin-case-price"><span class="admin-case-price-value">349</span><img src="assets/star.png" alt="Stars"></div></article>
           </div>
         </div>
       </section>
+    </div>
+  </div>
+
+  <!-- MINES -->
+  <div class="page" id="minesPage">
+    <div class="mines-page">
+      <div class="mines-coef-row" id="minesCoefRow" aria-label="Multipliers"></div>
+      <div class="mines-board-wrap">
+        <div class="mines-board" id="minesBoard" aria-label="Mines field"></div>
+      </div>
+      <div class="mines-status" id="minesStatus"></div>
+      <button type="button" class="mines-action" id="minesActionBtn">Play</button>
+      <div class="mines-panel">
+        <div class="mines-panel-row">
+          <span class="mines-panel-label" data-i18n="minesBet">Ставка</span>
+          <span class="mines-panel-label mines-panel-label--right" data-i18n="minesCount">Мины</span>
+        </div>
+        <div class="mines-panel-row">
+          <div class="mines-bet-input">
+            <input id="minesBetInput" type="number" inputmode="numeric" min="10" placeholder="0" value="">
+            <img src="assets/star.png" alt="Stars">
+          </div>
+          <div class="mines-count-stepper">
+            <button type="button" id="minesCountMinus" aria-label="-">−</button>
+            <span id="minesCountValue">3</span>
+            <button type="button" id="minesCountPlus" aria-label="+">+</button>
+          </div>
+        </div>
+        <div class="mines-quick-row">
+          <button type="button" class="mines-quick" data-mines-bet="half">½</button>
+          <button type="button" class="mines-quick" data-mines-bet="double">×2</button>
+          <button type="button" class="mines-quick" data-mines-bet="100">+100</button>
+          <button type="button" class="mines-quick" data-mines-bet="500">+500</button>
+          <button type="button" class="mines-quick" data-mines-bet="max">MAX</button>
+        </div>
+        <div class="mines-count-chips" id="minesCountChips"></div>
+      </div>
+      <div class="mines-floor-note" id="minesFloorNote"></div>
+      <button type="button" class="round-hash mines-round-hash" id="minesRoundHash" hidden title="Copy hash"><span>Hash:</span><code id="minesRoundHashValue"></code></button>
+    </div>
+  </div>
+  <div class="mines-result-overlay" id="minesResultOverlay">
+    <div class="mines-result-card" role="dialog" aria-modal="true">
+      <div class="mines-result-title" id="minesResultTitle"></div>
+      <img class="mines-result-image" id="minesResultImage" src="assets/star.png" alt="">
+      <div class="mines-result-name" id="minesResultName"></div>
+      <div class="mines-result-value" id="minesResultValue"></div>
+      <button type="button" class="mines-action" id="minesResultClose">OK</button>
     </div>
   </div>
 
@@ -255,9 +326,9 @@
         <div class="case-strip"><div class="case-strip-track" id="caseStrip"></div></div>
         <img class="case-strip-arrow case-strip-arrow--bottom" src="svg/up.svg" alt="">
       </div>
-      <button type="button" class="case-open-btn" id="caseOpenBtn"><span>Открыть</span><span class="case-open-price" id="caseOpenPrice">0 <img src="assets/star.png" alt="Stars"></span></button>
-      <div class="case-daily-timer" id="caseDailyTimer" hidden>Следующее открытие через <strong>24:00:00</strong></div>
-      <div class="case-gifts-heading">Подарки в кейсе</div>
+      <button type="button" class="case-open-btn" id="caseOpenBtn"><span data-i18n="caseOpen">Открыть</span><span class="case-open-price" id="caseOpenPrice">0 <img src="assets/star.png" alt="Stars"></span></button>
+      <div class="case-daily-timer" id="caseDailyTimer" hidden></div>
+      <div class="case-gifts-heading" data-i18n="caseGiftsHeading">Подарки в кейсе</div>
       <div class="case-gifts-grid" id="caseGiftsGrid"></div>
     </div>
   </div>
@@ -268,10 +339,10 @@
       <img class="case-result-image" id="caseResultImage" src="assets/star.png" alt="Приз">
       <div class="case-result-name" id="caseResultName">Подарок</div>
       <div class="case-result-value" id="caseResultValue">0 <img src="assets/star.png" alt="Stars"></div>
-      <button type="button" class="case-result-btn" id="caseResultBtn">Забрать</button>
+      <button type="button" class="case-result-btn" id="caseResultBtn" data-i18n="claim">Забрать</button>
       <div class="case-result-actions">
-        <button type="button" class="case-result-secondary" id="caseResultSell">Продать <span id="caseResultSellValue">0</span><img src="assets/star.png" alt="Stars"></button>
-        <button type="button" class="case-result-secondary" id="caseResultUpgrade">В апгрейд</button>
+        <button type="button" class="case-result-secondary" id="caseResultSell"><span data-i18n="sell">Продать</span> <span id="caseResultSellValue">0</span><img src="assets/star.png" alt="Stars"></button>
+        <button type="button" class="case-result-secondary" id="caseResultUpgrade" data-i18n="toUpgrade">В апгрейд</button>
       </div>
     </div>
   </div>
@@ -284,28 +355,28 @@
         <div class="pvp-wheel" id="pvpWheel"></div>
         <div class="pvp-wheel-inner"><div class="pvp-timer waiting" id="pvpTimer">Ожидание</div></div>
       </div>
-      <div class="pvp-bank-actions"><button type="button" class="pvp-history-open" id="pvpHistoryOpen" aria-label="History"><img src="svg/History.svg" alt="History"></button><div class="pvp-bank-pill"><span>Банк</span><img src="assets/star.png" alt="Stars"><span id="pvpBankValue">0</span></div></div>
+      <div class="pvp-bank-actions"><button type="button" class="pvp-history-open" id="pvpHistoryOpen" aria-label="History"><img src="svg/History.svg" alt="History"></button><div class="pvp-bank-pill"><span data-i18n="bank">Банк</span><img src="assets/star.png" alt="Stars"><span id="pvpBankValue">0</span></div></div>
       <div class="pvp-history" id="pvpHistory">
         <div class="pvp-game-title" id="pvpGameTitle">Игра #1</div>
-        <div class="pvp-empty" id="pvpEmpty"><span>Ожидание ставок</span></div>
+        <div class="pvp-empty" id="pvpEmpty"><span data-i18n="waitingBets">Ожидание ставок</span></div>
         <div id="pvpBetsList"></div>
       </div>
       <button type="button" class="round-hash pvp-round-hash" id="pvpRoundHash" hidden title="Copy hash"><span>Hash:</span><code id="pvpRoundHashValue"></code></button>
     </div>
   </div>
-  <div class="pvp-bet-dock" id="pvpBetDock"><button type="button" class="pvp-bet-btn" id="pvpBetBtn">Сделать ставку</button></div>
-  <div class="pvp-history-overlay" id="pvpHistoryOverlay"><div class="pvp-history-sheet"><div class="pvp-history-heading" id="pvpHistoryHeading">История</div><div class="pvp-history-modal-list" id="pvpHistoryModalList"></div><button type="button" class="pvp-result-close" id="pvpHistoryClose">Close</button></div></div>
+  <div class="pvp-bet-dock" id="pvpBetDock"><button type="button" class="pvp-bet-btn" id="pvpBetBtn" data-i18n="placeBet">Сделать ставку</button></div>
+  <div class="pvp-history-overlay" id="pvpHistoryOverlay"><div class="pvp-history-sheet"><div class="pvp-history-heading" id="pvpHistoryHeading" data-i18n="history">История</div><div class="pvp-history-modal-list" id="pvpHistoryModalList"></div><button type="button" class="pvp-result-close" id="pvpHistoryClose" data-i18n="close">Close</button></div></div>
   <div class="pvp-result-overlay" id="pvpResultOverlay">
     <div class="pvp-result-sheet" role="dialog" aria-modal="true" aria-labelledby="pvpResultHeading">
       <div class="pvp-result-handle"></div>
-      <div class="pvp-result-heading" id="pvpResultHeading">Вы выиграли</div>
+      <div class="pvp-result-heading" id="pvpResultHeading" data-i18n="youWon">Вы выиграли</div>
       <div class="pvp-result-award"><img src="assets/star.png" alt="Stars"><div class="pvp-result-prize" id="pvpResultPrize">+0</div></div>
       <div class="pvp-result-player">
         <img class="pvp-result-avatar" id="pvpResultAvatar" alt="">
         <div class="pvp-result-meta"><div class="pvp-result-title" id="pvpResultChance"></div><div class="pvp-result-name" id="pvpResultName"></div></div>
       </div>
-      <div class="pvp-result-next"><span>Next bet in</span><b id="pvpResultCountdown">5</b><div class="pvp-result-progress"><div class="pvp-result-progress-fill" id="pvpResultProgressFill"></div></div></div>
-      <button type="button" class="pvp-result-close" id="pvpResultClose">Close</button>
+      <div class="pvp-result-next"><span data-i18n="nextBetIn">Next bet in</span><b id="pvpResultCountdown">5</b><div class="pvp-result-progress"><div class="pvp-result-progress-fill" id="pvpResultProgressFill"></div></div></div>
+      <button type="button" class="pvp-result-close" id="pvpResultClose" data-i18n="close">Close</button>
     </div>
   </div>
 
@@ -324,7 +395,7 @@
           </div>
         </div>
       </div>
-      <div class="upgrade-subtitle">Выберите подарок</div>
+      <div class="upgrade-subtitle">Choose a gift</div>
       <div class="upgrade-chance" id="upgradeChance" style="display:none"></div>
       <div class="slots-row">
         <div class="slot-cell" id="slotMyGifts">
@@ -412,7 +483,7 @@
       </div>
       <div class="crash-result-list" id="crashResultPlayers"></div>
       <div class="crash-result-next">
-        <span id="crashResultNextLabel">До следующей ставки</span>
+        <span id="crashResultNextLabel" data-i18n="nextBetIn">До следующей ставки</span>
         <b id="crashResultCountdown">5</b>
         <span class="crash-result-progress"><span class="crash-result-progress-fill" id="crashResultProgress"></span></span>
       </div>
@@ -488,9 +559,9 @@
           <img src="assets/star.png" alt="star">
           <span>Stars</span>
         </div>
-        <div class="topup-block" data-type="ton" aria-label="TON">
-          <img src="assets/ton.webp" alt="ton">
-          <span>TON</span>
+        <div class="topup-block" data-type="ton" aria-label="Gram">
+          <img src="assets/ton.webp" alt="Gram">
+          <span>Gram</span>
         </div>
       </div>
       <div class="topup-input-row">
@@ -500,7 +571,7 @@
       <div class="topup-action-stack">
         <div class="topup-wallet-row" id="topupWalletRow">
           <div class="topup-wallet-pill" id="topupWalletPill"></div>
-          <button class="topup-wallet-disconnect" id="topupWalletDisconnect" type="button">Disconnect wallet</button>
+          <button class="topup-wallet-disconnect" id="topupWalletDisconnect" type="button"></button>
         </div>
         <button class="topup-submit" id="topupSubmit">Top up</button>
       </div>
@@ -512,7 +583,7 @@
   <div class="bet-sheet" id="betSheet">
     <div class="bet-header">
       <div class="bet-pill">Новая ставка</div>
-      <button class="bet-close" id="betClose" type="button" aria-label="Закрыть">
+      <button class="bet-close" id="betClose" type="button" aria-label="Close">
         <svg viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
       </button>
     </div>
@@ -526,7 +597,7 @@
         <button class="bet-quick" type="button" data-bet-add="500">+500</button>
         <button class="bet-quick" type="button" data-bet-add="1000">+1000</button>
       </div>
-      <button type="button" class="bet-submit" id="betSubmit">Сделать ставку</button>
+      <button type="button" class="bet-submit" id="betSubmit">Place bet</button>
     </div>
   </div>
 
@@ -541,6 +612,10 @@
       <div class="nav-icon"><img src="svg/game.svg" alt=""></div>
       <span class="nav-label">Game</span>
     </div>
+    <div class="nav-item" data-tab="cases">
+      <div class="nav-icon"><img src="svg/case.svg" alt=""></div>
+      <span class="nav-label">Cases</span>
+    </div>
     <div class="nav-item" data-tab="profile">
       <div class="nav-icon"><img src="svg/user.svg" alt=""></div>
       <span class="nav-label">Profile</span>
@@ -548,11 +623,12 @@
   </nav>
 
 </div>
-  <script defer src="js/core/runtime.js?v=20260906-balance-gate4"></script>
-  <script defer src="js/core/state.js?v=20260828-history2"></script>
-  <script defer src="js/modes/crash.js?v=20260828-history2"></script>
-  <script defer src="js/modes/pvp.js?v=20260828-history2"></script>
-  <script defer src="js/app.js?v=20260906-balance-gate4"></script>
+  <script defer src="js/core/runtime.js?v=20261028-mines1"></script>
+  <script defer src="js/core/state.js?v=20261028-mines1"></script>
+  <script defer src="js/modes/crash.js?v=20261028-mines1"></script>
+  <script defer src="js/modes/pvp.js?v=20261028-mines1"></script>
+  <script defer src="js/modes/mines.js?v=20261028-mines1"></script>
+  <script defer src="js/app.js?v=20261028-mines1"></script>
 <div class="admin-overlay" id="adminOverlay">
   <div class="admin-sheet">
     <h2>🔧 Админ-панель <button class="admin-close" type="button">✕</button></h2>

@@ -8,8 +8,8 @@
     "dev": "nodemon --exec \"node --env-file=.env\" server.js",
     "relayer": "node --env-file=.env relayer.js",
     "relayer:login": "node --env-file=.env login.js",
-    "check": "node --check server.js && node --check relayer.js && node --check login.js && node scripts/extract-inline-js.js && node --check .tmp/index-inline.js",
-    "lint": "node scripts/extract-inline-js.js && eslint server.js relayer.js login.js scripts/extract-inline-js.js .tmp/index-inline.js"
+    "check": "node --check server.js && node --check games/mines.js && node --check relayer.js && node --check login.js && node scripts/extract-inline-js.js && node --check .tmp/index-inline.js",
+    "lint": "node scripts/extract-inline-js.js && eslint server.js games/mines.js relayer.js login.js scripts/extract-inline-js.js .tmp/index-inline.js"
   },
   "engines": {
     "node": ">=22.0.0"

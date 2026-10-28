@@ -754,10 +754,14 @@
     document.querySelector('.topup-block[data-type="ton"] span').textContent=t('ton');
     q('#betSheet .bet-pill').textContent=t('bet');
     // Нижняя навигация намеренно всегда остаётся на английском, независимо от языка приложения.
-    const navLabels=document.querySelectorAll('.nav-label');
-    if(navLabels[0]) navLabels[0].textContent='Top';
-    if(navLabels[1]) navLabels[1].textContent='Game';
-    if(navLabels[2]) navLabels[2].textContent='Profile';
+    const navLabels={top:'Top',game:'Game',cases:'Cases',profile:'Profile'};
+    document.querySelectorAll('.nav-item').forEach(item=>{
+      const label=item.querySelector('.nav-label');
+      if(label&&navLabels[item.dataset.tab]) label.textContent=navLabels[item.dataset.tab];
+    });
+    document.querySelectorAll('[data-i18n]').forEach(el=>{el.textContent=t(el.dataset.i18n);});
+    q('#topupWalletDisconnect').textContent=t('disconnectWallet');
+    if(typeof renderMinesUI==='function') renderMinesUI();
     updateCrashWaitLabel();
     if(!crashRealtimeState||crashRealtimeState.phase!=='live') crashLivePill.textContent=t('waiting');
     if(crashPrizePending){ crashLivePill.textContent=t('giftReady'); closeBet(); }
@@ -1135,7 +1139,7 @@
         }
         crashRoundLocked=true;
         betBtn.classList.add('dim');
-        betBtn.textContent='Раунд начинается';
+        betBtn.textContent=t('roundStarting');
         return;
       }
       if(crashPrizePending){ crashLivePill.textContent=t('giftReady'); closeBet(); }
@@ -1276,13 +1280,13 @@
       crashStateFailCount+=1;
       console.warn('Crash refresh failed:',e.message);
       if(crashStateFailCount>=5&&!crashRealtimeState){
-        crashLivePill.textContent='Ошибка Crash';
+        crashLivePill.textContent=t('crashError');
         crashTimer.style.display='';
         crashTimer.textContent='!';
         crashTimer.className='crash-timer';
         const btn=document.getElementById('crashBetBtn');
         btn.classList.add('dim');
-        btn.textContent='Crash недоступен';
+        btn.textContent=t('crashUnavailable');
       }
       if(!silent&&tg?.showAlert)tg.showAlert('Crash: '+e.message);
       return false;

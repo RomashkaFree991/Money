@@ -18,3 +18,4 @@ data/market_prices.json
 .DS_Store
 *.swp
 *.swo
+data/mines_games.json*

@@ -1,7 +1,10 @@
   let currentTab='game';
-  const embeddedGameTabs=new Set(['crash','pvp','upgrade','case','caseResult']);
+  // Внутренние экраны открываются из вкладки-родителя и подсвечивают её в нижней панели.
+  const embeddedTabParents={crash:'game',pvp:'game',upgrade:'game',mines:'game',case:'cases',caseResult:'cases'};
+  const embeddedGameTabs=new Set(Object.keys(embeddedTabParents));
   function handleTelegramBack(){
-    if(embeddedGameTabs.has(currentTab))activateTab('game',false);
+    if(currentTab==='caseResult'){closeCaseResult();return;}
+    if(embeddedGameTabs.has(currentTab))activateTab(embeddedTabParents[currentTab],false);
   }
   function syncTelegramBackButton(){
     const back=tg?.BackButton;
@@ -23,7 +26,7 @@
     if(pages[tab]){
       void pages[tab].offsetWidth;
       pages[tab].classList.add('visible');
-      if(tab==='caseResult'&&pages.casePage)pages.casePage.classList.add('visible');
+      if(tab==='caseResult'&&pages.case)pages.case.classList.add('visible');
       currentTab=tab;
     }
     pvpBetDock?.classList.toggle('open',tab==='pvp');
@@ -42,6 +45,8 @@
       refreshTop();
     }else if(tab==='upgrade'){
       ensureUpgradeRedo();
+    }else if(tab==='mines'){
+      loadMinesState(true);
     }else if(tab==='case'){
       if(typeof renderCaseOpening==='function' && !caseStripEl?.children.length)renderCaseOpening();
     }else if(tab==='profile'){
@@ -60,7 +65,7 @@
     if(targetTab===currentTab && !referralPage.classList.contains('visible')) return;
     // Внутренние игры открываются из Game и сохраняют Game активным в нижней панели.
     nav?.classList.toggle('case-result-active',targetTab==='caseResult');
-    const navTarget=document.querySelector(`.nav-item[data-tab="${embeddedGameTabs.has(targetTab)?'game':targetTab}"]`);
+    const navTarget=document.querySelector(`.nav-item[data-tab="${embeddedTabParents[targetTab]||targetTab}"]`);
     document.querySelector('.nav-item.active')?.classList.remove('active');
     if(navTarget){
       navTarget.classList.add('active');
@@ -86,7 +91,12 @@
     'Spider-man':{price:349,targets:[2500,2000,1500,1200,1000,900,700,500,450,420,399,350,100,50,25,15]},
     'FARM':{price:67,targets:[700,575,500,450,420,399,380,365,350,340,339,338,100,50,25,15]},
     'Каникулы':{price:169,targets:[1200,1000,900,800,700,575,500,450,420,399,380,350,100,50,25,15]},
+    // 0.1 Gram. Единственный подарок — Sailor Moon, остальное Stars.
+    'Sailor Moon':{price:Math.round(0.1*GRAM_TO_STARS),sailorMoonOnly:true},
   };
+  const CASE_NAME_KEYS={'Стандартный':'caseStandard','Эконом':'caseEconom','Работяга':'caseWorker','Олигарх':'caseOligarch','Ежедневный':'caseDaily','Каникулы':'caseHoliday'};
+  function caseDisplayName(name){return CASE_NAME_KEYS[name]?t(CASE_NAME_KEYS[name]):name;}
+  function caseCardName(card){return String(card?.dataset.caseName||card?.querySelector('.admin-case-name')?.textContent||'').trim();}
   const caseTitleEl=document.getElementById('caseTitle');
   const caseStripEl=document.getElementById('caseStrip');
   const caseGiftsGridEl=document.getElementById('caseGiftsGrid');
@@ -112,20 +122,23 @@
   let activeCaseGifts=[];
   let activeCaseCard=null;
   let caseIsOpening=false;
+  // Анимация ленты кейса. Раньше было 12 с — слишком долго ждать приз.
+  const CASE_SPIN_MS=5200;
   const STAR_REWARDS=[
-    {name:'5 звёзд',price:5,stars:5,image:'assets/star.png',weight:2,type:'stars'},
-    {name:'10 звёзд',price:10,stars:10,image:'assets/star.png',weight:2,type:'stars'},
-    {name:'50 звёзд',price:50,stars:50,image:'assets/star.png',weight:1,type:'stars'},
-    {name:'100 звёзд',price:100,stars:100,image:'assets/star.png',weight:1,type:'stars'},
+    {name:'5 Stars',price:5,stars:5,image:'assets/star.png',weight:2,type:'stars'},
+    {name:'10 Stars',price:10,stars:10,image:'assets/star.png',weight:2,type:'stars'},
+    {name:'50 Stars',price:50,stars:50,image:'assets/star.png',weight:1,type:'stars'},
+    {name:'100 Stars',price:100,stars:100,image:'assets/star.png',weight:1,type:'stars'},
   ];
   function giftClosestTo(price,used,label=null,weight=18){
     const candidates=[...(typeof GIFT_CATALOG!=='undefined'?GIFT_CATALOG:[])].filter(g=>!used.has(String(g.id)));
     candidates.sort((a,b)=>Math.abs(Number(a.price||0)-price)-Math.abs(Number(b.price||0)-price));
-    const gift=candidates[0]||{name:'Подарок',price:price,image:'assets/star.png',id:String(price)};
+    const gift=candidates[0]||{name:t('giftWord'),price:price,image:'assets/star.png',id:String(price)};
     used.add(String(gift.id));
     return {...gift,name:label||gift.name,price:Number(price),weight,type:'gift'};
   }
   function getCaseGifts(config){
+    if(config.sailorMoonOnly)return [{...SAILOR_MOON_GIFT,type:'gift'},{...STAR_REWARDS[1]},{...STAR_REWARDS[0]}];
     const used=new Set();
     if(config.starsOnly){
       const daily=[
@@ -141,7 +154,7 @@
     return [...catalogGifts,...STAR_REWARDS].sort((a,b)=>Number(b.price||0)-Number(a.price||0));
   }
   function caseGiftMarkup(gift,index,center=false){
-    const name=String(gift.name||'Подарок');
+    const name=String(gift.name||t('giftWord'));
     const price=formatStars(gift.price||0);
     return `<div class="case-strip-cell${center?' is-center':''}"><img src="${gift.image||'assets/star.png'}" alt="${name}"><div class="case-strip-gift-name">${name}</div><div class="case-strip-gift-price">${price} <img src="assets/star.png" alt="Stars"></div></div>`;
   }
@@ -154,7 +167,7 @@
     const mm=String(Math.floor((totalSeconds%3600)/60)).padStart(2,'0');
     const ss=String(totalSeconds%60).padStart(2,'0');
     caseDailyTimerEl.hidden=false;
-    caseDailyTimerEl.innerHTML=`Следующее открытие через <strong>${hh}:${mm}:${ss}</strong>`;
+    caseDailyTimerEl.innerHTML=`${t('caseNextOpen')} <strong>${hh}:${mm}:${ss}</strong>`;
     if(activeCaseConfig?.starsOnly)caseOpenBtn?.setAttribute('disabled','true');
   }
   function startDailyTimer(nextOpenAt){
@@ -178,19 +191,18 @@
   }
   function applyCasePrices(){
     document.querySelectorAll('[data-case-open="true"]').forEach(card=>{
-      const name=card.querySelector('.admin-case-name')?.textContent?.trim();
-      const config=CASE_CONFIGS[name];
-      const priceEl=card.querySelector('.admin-case-price span');
+      const config=CASE_CONFIGS[caseCardName(card)];
+      const priceEl=card.querySelector('.admin-case-price-value');
       if(config&&priceEl)priceEl.textContent=formatStars(config.price);
     });
   }
   applyCasePrices();
   function renderCaseOpening(card){
     activeCaseCard=card||activeCaseCard;
-    const name=activeCaseCard?.querySelector('.admin-case-name')?.textContent?.trim()||'Ежедневный';
+    const name=caseCardName(activeCaseCard)||'Ежедневный';
     activeCaseConfig=CASE_CONFIGS[name]||CASE_CONFIGS['Ежедневный'];
     activeCaseGifts=getCaseGifts(activeCaseConfig);
-    if(caseTitleEl)caseTitleEl.textContent=name;
+    if(caseTitleEl)caseTitleEl.textContent=caseDisplayName(name);
     if(caseOpenPriceEl)caseOpenPriceEl.innerHTML=`${formatStars(activeCaseConfig.price)} <img src="assets/star.png" alt="Stars">`;
     if(activeCaseConfig.starsOnly)loadDailyStatus(); else {dailyNextOpenAt=null;renderDailyTimer();}
     if(caseStripEl){
@@ -199,14 +211,14 @@
       caseStripEl.style.transform='translateX(0)';
       caseStripEl.innerHTML=reel.map((gift,index)=>caseGiftMarkup(gift,index,index===12)).join('');
     }
-    if(caseGiftsGridEl)caseGiftsGridEl.innerHTML=activeCaseGifts.map(gift=>`<article class="case-gift-card"><img class="case-gift-image" src="${gift.image||'assets/star.png'}" alt="${gift.name||'Подарок'}" loading="lazy"><div class="case-gift-name">${gift.name||'Подарок'}</div><div class="case-gift-price"><span>${formatStars(gift.price||0)}</span><img src="assets/star.png" alt="Stars"></div></article>`).join('');
+    if(caseGiftsGridEl)caseGiftsGridEl.innerHTML=activeCaseGifts.map(gift=>`<article class="case-gift-card"><img class="case-gift-image" src="${gift.image||'assets/star.png'}" alt="" loading="lazy"><div class="case-gift-name">${gift.name||t('giftWord')}</div><div class="case-gift-price"><span>${formatStars(gift.price||0)}</span><img src="assets/star.png" alt="Stars"></div></article>`).join('');
   }
   document.querySelectorAll('[data-case-open="true"]').forEach(card=>{
     const open=()=>{playAppSound('tab');renderCaseOpening(card);activateTab('case',true);};
     card.addEventListener('click',open);
     card.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();open();}});
   });
-  caseBackBtn?.addEventListener('click',()=>activateTab('game',true));
+  caseBackBtn?.addEventListener('click',()=>activateTab('cases',true));
   function closeCaseResult(){
     caseResultPage?.classList.remove('visible');
     activateTab('case',true);
@@ -219,7 +231,7 @@
     try{
       const resp=await fetch(API_BASE+'/api/inventory/sell',{method:'POST',headers:{'Content-Type':'application/json','x-init-data':tg?.initData||''},body:JSON.stringify({giftId:activeCaseResult.inventoryId})});
       const data=await resp.json().catch(()=>({}));
-      if(!resp.ok)throw new Error(data.error||'Продажа не удалась');
+      if(!resp.ok)throw new Error(data.error||t('sellFailed'));
       if(Number.isFinite(Number(data.newBalance)))updateBalance(Number(data.newBalance));
       closeCaseResult();await refreshInventory(true);
     }catch(error){tg?.showAlert?tg.showAlert(error.message):alert(error.message);}
@@ -237,19 +249,19 @@
     if(caseIsOpening||!activeCaseConfig||!activeCaseCard)return;
     caseIsOpening=true;
     caseOpenBtn.disabled=true;
-    if(caseOpenLabel)caseOpenLabel.textContent='Проверяем…';
+    if(caseOpenLabel)caseOpenLabel.textContent=t('caseChecking');
     let transaction;
     try{
-      const response=await fetch(API_BASE+'/api/cases/open',{method:'POST',headers:{'Content-Type':'application/json','x-init-data':tg?.initData||''},body:JSON.stringify({caseName:activeCaseCard.querySelector('.admin-case-name')?.textContent?.trim()||'Ежедневный'})});
+      const response=await fetch(API_BASE+'/api/cases/open',{method:'POST',headers:{'Content-Type':'application/json','x-init-data':tg?.initData||''},body:JSON.stringify({caseName:caseCardName(activeCaseCard)||'Ежедневный'})});
       transaction=await response.json().catch(()=>({}));
       if(!response.ok||!transaction.ok){
         if(transaction.code==='DAILY_CASE_COOLDOWN'&&transaction.nextOpenAt)startDailyTimer(transaction.nextOpenAt);
-        throw new Error(transaction.error||'Не удалось открыть кейс');
+        throw new Error(transaction.error||t('caseOpenFailed'));
       }
     }catch(error){
       if(!(activeCaseConfig?.starsOnly&&dailyNextOpenAt))caseOpenBtn.disabled=false;
       caseIsOpening=false;
-      if(caseOpenLabel)caseOpenLabel.textContent='Открыть';
+      if(caseOpenLabel)caseOpenLabel.textContent=t('caseOpen');
       tg?.showAlert?tg.showAlert(error.message):alert(error.message);
       return;
     }
@@ -260,7 +272,7 @@
       if(Number.isFinite(Number(transaction.newBalance)))updateBalance(Number(transaction.newBalance));
     if(caseResultSellValue)caseResultSellValue.textContent=formatStars(prize.price||0);
     playAppSound('spin');
-    if(caseOpenLabel)caseOpenLabel.textContent='Крутится…';
+    if(caseOpenLabel)caseOpenLabel.textContent=t('caseSpinning');
     const winnerIndex=18;
     const cellWidth=(caseStripEl?.parentElement?.clientWidth||300)/6;
     const offset=(winnerIndex-2.5)*cellWidth;
@@ -281,25 +293,25 @@
         {transform:'translate3d(0,0,0)',offset:0,easing:'cubic-bezier(.22,.8,.24,1)'},
         {transform:`translate3d(-${cruiseStop}px,0,0)`,offset:.78,easing:'linear'},
         {transform:`translate3d(-${offset}px,0,0)`,offset:1,easing:'cubic-bezier(.12,.72,.18,1)'}
-      ],{duration:12000,fill:'forwards'});
+      ],{duration:CASE_SPIN_MS,fill:'forwards'});
       reelAnimation.finished.catch(()=>{});
     }
     setTimeout(()=>{
       playAppSound('reward');
       if(caseResultImage)caseResultImage.src=prize.image||'assets/star.png';
-      if(caseResultName)caseResultName.textContent=prize.name||'Подарок';
+      if(caseResultName)caseResultName.textContent=(prize.type==='stars'||String(prize.id||'').startsWith('stars:'))?formatStars(prize.price||0)+' Stars':(prize.name||t('giftWord'));
       if(caseResultValue)caseResultValue.innerHTML=`${formatStars(prize.price||0)} <img src="assets/star.png" alt="Stars">`;
       if(activeCaseConfig?.starsOnly&&transaction.dailyNextOpenAt)startDailyTimer(transaction.dailyNextOpenAt);
       activateTab('case',true);
       caseResultPage?.classList.add('visible');
       if(!(activeCaseConfig?.starsOnly&&dailyNextOpenAt))caseOpenBtn.disabled=false;
-      if(caseOpenLabel)caseOpenLabel.textContent='Открыть';
+      if(caseOpenLabel)caseOpenLabel.textContent=t('caseOpen');
       caseIsOpening=false;
       refreshInventory(true).catch(()=>{});
-    },12100);
+    },CASE_SPIN_MS+100);
   });
   pvpBetBtn?.addEventListener('click',()=>{
-    if(!pvpCanAcceptBets()){showBetError('Ставки закрыты: таймер уже закончился');return;}
+    if(!pvpCanAcceptBets()){showBetError(t('betsClosed'));return;}
     openBet('pvp');
   });
   pvpResultClose?.addEventListener('click',closePvpResult);
@@ -311,15 +323,15 @@
   function renderPvpHistoryRows(rounds){
     if(!pvpHistoryList)return;
     pvpHistoryList.replaceChildren();
-    if(!rounds?.length){const empty=document.createElement('div');empty.className='admin-muted';empty.textContent='История пока пуста';pvpHistoryList.append(empty);return;}
+    if(!rounds?.length){const empty=document.createElement('div');empty.className='admin-muted';empty.textContent=t('historyEmpty');pvpHistoryList.append(empty);return;}
     for(const round of rounds){
       const card=document.createElement('div');card.className='pvp-history-modal-round';
       const title=document.createElement('div');title.className='pvp-history-modal-round-title';
-      const label=document.createElement('span');label.textContent='Игра #'+round.roundId;
-      const bank=document.createElement('span');bank.className='history-bank-value';bank.textContent='Банк +'+Number(round.totalBank||0);const bankStar=document.createElement('img');bankStar.src='assets/star.png';bankStar.alt='Stars';bank.append(bankStar);title.append(label,bank);card.append(title);
+      const label=document.createElement('span');label.textContent=t('game')+' #'+round.roundId;
+      const bank=document.createElement('span');bank.className='history-bank-value';bank.textContent=t('bank')+' +'+Number(round.totalBank||0);const bankStar=document.createElement('img');bankStar.src='assets/star.png';bankStar.alt='Stars';bank.append(bankStar);title.append(label,bank);card.append(title);
       for(const bet of (round.bets||[])){
         const row=document.createElement('div');row.className='pvp-history-modal-row';
-        const avatar=document.createElement('img');avatar.alt='';avatar.src=bet.photoUrl||'assets/avatar_placeholder.png';
+        const avatar=document.createElement('img');avatar.alt='';if(bet.photoUrl)avatar.src=bet.photoUrl;else avatar.classList.add('no-photo');
         const name=document.createElement('span');name.className='name';name.textContent=bet.firstName||'User';
         const total=Number(round.totalBank||0);const chance=total?Number(bet.amount||0)*100/total:0;
         const info=document.createElement('span');info.className='bet';info.textContent=Number(bet.amount||0)+' · '+chance.toFixed(2)+'%';const infoStar=document.createElement('img');infoStar.src='assets/star.png';infoStar.alt='Stars';info.append(infoStar);
@@ -402,9 +414,10 @@
         bootTask(()=>refreshPvpState(true),6500),
         bootTask(()=>refreshInventory(true),6500),
         bootTask(()=>refreshReferral(true),6500),
-        preloadImage('assets/Crash_banner.png'),
-        preloadImage('assets/PVP_Arena_banner.png'),
-        preloadImage('assets/Upgrade_banner.png'),
+        preloadImage('assets/Crash_banner.webp'),
+        preloadImage('assets/Mines_banner.webp'),
+        preloadImage('assets/PVP_Arena_banner.webp'),
+        preloadImage('assets/Upgrade_banner.webp'),
       ]);
       if(!tg?.initData){
         const testGifts=GIFT_CATALOG.slice().sort((a,b)=>b.price-a.price).slice(0,5);
@@ -534,6 +547,7 @@
   upgradeModalCloseBtn.addEventListener('click',()=>upgradeModalOverlay.classList.remove('open'));
   upgradeModalOverlay.addEventListener('click',e=>{if(e.target===upgradeModalOverlay) upgradeModalOverlay.classList.remove('open')});
 
+  const UPGRADE_SPIN_MS=5200;
   upgradeBtnEl.addEventListener('click',async()=>{
     if(upgradeSpinBusy||!upgradeSourceGift||!upgradeTargetGift) return;
     const chance=getUpgradeChance();
@@ -575,7 +589,7 @@
       const currentMod=((upgradeWheelRotation%360)+360)%360;
       const delta=((targetAbs-currentMod)%360+360)%360;
       const finalRotation=upgradeWheelRotation + 360*8 + delta;
-      await animateUpgradeRotation(finalRotation,8200);
+      await animateUpgradeRotation(finalRotation,UPGRADE_SPIN_MS);
       if(isWin && data.wonGift){
         openUpgradeResultModal(normalizeInventoryGift(data.wonGift,data.wonGift?.id||('upgrade_'+Date.now())));
       } else {
@@ -649,12 +663,12 @@
   async function submitPvpBet(amount){
     if(!pvpCanAcceptBets()){
       closeBet();
-      showBetError('Ставки закрыты: таймер уже закончился');
+      showBetError(t('betsClosed'));
       refreshPvpState();
       return;
     }
-    if(amount<10){showBetError('Минимальная ставка 10⭐');return;}
-    if(amount>balance){showBetError('Недостаточно Stars');return;}
+    if(amount<10){showBetError(t('minBet').replace('{n}','10'));return;}
+    if(amount>balance){showBetError(t('notEnoughStars'));return;}
     if(pvpBetSubmitBusy)return;
     pvpBetSubmitBusy=true;
     const balanceMutation=beginBalanceMutation();
@@ -682,8 +696,8 @@
     crashBetSubmitLockUntil=now+240;
     const v=parseInt(betAmountInput.value)||0;
     if(activeBetMode==='pvp'){submitPvpBet(v);return;}
-    if(v<10){showBetError('Минимальная ставка 10⭐');return;}
-    if(v>balance){showBetError('Недостаточно Stars');return;}
+    if(v<10){showBetError(t('minBet').replace('{n}','10'));return;}
+    if(v>balance){showBetError(t('notEnoughStars'));return;}
     dismissKeyboard(betAmountInput);
     closeBet();
     const prevValue=betAmountInput.value;
@@ -1029,7 +1043,7 @@
     const h=Math.floor((total%86400)/3600);
     const m=Math.floor((total%3600)/60);
     const s=total%60;
-    return d+'д'+h+'ч'+m+'м'+s+'с';
+    return currentLang==='en'?(d+'d '+h+'h '+m+'m '+s+'s'):(d+'д '+h+'ч '+m+'м '+s+'с');
   }
   async function refreshTopCycle(){
     try{

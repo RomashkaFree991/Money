@@ -42,7 +42,7 @@ const nodeGlobals = {
 
 module.exports = [
   {
-    files: ['server.js', 'relayer.js', 'login.js', 'scripts/**/*.js'],
+    files: ['server.js', 'relayer.js', 'login.js', 'games/**/*.js', 'scripts/**/*.js'],
     languageOptions: {
       ecmaVersion: 2024,
       sourceType: 'commonjs',
