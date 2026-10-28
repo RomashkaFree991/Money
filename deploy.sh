@@ -69,33 +69,94 @@ if [ ! -f .env ]; then
   OLD_ENV="$(grep -rlsE '^SUPABASE_SERVICE_ROLE_KEY=.+' --include=.env /root /home /opt /var/www /srv 2>/dev/null | grep -v "^$APP_DIR/" | head -n1 || true)"
   if [ -n "$OLD_ENV" ]; then
     cp "$OLD_ENV" .env
-    echo "Взял $OLD_ENV"
+    echo "Взял настройки из $OLD_ENV"
     OLD_DIR="$(dirname "$OLD_ENV")"
     [ -f "$OLD_DIR/tg-user.session" ] && [ ! -f tg-user.session ] && cp "$OLD_DIR/tg-user.session" .
     [ -d "$OLD_DIR/data" ] && mkdir -p data && cp -rn "$OLD_DIR/data/." data/ 2>/dev/null || true
   else
     cp .env.example .env
-    chmod 600 .env
-    die "Создан $APP_DIR/.env — заполните его (BOT_TOKEN, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, ...) и запустите команду ещё раз"
   fi
 fi
 chmod 600 .env
-set_env() { # добавляет ключ, только если его ещё нет
-  grep -qE "^$1=" .env || printf '%s=%s\n' "$1" "$2" >> .env
+
+env_get() { grep -E "^$1=" .env | tail -n1 | cut -d= -f2- | tr -d '\r' || true; }
+env_put() { # заменяет или добавляет KEY=value, значение может содержать любые символы
+  local tmp; tmp="$(mktemp)"
+  grep -vE "^$1=" .env > "$tmp" || true
+  printf '%s=%s\n' "$1" "$2" >> "$tmp"
+  cat "$tmp" > .env; rm -f "$tmp"
 }
+set_env() { [ -n "$(env_get "$1")" ] || env_put "$1" "$2"; }
+# Команда идёт через `curl | bash`, поэтому ответы читаем прямо с терминала.
+[ -r /dev/tty ] && TTY=/dev/tty || TTY=""
+ask_env() { # KEY "вопрос" regex [secret] [optional]
+  local key="$1" question="$2" re="$3" secret="${4:-}" optional="${5:-}" value
+  [ -n "$(env_get "$key")" ] && return 0
+  [ -n "$TTY" ] || die "Нет терминала для ввода $key. Заполните $APP_DIR/.env вручную и запустите команду снова"
+  while true; do
+    if [ "$secret" = secret ]; then
+      read -r -s -p "$question: " value < "$TTY"; echo > "$TTY"
+    else
+      read -r -p "$question: " value < "$TTY"
+    fi
+    value="$(printf '%s' "$value" | tr -d '\r' | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
+    if [ -z "$value" ] && [ "$optional" = optional ]; then return 0; fi
+    if [ -n "$value" ] && [[ "$value" =~ $re ]]; then env_put "$key" "$value"; return 0; fi
+    echo "  Неверное значение, попробуйте ещё раз" > "$TTY"
+  done
+}
+rand() { openssl rand -hex "$1"; }
+
+echo "Ответьте на вопросы (уже заполненные значения пропускаются):"
+while true; do
+  ask_env BOT_TOKEN "Токен бота от @BotFather" '^[0-9]{5,}:[A-Za-z0-9_-]{30,}$' secret
+  BOT_INFO="$(curl -fsS -m 15 "https://api.telegram.org/bot$(env_get BOT_TOKEN)/getMe" 2>/dev/null || true)"
+  BOT_NAME="$(printf '%s' "$BOT_INFO" | sed -nE 's/.*"username":"([^"]+)".*/\1/p')"
+  if [ -n "$BOT_NAME" ]; then echo "  ✓ Бот @$BOT_NAME"; env_put BOT_USERNAME "$BOT_NAME"; break; fi
+  if [ -z "$BOT_INFO" ] && ! curl -fsS -m 10 -o /dev/null https://api.telegram.org 2>/dev/null; then
+    warn "Нет связи с api.telegram.org — токен не проверен"; break
+  fi
+  warn "Telegram не принял токен — введите заново"; env_put BOT_TOKEN ""
+done
+ask_env SUPABASE_URL "Supabase URL (https://xxxx.supabase.co)" '^https://[^ ]+$'
+ask_env SUPABASE_SERVICE_ROLE_KEY "Supabase service_role ключ" '^[A-Za-z0-9._-]{20,}$' secret
+ask_env ADMIN_IDS "Telegram ID админов через запятую" '^[0-9]+(,[0-9]+)*$'
+ask_env TON_DESTINATION_WALLET "Кошелёк для пополнений Gram (Enter — оставить текущий из кода)" '^[A-Za-z0-9_:-]{40,}$' "" optional
+ask_env TONCENTER_API_KEY "TonCenter API ключ (Enter — пропустить)" '^[A-Za-z0-9]{10,}$' secret optional
+ask_env CHANNEL_USERNAME "Канал проекта без @ (Enter — GiftPep)" '^[A-Za-z0-9_]{4,}$' "" optional
+# Внутренние секреты генерируем сами — вводить их не нужно.
+set_env ADMIN_KEY "$(rand 24)"
+set_env TELEGRAM_WEBHOOK_SECRET "$(rand 24)"
+set_env RELAYER_INTERNAL_KEY "$(rand 24)"
 set_env MINI_APP_URL "https://$DOMAIN"
 set_env PUBLIC_BASE_URL "https://$API_DOMAIN"
 set_env WEBHOOK_URL "https://$API_DOMAIN/webhook"
 set_env BACKEND_URL "http://127.0.0.1:3000"
-PORT="$(grep -E '^PORT=' .env | tail -n1 | cut -d= -f2 | tr -d '\r" ' || true)"
+PORT="$(env_get PORT | tr -d '" ')"
 PORT="${PORT:-3000}"
 for key in BOT_TOKEN SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY ADMIN_KEY TELEGRAM_WEBHOOK_SECRET RELAYER_INTERNAL_KEY; do
-  grep -qE "^$key=.+" .env || die "В $APP_DIR/.env не заполнен $key"
+  [ -n "$(env_get "$key")" ] || die "В $APP_DIR/.env не заполнен $key"
 done
+chmod 600 .env
 
 log "Зависимости"
 npm ci --omit=dev --no-audit --no-fund --loglevel=error
 mkdir -p data
+
+log "Релеер (аккаунт, который принимает и выводит NFT)"
+if [ -f tg-user.session ] || [ -n "$(env_get TG_USER_SESSION)" ]; then
+  echo "Сессия релеера уже есть"
+elif [ -n "$TTY" ]; then
+  read -r -p "Подключить релеер сейчас? Понадобится телефон и код из Telegram [y/N]: " RELAYER_ANSWER < "$TTY"
+  if [[ "$RELAYER_ANSWER" =~ ^[YyДд] ]]; then
+    echo "  API ID и API Hash берутся на https://my.telegram.org → API development tools"
+    ask_env TG_API_ID "TG API ID" '^[0-9]{3,}$'
+    ask_env TG_API_HASH "TG API Hash" '^[0-9a-fA-F]{32}$' secret
+    node --env-file=.env login.js < "$TTY" > "$TTY" 2>&1 || warn "Вход релеера не удался — можно повторить командой: cd $APP_DIR && npm run relayer:login"
+  else
+    echo "Пропущено. Позже: cd $APP_DIR && npm run relayer:login, затем эта же команда деплоя"
+  fi
+fi
 
 log "Фронтенд → $WEB_DIR"
 mkdir -p "$WEB_DIR" "$ACME_DIR"
