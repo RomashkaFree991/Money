@@ -62,6 +62,12 @@ else
 fi
 cd "$APP_DIR"
 git log -1 --format='%h %s'
+# raw.githubusercontent.com кэширует файл несколько минут: дальше выполняем
+# уже скачанную свежую версию скрипта, а не ту, что пришла через curl.
+if [ -z "${GIFTPEP_REEXEC:-}" ] && [ -f "$APP_DIR/deploy.sh" ]; then
+  export GIFTPEP_REEXEC=1 BRANCH APP_DIR WEB_DIR DOMAIN API_DOMAIN EMAIL
+  exec bash "$APP_DIR/deploy.sh"
+fi
 
 log "Переменные окружения"
 if [ ! -f .env ]; then
